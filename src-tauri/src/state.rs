@@ -33,6 +33,8 @@ const KEY_CHAT_FONT: &str = "chatFont";
 const KEY_CHAT_FONT_SIZE: &str = "chatFontSize";
 const KEY_BOARD_FONT: &str = "boardFont";
 const KEY_BOARD_FONT_SIZE: &str = "boardFontSize";
+const KEY_CHAT_ADDED_FONTS: &str = "chatAddedFonts";
+const KEY_BOARD_ADDED_FONTS: &str = "boardAddedFonts";
 const DEFAULT_CHAT_FONT: &str = "sf-mono";
 const DEFAULT_CHAT_FONT_SIZE: u16 = 13;
 const DEFAULT_BOARD_FONT: &str = "default";
@@ -50,6 +52,8 @@ pub struct Settings {
     pub chat_font_size: u16,
     pub board_font: String,
     pub board_font_size: u16,
+    pub chat_added_fonts: Vec<String>,
+    pub board_added_fonts: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -120,6 +124,13 @@ pub fn load_settings(db: &Db) -> Result<Settings, String> {
             .filter(|v| FONT_SIZES.contains(v))
             .unwrap_or(fallback)
     };
+    let families = |key: &str| {
+        stored
+            .get(key)
+            .and_then(|v| serde_json::from_str::<Vec<String>>(v).ok())
+            .map(clean_families)
+            .unwrap_or_default()
+    };
     Ok(Settings {
         home: get(KEY_HOME, default_home()),
         terminal_label: get(KEY_LABEL, DEFAULT_LABEL.to_string()),
@@ -129,7 +140,24 @@ pub fn load_settings(db: &Db) -> Result<Settings, String> {
         chat_font_size: size(KEY_CHAT_FONT_SIZE, DEFAULT_CHAT_FONT_SIZE),
         board_font: get(KEY_BOARD_FONT, DEFAULT_BOARD_FONT.to_string()),
         board_font_size: size(KEY_BOARD_FONT_SIZE, DEFAULT_BOARD_FONT_SIZE),
+        chat_added_fonts: families(KEY_CHAT_ADDED_FONTS),
+        board_added_fonts: families(KEY_BOARD_ADDED_FONTS),
     })
+}
+
+fn clean_families(families: Vec<String>) -> Vec<String> {
+    let mut seen = Vec::<String>::new();
+    for family in families {
+        let family = family.trim();
+        if !family.is_empty() && !seen.iter().any(|f| f == family) {
+            seen.push(family.to_string());
+        }
+    }
+    seen
+}
+
+fn families_json(families: &[String]) -> String {
+    serde_json::to_string(&clean_families(families.to_vec())).unwrap_or_else(|_| "[]".into())
 }
 
 fn connection_of(settings: &Settings) -> herdr::Connection {
@@ -244,6 +272,11 @@ impl AppState {
             db.set_setting(KEY_CHAT_FONT_SIZE, &next.chat_font_size.to_string())?;
             db.set_setting(KEY_BOARD_FONT, next.board_font.trim())?;
             db.set_setting(KEY_BOARD_FONT_SIZE, &next.board_font_size.to_string())?;
+            db.set_setting(KEY_CHAT_ADDED_FONTS, &families_json(&next.chat_added_fonts))?;
+            db.set_setting(
+                KEY_BOARD_ADDED_FONTS,
+                &families_json(&next.board_added_fonts),
+            )?;
         }
         let saved = load_settings(&self.db.lock().unwrap())?;
         *self.settings.lock().unwrap() = saved.clone();
@@ -391,5 +424,25 @@ mod tests {
         assert_eq!(stored.chat_font, "menlo");
         assert_eq!(stored.chat_font_size, 17);
         assert_eq!(stored.board_font_size, DEFAULT_BOARD_FONT_SIZE);
+    }
+
+    #[test]
+    fn added_fonts_are_trimmed_deduplicated_and_survive_bad_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path()).unwrap();
+        assert!(load_settings(&db).unwrap().chat_added_fonts.is_empty());
+
+        let list = vec![
+            " Fira Code ".to_string(),
+            "Fira Code".into(),
+            String::new(),
+            "Iosevka".into(),
+        ];
+        db.set_setting(KEY_CHAT_ADDED_FONTS, &families_json(&list))
+            .unwrap();
+        db.set_setting(KEY_BOARD_ADDED_FONTS, "not json").unwrap();
+        let stored = load_settings(&db).unwrap();
+        assert_eq!(stored.chat_added_fonts, ["Fira Code", "Iosevka"]);
+        assert!(stored.board_added_fonts.is_empty());
     }
 }

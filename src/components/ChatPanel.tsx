@@ -3,13 +3,19 @@ import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import "@xterm/xterm/css/xterm.css";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { api, errorText, events, type Size, type Terminal } from "../api";
+import { forwardClipboardWrites, isShiftEnter, shiftEnterSequence, trackKittyKeyboard } from "../terminalInput";
 import { ChevronRight } from "./Icons";
 
 const FALLBACK_SIZE = { cols: 80, rows: 24 };
 const RESIZE_DEBOUNCE_MS = 80;
 const USER_INPUT_WINDOW_MS = 150;
 const USER_INPUT_EVENTS = ["keydown", "paste", "compositionend"] as const;
+
+function copyText(text: string) {
+  void writeText(text).catch(() => undefined);
+}
 
 type Phase =
   | { kind: "finding" }
@@ -61,6 +67,7 @@ export function ChatPanel({ width, label, fontFamily, fontSize, connectionKey, o
   const wantedRef = useRef<Size>(FALLBACK_SIZE);
   const resizeTimer = useRef<number | undefined>(undefined);
   const lastUserInput = useRef(0);
+  const selecting = useRef(false);
   const fontRef = useRef({ fontFamily, fontSize });
   fontRef.current = { fontFamily, fontSize };
 
@@ -89,6 +96,14 @@ export function ChatPanel({ width, label, fontFamily, fontSize, connectionKey, o
     term.resize(wanted.cols, wanted.rows);
     void api.resizeChat(wanted).catch(() => undefined);
   }, []);
+
+  const sendInput = useCallback(
+    (data: string) => {
+      if (performance.now() - lastUserInput.current < USER_INPUT_WINDOW_MS) takeSize();
+      void api.chatInput(data).catch(() => undefined);
+    },
+    [takeSize],
+  );
 
   const followCursor = useCallback(() => {
     const term = xtermRef.current;
@@ -135,6 +150,7 @@ export function ChatPanel({ width, label, fontFamily, fontSize, connectionKey, o
         scrollback: 0,
         cursorBlink: true,
         allowProposedApi: true,
+        macOptionClickForcesSelection: true,
         theme: LIGHT_THEME,
       });
       const fitAddon = new FitAddon();
@@ -146,10 +162,17 @@ export function ChatPanel({ width, label, fontFamily, fontSize, connectionKey, o
       host.replaceChildren();
       term.open(host);
       term.attachCustomWheelEventHandler(() => false);
-      term.onData((data) => {
-        if (performance.now() - lastUserInput.current < USER_INPUT_WINDOW_MS) takeSize();
-        void api.chatInput(data).catch(() => undefined);
+      const kitty = trackKittyKeyboard(term);
+      forwardClipboardWrites(term, copyText);
+      term.attachCustomKeyEventHandler((e) => {
+        if (!isShiftEnter(e)) return true;
+        if (e.type === "keydown") {
+          e.preventDefault();
+          sendInput(shiftEnterSequence(kitty.flags()));
+        }
+        return false;
       });
+      term.onData(sendInput);
       const size = measure() ?? FALLBACK_SIZE;
       wantedRef.current = size;
       term.resize(size.cols, size.rows);
@@ -173,7 +196,7 @@ export function ChatPanel({ width, label, fontFamily, fontSize, connectionKey, o
         onTerminal(null);
       }
     },
-    [disposeTerminal, measure, takeSize, followCursor, onTerminal],
+    [disposeTerminal, measure, sendInput, followCursor, onTerminal],
   );
 
   const find = useCallback(async () => {
@@ -219,6 +242,26 @@ export function ChatPanel({ width, label, fontFamily, fontSize, connectionKey, o
     };
     USER_INPUT_EVENTS.forEach((type) => host.addEventListener(type, mark, true));
     return () => USER_INPUT_EVENTS.forEach((type) => host.removeEventListener(type, mark, true));
+  }, []);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const start = () => {
+      selecting.current = true;
+    };
+    const finish = () => {
+      if (!selecting.current) return;
+      selecting.current = false;
+      const term = xtermRef.current;
+      if (term?.hasSelection()) copyText(term.getSelection());
+    };
+    host.addEventListener("mousedown", start, true);
+    window.addEventListener("mouseup", finish);
+    return () => {
+      host.removeEventListener("mousedown", start, true);
+      window.removeEventListener("mouseup", finish);
+    };
   }, []);
 
   useLayoutEffect(() => {

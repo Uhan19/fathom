@@ -1064,6 +1064,67 @@ code,
   gap: 10px;
 }
 
+.font-picker {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--page);
+}
+
+.font-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: calc(12px * var(--board-scale));
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.font-picker .muted,
+.font-picker .error-text {
+  margin: 2px 0;
+}
+
+.font-list {
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.font-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 4px 4px 8px;
+  border-radius: 6px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 34px;
+}
+
+.font-row:hover {
+  background: var(--hover);
+}
+
+.font-sample {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(15px * var(--board-scale));
+  color: var(--ink);
+}
+
 .row-names {
   align-self: stretch;
   display: grid;

@@ -8,6 +8,7 @@ const noLabel = params.has("nolabel");
 const failing = params.has("error");
 const empty = params.has("empty");
 const otherClient = params.get("other")?.match(/^(\d+)x(\d+)$/);
+const KITTY_PUSH = params.has("kitty") ? "\x1b[>1u" : "";
 
 let settings: Settings = {
   home: "/home/demo/firstmate",
@@ -18,7 +19,10 @@ let settings: Settings = {
   chatFontSize: 13,
   boardFont: "default",
   boardFontSize: 14,
+  chatAddedFonts: [],
+  boardAddedFonts: [],
 };
+const INSTALLED_FONTS = ["American Typewriter", "Andale Mono", "Avenir Next", "Courier New", "Georgia", "Helvetica Neue", "Menlo", "PT Mono", "Times New Roman", "Trebuchet MS"];
 let columns = FIXTURE_COLUMNS.map((c) => ({ ...c }));
 const rowNames = new Map<string, string>();
 const cards: Card[] = empty ? [] : FIXTURE_CARDS;
@@ -67,6 +71,11 @@ mockIPC(
         return settings;
       case "data_info":
         return { path: "/home/demo/Library/Application Support/app.fathom.board.dev/fathom.sqlite", bytes: 49152 };
+      case "installed_fonts":
+        return INSTALLED_FONTS;
+      case "plugin:clipboard-manager|write_text":
+        console.info("clipboard", JSON.stringify(args.text));
+        return null;
       case "export_data":
         return `${args.directory}/fathom-export-1763400000000`;
       case "chat_input":
@@ -89,7 +98,7 @@ mockIPC(
         return FIXTURE_TERMINALS;
       case "attach_chat": {
         const output = args.output as Output;
-        setTimeout(() => output.onmessage([...new TextEncoder().encode(FIXTURE_SCREEN)]), 50);
+        setTimeout(() => output.onmessage([...new TextEncoder().encode(KITTY_PUSH + FIXTURE_SCREEN)]), 50);
         if (otherClient) {
           const [cols, rows] = [Number(otherClient[1]), Number(otherClient[2])];
           setTimeout(() => output.onmessage({ cols, rows }), 300);

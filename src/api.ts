@@ -65,6 +65,8 @@ export interface Settings {
   chatFontSize: number;
   boardFont: string;
   boardFontSize: number;
+  chatAddedFonts: string[];
+  boardAddedFonts: string[];
 }
 
 export interface Terminal {
@@ -109,6 +111,7 @@ export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
   dataInfo: () => invoke<DataInfo>("data_info"),
+  installedFonts: () => invoke<string[]>("installed_fonts"),
   exportData: (directory: string) => invoke<string>("export_data", { directory }),
   openLink: (target: string) => invoke<void>("open_link", { target }),
   herdrStatus: () => invoke<HerdrStatus>("herdr_status"),

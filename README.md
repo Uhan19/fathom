@@ -24,6 +24,7 @@ It keeps its own database, so dev runs never touch the release build's data.
 It is handy for layout work without herdr-core or Firstmate.
 Add `?nolabel`, `?error` or `?empty` to the URL to see the terminal picker, a read error, or an empty board.
 Add `?other=120x45` to see the chat while another client owns a 120 by 45 terminal; a key press in the panel takes the size back.
+Add `?kitty` to have the mocked terminal turn on kitty keyboard mode, so Shift+Enter sends the kitty form.
 
 ## Run the checks
 
@@ -129,6 +130,8 @@ Fathom asks your login shell for its PATH once at startup and uses it to find `h
 - herdr-core session and socket; empty means herdr-core's defaults.
 - Row names.
 - Appearance: a font and a size for the chat, and a font and a size for the board.
+  "Add an installed font…" in either font menu lists every font family installed on the Mac, each shown in its own face.
+  An added font joins that menu and is selected; the same list removes it again.
   Changes show at once while the dialog is open; Save keeps them across launches and Cancel puts them back.
 
 ## Chat panel and herdr-core
@@ -139,6 +142,16 @@ Fathom talks only to herdr-core, never to the Herdr app.
 The chat panel attaches to the terminal that carries the configured label.
 If none carries it, the panel lists the terminals herdr-core knows and lets you pick one.
 Keystrokes in the panel go into that terminal.
+
+### Keys and the clipboard
+
+- Shift+Enter sends a new line instead of submitting, encoded the way herdr-core's own key encoder does it.
+  It sends `ESC[13;2u` while the program has kitty keyboard mode on and `ESC[27;2;13~` otherwise.
+  Fathom follows the kitty mode from the program's output, including the mode herdr-core restores when an attach starts.
+- Selecting text in the chat with the mouse copies it to the clipboard.
+  Option-drag selects text even when the program takes the mouse.
+- A program can copy to the clipboard with OSC 52, for example when it handles mouse selection itself.
+  Fathom never answers a program's request to read the clipboard.
 
 The message box on a card sends `<card title> (<task id>): <text>` to the same terminal with `hc send`.
 

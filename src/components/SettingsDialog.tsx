@@ -2,15 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, errorText, ROW_ORDER, type DataInfo, type RowKey, type Settings } from "../api";
 import {
+  addFont,
   appearanceOf,
   BOARD_FONT_SIZES,
-  BOARD_FONTS,
   CHAT_FONT_SIZES,
-  CHAT_FONTS,
+  removeFont,
+  surfaceFonts,
   type Appearance,
   type FontChoice,
+  type Surface,
 } from "../appearance";
 import { formatBytes } from "../board";
+import { FontPicker, useInstalledFonts } from "./FontPicker";
 import { Close } from "./Icons";
 
 interface SettingsDialogProps {
@@ -36,6 +39,8 @@ export function SettingsDialog({ settings, rowNames, onPreview, onSaved, onClose
   const [data, setData] = useState<DataInfo | null>(null);
   const [note, setNote] = useState<{ text: string; error: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [picking, setPicking] = useState<Surface | null>(null);
+  const installed = useInstalledFonts(picking !== null, api.installedFonts);
 
   useEffect(() => {
     dialogRef.current?.showModal();
@@ -47,10 +52,52 @@ export function SettingsDialog({ settings, rowNames, onPreview, onSaved, onClose
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => setDraft({ ...draft, [key]: e.target.value }),
   });
 
-  const look = <K extends keyof Appearance>(key: K, value: Appearance[K]) => {
-    const next = { ...draft, [key]: value };
-    setDraft(next);
-    onPreview(appearanceOf(next));
+  const appearance = appearanceOf(draft);
+
+  const restyle = (next: Appearance) => {
+    setDraft({ ...draft, ...next });
+    onPreview(next);
+  };
+
+  const look = <K extends keyof Appearance>(key: K, value: Appearance[K]) => restyle({ ...appearance, [key]: value });
+
+  const fontRow = (surface: Surface) => {
+    const fontKey = surface === "chat" ? "chatFont" : "boardFont";
+    const sizeKey = surface === "chat" ? "chatFontSize" : "boardFontSize";
+    const title = surface === "chat" ? "Chat" : "Board";
+    return (
+      <>
+        <div className="field-pair">
+          <FontSelect
+            label={`${title} font`}
+            fonts={surfaceFonts(appearance, surface)}
+            value={draft[fontKey]}
+            onChange={(v) => look(fontKey, v)}
+            onAdd={() => setPicking(surface)}
+          />
+          <SizeSelect
+            label={`${title} size`}
+            sizes={surface === "chat" ? CHAT_FONT_SIZES : BOARD_FONT_SIZES}
+            value={draft[sizeKey]}
+            onChange={(v) => look(sizeKey, v)}
+          />
+        </div>
+        {picking === surface && (
+          <FontPicker
+            surface={surface}
+            families={installed.families}
+            error={installed.error}
+            added={surface === "chat" ? draft.chatAddedFonts : draft.boardAddedFonts}
+            onAdd={(family) => {
+              restyle(addFont(appearance, surface, family));
+              setPicking(null);
+            }}
+            onRemove={(family) => restyle(removeFont(appearance, surface, family))}
+            onClose={() => setPicking(null)}
+          />
+        )}
+      </>
+    );
   };
 
   const save = async () => {
@@ -120,24 +167,8 @@ export function SettingsDialog({ settings, rowNames, onPreview, onSaved, onClose
           </fieldset>
           <fieldset>
             <legend>Appearance</legend>
-            <div className="field-pair">
-              <FontSelect label="Chat font" fonts={CHAT_FONTS} value={draft.chatFont} onChange={(v) => look("chatFont", v)} />
-              <SizeSelect
-                label="Chat size"
-                sizes={CHAT_FONT_SIZES}
-                value={draft.chatFontSize}
-                onChange={(v) => look("chatFontSize", v)}
-              />
-            </div>
-            <div className="field-pair">
-              <FontSelect label="Board font" fonts={BOARD_FONTS} value={draft.boardFont} onChange={(v) => look("boardFont", v)} />
-              <SizeSelect
-                label="Board size"
-                sizes={BOARD_FONT_SIZES}
-                value={draft.boardFontSize}
-                onChange={(v) => look("boardFontSize", v)}
-              />
-            </div>
+            {fontRow("chat")}
+            {fontRow("board")}
             <small className="field-note">Changes show at once; Save keeps them, Cancel puts them back.</small>
           </fieldset>
           <fieldset>
@@ -191,16 +222,27 @@ interface SelectProps<T> {
   onChange: (value: T) => void;
 }
 
-function FontSelect({ label, fonts, value, onChange }: SelectProps<string> & { fonts: FontChoice[] }) {
+const ADD_FONT_OPTION = "add-font";
+
+function FontSelect({ label, fonts, value, onChange, onAdd }: SelectProps<string> & { fonts: FontChoice[]; onAdd: () => void }) {
+  const option = (font: FontChoice) => (
+    <option key={font.key} value={font.key}>
+      {font.name}
+    </option>
+  );
+  const added = fonts.filter((f) => f.added);
+  const selected = fonts.some((f) => f.key === value) ? value : fonts[0].key;
   return (
     <label className="field">
       <span>{label}</span>
-      <select className="text-input" value={value} onChange={(e) => onChange(e.target.value)}>
-        {fonts.map((font) => (
-          <option key={font.key} value={font.key}>
-            {font.name}
-          </option>
-        ))}
+      <select
+        className="text-input"
+        value={selected}
+        onChange={(e) => (e.target.value === ADD_FONT_OPTION ? onAdd() : onChange(e.target.value))}
+      >
+        {fonts.filter((f) => !f.added).map(option)}
+        {added.length > 0 && <optgroup label="Added">{added.map(option)}</optgroup>}
+        <option value={ADD_FONT_OPTION}>Add an installed font…</option>
       </select>
     </label>
   );

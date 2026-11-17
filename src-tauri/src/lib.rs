@@ -1,6 +1,7 @@
 mod commands;
 mod db;
 mod export;
+mod fonts;
 mod herdr;
 mod shell_path;
 mod state;
@@ -27,6 +28,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(move |app| {
             let data_dir = app.path().app_data_dir()?;
             let log_dir = app.path().app_log_dir()?;
@@ -44,6 +46,7 @@ pub fn run() {
             commands::set_row_name,
             commands::get_settings,
             commands::save_settings,
+            commands::installed_fonts,
             commands::data_info,
             commands::export_data,
             commands::open_link,

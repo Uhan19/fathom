@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText, events, ROW_ORDER, type BoardView, type Card, type HerdrStatus, type RowKey, type Settings, type Terminal } from "./api";
-import { appearanceOf, boardStyle, CHAT_FONTS, fontChoice, type Appearance } from "./appearance";
+import { appearanceOf, boardStyle, chatFontStack, type Appearance } from "./appearance";
 import { rowCounts } from "./board";
 import { startDrag } from "./drag";
 import { Board } from "./components/Board";
@@ -186,7 +186,7 @@ export default function App() {
             <ChatPanel
               width={chatWidth}
               label={settings.terminalLabel}
-              fontFamily={fontChoice(CHAT_FONTS, (appearance ?? settings).chatFont).stack}
+              fontFamily={chatFontStack(appearance ?? appearanceOf(settings))}
               fontSize={(appearance ?? settings).chatFontSize}
               connectionKey={connectionKey}
               onTerminal={setChatTerminal}

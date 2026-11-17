@@ -6,6 +6,7 @@ use tauri::State;
 use tauri::ipc::{Channel, InvokeResponseBody};
 
 use crate::export;
+use crate::fonts;
 use crate::herdr::Terminal;
 use crate::state::{AppState, BoardView, ChatSize, HerdrStatus, Settings, now_ms};
 use crate::tasks::{self, Detail, Row};
@@ -76,6 +77,11 @@ pub fn get_settings(state: AppStateRef) -> Settings {
 #[tauri::command]
 pub fn save_settings(state: AppStateRef, settings: Settings) -> Result<Settings, String> {
     state.save_settings(settings)
+}
+
+#[tauri::command]
+pub async fn installed_fonts() -> Result<Vec<String>, String> {
+    blocking(|| Ok(fonts::installed_families())).await
 }
 
 #[tauri::command]
