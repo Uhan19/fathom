@@ -81,7 +81,7 @@ export function SettingsDialog({ settings, rowNames, onSaved, onClose }: Setting
             <legend>Firstmate</legend>
             <label className="field">
               <span>Firstmate home</span>
-              <input className="text-input mono" {...field("home")} spellCheck={false} />
+              <input className="text-input mono" {...field("home")} spellCheck={false} autoFocus />
               <small>Fathom reads tasks through bin/fm-tasks-axi.sh in this folder and never writes there.</small>
             </label>
           </fieldset>

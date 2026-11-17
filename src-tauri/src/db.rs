@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::tasks::{Card, Row};
 
 pub const FILE_NAME: &str = "fathom.sqlite";
-pub const DEFAULT_COLUMN_WIDTH: i64 = 280;
+pub const DEFAULT_COLUMN_WIDTH: i64 = 240;
 
 const MIGRATIONS: [&str; 1] = [include_str!("../migrations/0001_init.sql")];
 

@@ -38,6 +38,7 @@ export function Board({ cards, columns, rowNames, selectedId, onSelect, onColumn
       <div className="board" style={{ minWidth: boardMinWidth(shown) }}>
         <div className="column-heads" style={{ gridTemplateColumns: template }}>
           <span className="column-heads-label">Projects →</span>
+          <Wave />
           {shown.map((column) => {
             const total = ROW_ORDER.reduce((n, row) => n + (cells.get(column.project)?.get(row)?.length ?? 0), 0);
             return column.collapsed ? (
@@ -80,7 +81,6 @@ export function Board({ cards, columns, rowNames, selectedId, onSelect, onColumn
         </div>
         {ROW_ORDER.map((row) => (
           <section key={row} className={`row row-${row}`} aria-label={rowNames[row]} style={{ gridTemplateColumns: template }}>
-            {row === "surface" && <Wave />}
             <h2 className="row-name">{rowNames[row]}</h2>
             {shown.map((column) => {
               const here = cells.get(column.project)?.get(row) ?? [];
