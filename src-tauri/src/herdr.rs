@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
+use portable_pty::{CommandBuilder, MasterPty, PtyPair, PtySize, native_pty_system};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -30,6 +30,8 @@ const ACTIVITY_EVENTS: [&str; 6] = [
 const FALLBACK_SIZE: (u16, u16) = (120, 40);
 const RECONNECT_DELAY: Duration = Duration::from_secs(2);
 const ATTACH_READ_BUFFER: usize = 16 * 1024;
+const PTY_ATTEMPTS: u32 = 4;
+const PTY_RETRY_DELAY: Duration = Duration::from_millis(150);
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -187,14 +189,7 @@ impl Herdr {
     pub fn attach(&self, terminal: &str, mut output: Output) -> Result<(u16, u16), String> {
         self.detach();
         let (cols, rows) = self.terminal_size(terminal).unwrap_or(FALLBACK_SIZE);
-        let pty = native_pty_system()
-            .openpty(PtySize {
-                rows,
-                cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .map_err(|e| format!("cannot open a pty: {e}"))?;
+        let pty = open_pty(cols, rows)?;
         let mut builder = CommandBuilder::new(program()?);
         builder.args(["attach", terminal]);
         for (key, value) in self.env() {
@@ -285,6 +280,26 @@ impl Drop for Herdr {
     fn drop(&mut self) {
         self.stop_events();
         self.detach();
+    }
+}
+
+fn open_pty(cols: u16, rows: u16) -> Result<PtyPair, String> {
+    let size = PtySize {
+        rows,
+        cols,
+        pixel_width: 0,
+        pixel_height: 0,
+    };
+    let mut attempt = 1;
+    loop {
+        match native_pty_system().openpty(size) {
+            Ok(pair) => return Ok(pair),
+            Err(_) if attempt < PTY_ATTEMPTS => {
+                attempt += 1;
+                std::thread::sleep(PTY_RETRY_DELAY);
+            }
+            Err(e) => return Err(format!("cannot open a pty: {e}")),
+        }
     }
 }
 
@@ -544,5 +559,56 @@ mod tests {
         let list = parse_terminals(json).unwrap();
         assert_eq!(list[0].name, "probe");
         assert_eq!(list[0].agent, "sh");
+    }
+
+    fn wait_for(what: &str, mut check: impl FnMut() -> bool) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while !check() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "timed out waiting for {what}"
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+
+    #[test]
+    #[ignore = "needs FATHOM_LAB_SESSION and FATHOM_LAB_SOCKET pointing at a throwaway herdr-core session"]
+    fn types_and_sends_into_a_lab_terminal() {
+        let connection = Connection {
+            session: std::env::var("FATHOM_LAB_SESSION").expect("FATHOM_LAB_SESSION"),
+            socket: std::env::var("FATHOM_LAB_SOCKET").expect("FATHOM_LAB_SOCKET"),
+        };
+        let label = std::env::var("FATHOM_LAB_LABEL").unwrap_or("firstmate.role=primary".into());
+        let herdr = Herdr::new(connection, Arc::new(|_| {}));
+        herdr.start_events();
+        let terminal = herdr
+            .find_by_label(&label)
+            .unwrap()
+            .expect("a labeled terminal");
+        wait_for("the terminal size", || {
+            herdr.terminal_size(&terminal.address).is_some()
+        });
+
+        let screen = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let sink = Arc::clone(&screen);
+        let size = herdr
+            .attach(
+                &terminal.address,
+                Box::new(move |bytes| sink.lock().unwrap().extend_from_slice(bytes)),
+            )
+            .unwrap();
+        assert_eq!(Some(size), herdr.terminal_size(&terminal.address));
+        let seen = |text: &str| String::from_utf8_lossy(&screen.lock().unwrap()).contains(text);
+
+        herdr.write_input(b"typed-in-fathom\r").unwrap();
+        wait_for("the typed line to arrive", || seen("GOT:typed-in-fathom"));
+
+        let message = "Lab card (lab-1): sent-from-fathom";
+        herdr.send(&terminal.address, message).unwrap();
+        wait_for("the sent message", || seen(&format!("GOT:{message}")));
+
+        herdr.detach();
+        herdr.stop_events();
     }
 }
