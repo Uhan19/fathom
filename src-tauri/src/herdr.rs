@@ -27,7 +27,6 @@ const ACTIVITY_EVENTS: [&str; 6] = [
     "status",
     "turn",
 ];
-const FALLBACK_SIZE: (u16, u16) = (120, 40);
 const RECONNECT_DELAY: Duration = Duration::from_secs(2);
 const ATTACH_READ_BUFFER: usize = 16 * 1024;
 const PTY_ATTEMPTS: u32 = 4;
@@ -68,25 +67,48 @@ pub enum Notice {
     EventsDown(String),
     Activity,
     TerminalsChanged,
-    Resized {
-        terminal: String,
-        cols: u16,
-        rows: u16,
-    },
-    AttachEnded {
-        terminal: String,
-    },
+    AttachEnded { terminal: String },
 }
 
 pub type Notify = Arc<dyn Fn(Notice) + Send + Sync>;
-pub type Output = Box<dyn FnMut(&[u8]) + Send>;
+
+#[derive(Debug, PartialEq)]
+pub enum Frame<'a> {
+    Bytes(&'a [u8]),
+    Size { cols: u16, rows: u16 },
+}
+
+pub type Output = Box<dyn FnMut(Frame) + Send>;
+
+type Size = (u16, u16);
 
 struct Attachment {
     id: u64,
     terminal: String,
+    size: Size,
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     child: Box<dyn portable_pty::Child + Send + Sync>,
+}
+
+impl Attachment {
+    fn end(mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+#[derive(Default)]
+struct Sink {
+    id: u64,
+    output: Option<Output>,
+}
+
+struct Chat {
+    attachment: Mutex<Option<Attachment>>,
+    sink: Mutex<Sink>,
+    ids: AtomicU64,
+    notify: Notify,
 }
 
 pub struct Herdr {
@@ -94,8 +116,7 @@ pub struct Herdr {
     terminals: Arc<Mutex<BTreeMap<String, Terminal>>>,
     events_child: Arc<Mutex<Option<Child>>>,
     generation: Arc<AtomicU64>,
-    attachment: Arc<Mutex<Option<Attachment>>>,
-    attach_ids: AtomicU64,
+    chat: Arc<Chat>,
     notify: Notify,
 }
 
@@ -106,8 +127,12 @@ impl Herdr {
             terminals: Arc::default(),
             events_child: Arc::default(),
             generation: Arc::default(),
-            attachment: Arc::default(),
-            attach_ids: AtomicU64::new(1),
+            chat: Arc::new(Chat {
+                attachment: Mutex::default(),
+                sink: Mutex::default(),
+                ids: AtomicU64::new(1),
+                notify: Arc::clone(&notify),
+            }),
             notify,
         }
     }
@@ -142,15 +167,6 @@ impl Herdr {
         self.run(&["send", terminal, text]).map(|_| ())
     }
 
-    pub fn terminal_size(&self, terminal: &str) -> Option<(u16, u16)> {
-        let terminals = self.terminals.lock().unwrap();
-        terminals
-            .values()
-            .find(|t| t.address == terminal || t.name == terminal)
-            .filter(|t| t.cols > 0 && t.rows > 0)
-            .map(|t| (t.cols, t.rows))
-    }
-
     pub fn start_events(&self) {
         let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
         if let Some(mut old) = self.events_child.lock().unwrap().take() {
@@ -160,13 +176,12 @@ impl Herdr {
         let current = Arc::clone(&self.generation);
         let child_slot = Arc::clone(&self.events_child);
         let terminals = Arc::clone(&self.terminals);
-        let attachment = Arc::clone(&self.attachment);
+        let chat = Arc::clone(&self.chat);
         let notify = Arc::clone(&self.notify);
         let connection = self.connection();
         std::thread::spawn(move || {
             while current.load(Ordering::SeqCst) == generation {
-                let outcome =
-                    stream_events(&connection, &child_slot, &terminals, &attachment, &notify);
+                let outcome = stream_events(&connection, &child_slot, &terminals, &chat, &notify);
                 if current.load(Ordering::SeqCst) != generation {
                     break;
                 }
@@ -186,59 +201,146 @@ impl Herdr {
         }
     }
 
-    pub fn attach(&self, terminal: &str, mut output: Output) -> Result<(u16, u16), String> {
+    pub fn attach(
+        &self,
+        terminal: &str,
+        cols: u16,
+        rows: u16,
+        output: Output,
+    ) -> Result<(), String> {
+        self.chat
+            .attach(&self.connection(), terminal, (cols, rows), output)
+    }
+
+    pub fn resize(&self, cols: u16, rows: u16) -> Result<(), String> {
+        self.chat.resize((cols, rows))
+    }
+
+    pub fn write_input(&self, bytes: &[u8]) -> Result<(), String> {
+        self.chat.write_input(bytes)
+    }
+
+    pub fn detach(&self) {
+        self.chat.detach();
+    }
+
+    fn run(&self, args: &[&str]) -> Result<String, String> {
+        run_hc(&self.connection(), args)
+    }
+}
+
+impl Chat {
+    fn attach(
+        self: &Arc<Self>,
+        connection: &Connection,
+        terminal: &str,
+        size: Size,
+        output: Output,
+    ) -> Result<(), String> {
         self.detach();
-        let (cols, rows) = self.terminal_size(terminal).unwrap_or(FALLBACK_SIZE);
-        let pty = open_pty(cols, rows)?;
-        let mut builder = CommandBuilder::new(program()?);
-        builder.args(["attach", terminal]);
-        for (key, value) in self.env() {
-            match value {
-                Some(value) => builder.env(key, value),
-                None => builder.env_remove(key),
+        let id = self.ids.fetch_add(1, Ordering::SeqCst);
+        *self.sink.lock().unwrap() = Sink {
+            id,
+            output: Some(output),
+        };
+        let (attachment, reader) = spawn_attach(connection, id, terminal, size)?;
+        *self.attachment.lock().unwrap() = Some(attachment);
+        self.read(id, terminal, reader);
+        Ok(())
+    }
+
+    fn follow_size(self: &Arc<Self>, connection: &Connection, terminal: &str, announced: Size) {
+        let attached = match self.attachment.lock().unwrap().as_ref() {
+            Some(a) if a.terminal == terminal => a.size,
+            _ => return,
+        };
+        if attached == announced {
+            return;
+        }
+        let Ok(core) = core_size(connection, terminal) else {
+            return;
+        };
+        let mut slot = self.attachment.lock().unwrap();
+        if !slot
+            .as_ref()
+            .is_some_and(|a| a.terminal == terminal && a.size != core)
+        {
+            return;
+        }
+        let id = self.ids.fetch_add(1, Ordering::SeqCst);
+        let previous = self.switch_sink(id, core);
+        match spawn_attach(connection, id, terminal, core) {
+            Ok((fresh, reader)) => {
+                let old = slot.replace(fresh);
+                drop(slot);
+                if let Some(old) = old {
+                    old.end();
+                }
+                self.read(id, terminal, reader);
+            }
+            Err(error) => {
+                self.sink.lock().unwrap().id = previous;
+                eprintln!("fathom: cannot reattach at the new size: {error}");
             }
         }
-        builder.env("TERM", "xterm-256color");
-        let child = pty
-            .slave
-            .spawn_command(builder)
-            .map_err(|e| format!("cannot start hc attach: {e}"))?;
-        drop(pty.slave);
-        let mut reader = pty.master.try_clone_reader().map_err(|e| e.to_string())?;
-        let writer = pty.master.take_writer().map_err(|e| e.to_string())?;
-        let id = self.attach_ids.fetch_add(1, Ordering::SeqCst);
-        *self.attachment.lock().unwrap() = Some(Attachment {
-            id,
-            terminal: terminal.to_string(),
-            master: pty.master,
-            writer,
-            child,
-        });
+    }
 
-        let attachment = Arc::clone(&self.attachment);
-        let notify = Arc::clone(&self.notify);
+    fn switch_sink(&self, id: u64, (cols, rows): Size) -> u64 {
+        let mut sink = self.sink.lock().unwrap();
+        let previous = std::mem::replace(&mut sink.id, id);
+        if let Some(output) = sink.output.as_mut() {
+            output(Frame::Size { cols, rows });
+        }
+        previous
+    }
+
+    fn read(self: &Arc<Self>, id: u64, terminal: &str, mut reader: Box<dyn Read + Send>) {
+        let chat = Arc::clone(self);
         let terminal = terminal.to_string();
         std::thread::spawn(move || {
             let mut buffer = vec![0u8; ATTACH_READ_BUFFER];
             loop {
                 match reader.read(&mut buffer) {
                     Ok(0) | Err(_) => break,
-                    Ok(n) => output(&buffer[..n]),
+                    Ok(n) => chat.emit(id, &buffer[..n]),
                 }
             }
-            let mut slot = attachment.lock().unwrap();
-            if slot.as_ref().is_some_and(|a| a.id == id) {
-                if let Some(mut ended) = slot.take() {
-                    let _ = ended.child.wait();
+            let ended = {
+                let mut slot = chat.attachment.lock().unwrap();
+                if slot.as_ref().is_some_and(|a| a.id == id) {
+                    slot.take()
+                } else {
+                    None
                 }
-                drop(slot);
-                notify(Notice::AttachEnded { terminal });
+            };
+            if let Some(ended) = ended {
+                ended.end();
+                (chat.notify)(Notice::AttachEnded { terminal });
             }
         });
-        Ok((cols, rows))
     }
 
-    pub fn write_input(&self, bytes: &[u8]) -> Result<(), String> {
+    fn emit(&self, id: u64, bytes: &[u8]) {
+        let mut sink = self.sink.lock().unwrap();
+        if sink.id == id
+            && let Some(output) = sink.output.as_mut()
+        {
+            output(Frame::Bytes(bytes));
+        }
+    }
+
+    fn resize(&self, size: Size) -> Result<(), String> {
+        let mut slot = self.attachment.lock().unwrap();
+        let attachment = slot.as_mut().ok_or("the chat panel is not attached")?;
+        attachment
+            .master
+            .resize(pty_size(size))
+            .map_err(|e| e.to_string())?;
+        attachment.size = size;
+        Ok(())
+    }
+
+    fn write_input(&self, bytes: &[u8]) -> Result<(), String> {
         let mut slot = self.attachment.lock().unwrap();
         let attachment = slot.as_mut().ok_or("the chat panel is not attached")?;
         attachment
@@ -248,31 +350,79 @@ impl Herdr {
             .map_err(|e| e.to_string())
     }
 
-    pub fn detach(&self) {
-        if let Some(mut attachment) = self.attachment.lock().unwrap().take() {
-            let _ = attachment.child.kill();
-            let _ = attachment.child.wait();
+    fn detach(&self) {
+        let attachment = self.attachment.lock().unwrap().take();
+        *self.sink.lock().unwrap() = Sink::default();
+        if let Some(attachment) = attachment {
+            attachment.end();
         }
     }
+}
 
-    fn env(&self) -> Vec<(&'static str, Option<String>)> {
-        connection_env(&self.connection())
-    }
-
-    fn run(&self, args: &[&str]) -> Result<String, String> {
-        let mut command = Command::new(program()?);
-        command.args(args).stdin(Stdio::null());
-        apply_env(&mut command, &self.connection());
-        let output = command
-            .output()
-            .map_err(|e| format!("cannot run hc: {e}"))?;
-        if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            Err(if stderr.is_empty() { stdout } else { stderr })
+fn spawn_attach(
+    connection: &Connection,
+    id: u64,
+    terminal: &str,
+    size: Size,
+) -> Result<(Attachment, Box<dyn Read + Send>), String> {
+    let pty = open_pty(size)?;
+    let mut builder = CommandBuilder::new(program()?);
+    builder.args(["attach", terminal]);
+    for (key, value) in connection_env(connection) {
+        match value {
+            Some(value) => builder.env(key, value),
+            None => builder.env_remove(key),
         }
+    }
+    builder.env("TERM", "xterm-256color");
+    let child = pty
+        .slave
+        .spawn_command(builder)
+        .map_err(|e| format!("cannot start hc attach: {e}"))?;
+    drop(pty.slave);
+    let reader = pty.master.try_clone_reader().map_err(|e| e.to_string())?;
+    let writer = pty.master.take_writer().map_err(|e| e.to_string())?;
+    let attachment = Attachment {
+        id,
+        terminal: terminal.to_string(),
+        size,
+        master: pty.master,
+        writer,
+        child,
+    };
+    Ok((attachment, reader))
+}
+
+fn core_size(connection: &Connection, terminal: &str) -> Result<Size, String> {
+    let output = run_hc(connection, &["get", terminal, "--json"])?;
+    let value: Value =
+        serde_json::from_str(&output).map_err(|e| format!("unexpected hc output: {e}"))?;
+    dimensions(&value).ok_or_else(|| "hc get has no size".to_string())
+}
+
+fn dimensions(value: &Value) -> Option<Size> {
+    let dimension = |key| {
+        value
+            .get(key)
+            .and_then(Value::as_u64)
+            .and_then(|v| u16::try_from(v).ok())
+    };
+    Some((dimension("cols")?, dimension("rows")?))
+}
+
+fn run_hc(connection: &Connection, args: &[&str]) -> Result<String, String> {
+    let mut command = Command::new(program()?);
+    command.args(args).stdin(Stdio::null());
+    apply_env(&mut command, connection);
+    let output = command
+        .output()
+        .map_err(|e| format!("cannot run hc: {e}"))?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Err(if stderr.is_empty() { stdout } else { stderr })
     }
 }
 
@@ -283,13 +433,8 @@ impl Drop for Herdr {
     }
 }
 
-fn open_pty(cols: u16, rows: u16) -> Result<PtyPair, String> {
-    let size = PtySize {
-        rows,
-        cols,
-        pixel_width: 0,
-        pixel_height: 0,
-    };
+fn open_pty(size: Size) -> Result<PtyPair, String> {
+    let size = pty_size(size);
     let mut attempt = 1;
     loop {
         match native_pty_system().openpty(size) {
@@ -300,6 +445,15 @@ fn open_pty(cols: u16, rows: u16) -> Result<PtyPair, String> {
             }
             Err(e) => return Err(format!("cannot open a pty: {e}")),
         }
+    }
+}
+
+fn pty_size((cols, rows): Size) -> PtySize {
+    PtySize {
+        rows,
+        cols,
+        pixel_width: 0,
+        pixel_height: 0,
     }
 }
 
@@ -343,7 +497,7 @@ fn stream_events(
     connection: &Connection,
     child_slot: &Mutex<Option<Child>>,
     terminals: &Mutex<BTreeMap<String, Terminal>>,
-    attachment: &Mutex<Option<Attachment>>,
+    chat: &Arc<Chat>,
     notify: &Notify,
 ) -> Result<(), String> {
     let mut command = Command::new(program()?);
@@ -364,15 +518,10 @@ fn stream_events(
             continue;
         };
         for notice in apply_event(&mut terminals.lock().unwrap(), &message) {
-            if let Notice::Resized {
-                terminal,
-                cols,
-                rows,
-            } = &notice
-            {
-                resize_attachment(attachment, terminal, *cols, *rows);
-            }
             notify(notice);
+        }
+        if let Some((terminal, size)) = size_change(&message) {
+            chat.follow_size(connection, &terminal, size);
         }
     }
     if let Some(mut child) = child_slot.lock().unwrap().take() {
@@ -382,20 +531,13 @@ fn stream_events(
     Ok(())
 }
 
-fn resize_attachment(attachment: &Mutex<Option<Attachment>>, terminal: &str, cols: u16, rows: u16) {
-    if let Some(attached) = attachment
-        .lock()
-        .unwrap()
-        .as_ref()
-        .filter(|a| a.terminal == terminal)
-    {
-        let _ = attached.master.resize(PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
-        });
+fn size_change(message: &Value) -> Option<(String, Size)> {
+    let params = message.get("params")?;
+    if params.get("type")?.as_str()? != "size" {
+        return None;
     }
+    let terminal = params.get("terminal")?.as_str()?.to_string();
+    Some((terminal, dimensions(params.get("data")?)?))
 }
 
 pub fn apply_event(terminals: &mut BTreeMap<String, Terminal>, message: &Value) -> Vec<Notice> {
@@ -421,17 +563,11 @@ pub fn apply_event(terminals: &mut BTreeMap<String, Terminal>, message: &Value) 
     let mut notices = Vec::new();
     match kind {
         "size" => {
-            let cols = data.get("cols").and_then(Value::as_u64).unwrap_or(0) as u16;
-            let rows = data.get("rows").and_then(Value::as_u64).unwrap_or(0) as u16;
-            if let Some(t) = terminals.get_mut(&address) {
+            if let (Some((cols, rows)), Some(t)) = (dimensions(&data), terminals.get_mut(&address))
+            {
                 t.cols = cols;
                 t.rows = rows;
             }
-            notices.push(Notice::Resized {
-                terminal: address.clone(),
-                cols,
-                rows,
-            });
         }
         "labels" => {
             let labels = data
@@ -510,22 +646,14 @@ mod tests {
     }
 
     #[test]
-    fn size_events_update_and_announce() {
+    fn size_events_update_the_terminal_and_read_as_a_size_change() {
         let mut terminals = BTreeMap::new();
         apply_event(&mut terminals, &snapshot());
-        let notices = apply_event(
-            &mut terminals,
-            &event("size", json!({"cols": 111, "rows": 33})),
-        );
-        assert_eq!(
-            notices,
-            vec![Notice::Resized {
-                terminal: "t1".into(),
-                cols: 111,
-                rows: 33
-            }]
-        );
+        let resize = event("size", json!({"cols": 111, "rows": 33}));
+        assert!(apply_event(&mut terminals, &resize).is_empty());
         assert_eq!((terminals["t1"].cols, terminals["t1"].rows), (111, 33));
+        assert_eq!(size_change(&resize), Some(("t1".into(), (111, 33))));
+        assert_eq!(size_change(&event("turn", json!({"turn": 2}))), None);
     }
 
     #[test]
@@ -572,42 +700,107 @@ mod tests {
         }
     }
 
+    fn known_size(herdr: &Herdr, terminal: &str) -> Option<Size> {
+        herdr
+            .terminals
+            .lock()
+            .unwrap()
+            .get(terminal)
+            .map(|t| (t.cols, t.rows))
+    }
+
+    #[derive(Default)]
+    struct Screen {
+        bytes: Vec<u8>,
+        sizes: Vec<Size>,
+    }
+
+    fn screen_sink() -> (Arc<Mutex<Screen>>, Output) {
+        let screen = Arc::new(Mutex::new(Screen::default()));
+        let sink = Arc::clone(&screen);
+        (
+            screen,
+            Box::new(move |frame| {
+                let mut screen = sink.lock().unwrap();
+                match frame {
+                    Frame::Bytes(bytes) => screen.bytes.extend_from_slice(bytes),
+                    Frame::Size { cols, rows } => {
+                        screen.bytes.clear();
+                        screen.sizes.push((cols, rows));
+                    }
+                }
+            }),
+        )
+    }
+
     #[test]
     #[ignore = "needs FATHOM_LAB_SESSION and FATHOM_LAB_SOCKET pointing at a throwaway herdr-core session"]
-    fn types_and_sends_into_a_lab_terminal() {
+    fn sizes_types_and_sends_into_a_lab_terminal() {
         let connection = Connection {
             session: std::env::var("FATHOM_LAB_SESSION").expect("FATHOM_LAB_SESSION"),
             socket: std::env::var("FATHOM_LAB_SOCKET").expect("FATHOM_LAB_SOCKET"),
         };
         let label = std::env::var("FATHOM_LAB_LABEL").unwrap_or("firstmate.role=primary".into());
-        let herdr = Herdr::new(connection, Arc::new(|_| {}));
+        let herdr = Herdr::new(connection.clone(), Arc::new(|_| {}));
         herdr.start_events();
         let terminal = herdr
             .find_by_label(&label)
             .unwrap()
-            .expect("a labeled terminal");
-        wait_for("the terminal size", || {
-            herdr.terminal_size(&terminal.address).is_some()
+            .expect("a labeled terminal")
+            .address;
+        wait_for("the event snapshot", || {
+            known_size(&herdr, &terminal).is_some()
         });
 
-        let screen = Arc::new(Mutex::new(Vec::<u8>::new()));
-        let sink = Arc::clone(&screen);
-        let size = herdr
-            .attach(
-                &terminal.address,
-                Box::new(move |bytes| sink.lock().unwrap().extend_from_slice(bytes)),
-            )
-            .unwrap();
-        assert_eq!(Some(size), herdr.terminal_size(&terminal.address));
-        let seen = |text: &str| String::from_utf8_lossy(&screen.lock().unwrap()).contains(text);
+        let (screen, sink) = screen_sink();
+        herdr.attach(&terminal, 101, 37, sink).unwrap();
+        wait_for("the attach size", || {
+            known_size(&herdr, &terminal) == Some((101, 37))
+        });
+        let seen =
+            |text: &str| String::from_utf8_lossy(&screen.lock().unwrap().bytes).contains(text);
 
         herdr.write_input(b"typed-in-fathom\r").unwrap();
         wait_for("the typed line to arrive", || seen("GOT:typed-in-fathom"));
 
         let message = "Lab card (lab-1): sent-from-fathom";
-        herdr.send(&terminal.address, message).unwrap();
+        herdr.send(&terminal, message).unwrap();
         wait_for("the sent message", || seen(&format!("GOT:{message}")));
 
+        herdr.resize(117, 41).unwrap();
+        wait_for("the panel resize", || {
+            known_size(&herdr, &terminal) == Some((117, 41))
+        });
+
+        let other = Herdr::new(connection, Arc::new(|_| {}));
+        let (_, other_sink) = screen_sink();
+        other.attach(&terminal, 90, 30, other_sink).unwrap();
+        wait_for("the other client's attach size", || {
+            known_size(&herdr, &terminal) == Some((90, 30))
+        });
+        wait_for("Fathom to reattach at the other client's size", || {
+            screen.lock().unwrap().sizes.last() == Some(&(90, 30))
+        });
+        herdr.write_input(b"after-reattach\r").unwrap();
+        wait_for("typing through the new attach", || {
+            seen("GOT:after-reattach")
+        });
+        assert_eq!(known_size(&herdr, &terminal), Some((90, 30)));
+
+        herdr.resize(117, 41).unwrap();
+        wait_for("Fathom to take the size back", || {
+            known_size(&herdr, &terminal) == Some((117, 41))
+        });
+        other.write_input(b"\r").unwrap();
+        wait_for("typing in the other client to take it back", || {
+            known_size(&herdr, &terminal) == Some((90, 30))
+        });
+        wait_for("Fathom to follow again", || {
+            screen.lock().unwrap().sizes.last() == Some(&(90, 30))
+                && screen.lock().unwrap().sizes.len() == 2
+        });
+
+        other.detach();
         herdr.detach();
         herdr.stop_events();
     }

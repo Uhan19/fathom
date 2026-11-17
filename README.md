@@ -23,6 +23,7 @@ It keeps its own database, so dev runs never touch the release build's data.
 `pnpm preview:ui` opens the UI in a browser with an invented fixture and mocked backend calls.
 It is handy for layout work without herdr-core or Firstmate.
 Add `?nolabel`, `?error` or `?empty` to the URL to see the terminal picker, a read error, or an empty board.
+Add `?other=120x45` to see the chat while another client owns a 120 by 45 terminal; a key press in the panel takes the size back.
 
 ## Run the checks
 
@@ -35,12 +36,13 @@ This runs the TypeScript compiler, the vitest suite, `cargo fmt --check`, `cargo
 Two Rust tests are ignored by default because they need outside state:
 
 - `tasks::home_tests::reads_a_real_home` reads a Firstmate home copy set in `FATHOM_TEST_HOME`.
-- `herdr::tests::types_and_sends_into_a_lab_terminal` attaches to a throwaway herdr-core session set in `FATHOM_LAB_SESSION` and `FATHOM_LAB_SOCKET`.
-  It types a line, sends a card message, and checks both arrive.
+- `herdr::tests::sizes_types_and_sends_into_a_lab_terminal` attaches to a throwaway herdr-core session set in `FATHOM_LAB_SESSION` and `FATHOM_LAB_SOCKET`.
+  The labeled terminal (`FATHOM_LAB_LABEL`, default `firstmate.role=primary`) must echo each line it reads as `GOT:<line>`.
+  It checks the attach and panel sizes reach the terminal, types a line, sends a card message, follows a second client's size by attaching again, and takes the size back.
   Never point it at a session you use.
 
 ```sh
-FATHOM_LAB_SESSION=<lab session> FATHOM_LAB_SOCKET=<lab socket> \
+FATHOM_LAB_SESSION=<lab session> FATHOM_LAB_SOCKET=<lab socket> FATHOM_LAB_LABEL=<label> \
   cargo test --manifest-path src-tauri/Cargo.toml --lib -- --ignored types_and_sends
 ```
 
@@ -126,10 +128,12 @@ Fathom asks your login shell for its PATH once at startup and uses it to find `h
 - Chat terminal label, default `firstmate.role=primary`.
 - herdr-core session and socket; empty means herdr-core's defaults.
 - Row names.
+- Appearance: a font and a size for the chat, and a font and a size for the board.
+  Changes show at once while the dialog is open; Save keeps them across launches and Cancel puts them back.
 
 ## Chat panel and herdr-core
 
-All herdr-core calls (`ls`, `events`, `attach`, `send`) live in `src-tauri/src/herdr.rs`.
+All herdr-core calls (`ls`, `get`, `events`, `attach`, `send`) live in `src-tauri/src/herdr.rs`.
 Fathom talks only to herdr-core, never to the Herdr app.
 
 The chat panel attaches to the terminal that carries the configured label.
@@ -143,14 +147,18 @@ The message box on a card sends `<card title> (<task id>): <text>` to the same t
 With the Herdr app and Fathom both attached to Firstmate's terminal, herdr-core behaves like this (measured on herdr-core 0.1.20):
 
 - An interactive client resizes the terminal to its own size when it attaches, resizes, or types.
-  The last active client wins, and the other client's view is reflowed to that size.
+  The last active client wins.
+- A resize that keeps the same size does not take the size back; typing does.
 - `hc attach --observe` never resizes, but it also never types.
 - When every client detaches, the terminal returns to its own size.
+- herdr-core sends the same output bytes to every client, with no size marker in the stream, and repaints the whole screen for a client that attaches.
 
-Fathom needs typing, so it attaches interactively but never sets its own size.
-It follows the terminal's size from herdr-core's `size` events and keeps its attach exactly that size, so attaching, typing and resizing the panel leave the Herdr app's view untouched.
-Text stays readable: the font shrinks to fit a narrow terminal but never below 12 px.
-A terminal wider than the panel scrolls sideways, and the view follows the cursor in both directions.
-Drag the panel's left edge to see more columns at once.
+Fathom sizes the terminal to its chat panel, the same way the Herdr app does.
+It sets the size when it attaches, when the panel is resized, and when the chat font changes, and a key press or paste in the panel takes the size back.
 
-One small race remains: if the Herdr app resizes the terminal and you type in Fathom within the few milliseconds before the size event arrives, the terminal goes back to the previous size until you next type in the Herdr app.
+When the Herdr app takes the size, the size event and the program's redraw reach Fathom on separate channels, so the redraw could land at the wrong size.
+Fathom avoids that by attaching again at herdr-core's current size before it drops the old attach.
+The panel switches to the new size first and then draws the fresh repaint, so the screen is never laid out for the wrong size.
+Attaching at the current size changes nothing for the Herdr app.
+While the Herdr app owns the size, the panel shows blank space or scrolls, and the view follows the cursor.
+When the Herdr app leaves, the size stays where it was until you press a key in the panel or resize it.

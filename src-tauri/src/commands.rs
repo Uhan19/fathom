@@ -139,9 +139,16 @@ pub async fn list_terminals(state: AppStateRef<'_>) -> Result<Vec<Terminal>, Str
 pub fn attach_chat(
     state: AppStateRef,
     terminal: String,
+    cols: u16,
+    rows: u16,
     output: Channel<InvokeResponseBody>,
 ) -> Result<ChatSize, String> {
-    state.attach_chat(&terminal, output)
+    state.attach_chat(&terminal, cols, rows, output)
+}
+
+#[tauri::command]
+pub fn resize_chat(state: AppStateRef, cols: u16, rows: u16) -> Result<(), String> {
+    state.herdr.resize(cols, rows)
 }
 
 #[tauri::command]

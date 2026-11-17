@@ -1,12 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, errorText, ROW_ORDER, type DataInfo, type RowKey, type Settings } from "../api";
+import {
+  appearanceOf,
+  BOARD_FONT_SIZES,
+  BOARD_FONTS,
+  CHAT_FONT_SIZES,
+  CHAT_FONTS,
+  type Appearance,
+  type FontChoice,
+} from "../appearance";
 import { formatBytes } from "../board";
 import { Close } from "./Icons";
 
 interface SettingsDialogProps {
   settings: Settings;
   rowNames: Record<RowKey, string>;
+  onPreview: (appearance: Appearance) => void;
   onSaved: (settings: Settings) => void;
   onClose: () => void;
 }
@@ -19,7 +29,7 @@ const DEFAULT_ROW_NAMES: Record<RowKey, string> = {
   landed: "Landed",
 };
 
-export function SettingsDialog({ settings, rowNames, onSaved, onClose }: SettingsDialogProps) {
+export function SettingsDialog({ settings, rowNames, onPreview, onSaved, onClose }: SettingsDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [draft, setDraft] = useState(settings);
   const [names, setNames] = useState(rowNames);
@@ -36,6 +46,12 @@ export function SettingsDialog({ settings, rowNames, onSaved, onClose }: Setting
     value: draft[key],
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => setDraft({ ...draft, [key]: e.target.value }),
   });
+
+  const look = <K extends keyof Appearance>(key: K, value: Appearance[K]) => {
+    const next = { ...draft, [key]: value };
+    setDraft(next);
+    onPreview(appearanceOf(next));
+  };
 
   const save = async () => {
     setSaving(true);
@@ -103,6 +119,28 @@ export function SettingsDialog({ settings, rowNames, onSaved, onClose }: Setting
             </div>
           </fieldset>
           <fieldset>
+            <legend>Appearance</legend>
+            <div className="field-pair">
+              <FontSelect label="Chat font" fonts={CHAT_FONTS} value={draft.chatFont} onChange={(v) => look("chatFont", v)} />
+              <SizeSelect
+                label="Chat size"
+                sizes={CHAT_FONT_SIZES}
+                value={draft.chatFontSize}
+                onChange={(v) => look("chatFontSize", v)}
+              />
+            </div>
+            <div className="field-pair">
+              <FontSelect label="Board font" fonts={BOARD_FONTS} value={draft.boardFont} onChange={(v) => look("boardFont", v)} />
+              <SizeSelect
+                label="Board size"
+                sizes={BOARD_FONT_SIZES}
+                value={draft.boardFontSize}
+                onChange={(v) => look("boardFontSize", v)}
+              />
+            </div>
+            <small className="field-note">Changes show at once; Save keeps them, Cancel puts them back.</small>
+          </fieldset>
+          <fieldset>
             <legend>Row names</legend>
             <div className="row-names">
               {ROW_ORDER.map((row) => (
@@ -144,5 +182,41 @@ export function SettingsDialog({ settings, rowNames, onSaved, onClose }: Setting
         </div>
       </form>
     </dialog>
+  );
+}
+
+interface SelectProps<T> {
+  label: string;
+  value: T;
+  onChange: (value: T) => void;
+}
+
+function FontSelect({ label, fonts, value, onChange }: SelectProps<string> & { fonts: FontChoice[] }) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <select className="text-input" value={value} onChange={(e) => onChange(e.target.value)}>
+        {fonts.map((font) => (
+          <option key={font.key} value={font.key}>
+            {font.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function SizeSelect({ label, sizes, value, onChange }: SelectProps<number> & { sizes: number[] }) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <select className="text-input" value={value} onChange={(e) => onChange(Number(e.target.value))}>
+        {sizes.map((size) => (
+          <option key={size} value={size}>
+            {size} px
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

@@ -51,6 +51,7 @@ pub fn run() {
             commands::find_chat_terminal,
             commands::list_terminals,
             commands::attach_chat,
+            commands::resize_chat,
             commands::chat_input,
             commands::detach_chat,
             commands::send_to_terminal,

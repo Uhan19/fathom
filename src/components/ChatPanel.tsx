@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Terminal as XTerm } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import "@xterm/xterm/css/xterm.css";
-import { api, errorText, events, type Terminal } from "../api";
-import { charWidthPerPixel, fitFontSize, MAX_FONT_SIZE, TERMINAL_FONT } from "../terminalFit";
+import { api, errorText, events, type Size, type Terminal } from "../api";
 import { ChevronRight } from "./Icons";
 
-const TERMINAL_PADDING = 12;
+const FALLBACK_SIZE = { cols: 80, rows: 24 };
+const RESIZE_DEBOUNCE_MS = 80;
+const USER_INPUT_WINDOW_MS = 150;
+const USER_INPUT_EVENTS = ["keydown", "paste", "compositionend"] as const;
 
 type Phase =
   | { kind: "finding" }
@@ -18,6 +21,8 @@ type Phase =
 interface ChatPanelProps {
   width: number;
   label: string;
+  fontFamily: string;
+  fontSize: number;
   connectionKey: string;
   onTerminal: (terminal: Terminal | null) => void;
   onCollapse: () => void;
@@ -47,40 +52,66 @@ const LIGHT_THEME = {
   brightWhite: "#C9D6DF",
 };
 
-export function ChatPanel({ width, label, connectionKey, onTerminal, onCollapse }: ChatPanelProps) {
+export function ChatPanel({ width, label, fontFamily, fontSize, connectionKey, onTerminal, onCollapse }: ChatPanelProps) {
   const [phase, setPhase] = useState<Phase>({ kind: "finding" });
   const hostRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
-  const sizeRef = useRef({ cols: 0, rows: 0 });
+  const fitRef = useRef<FitAddon | null>(null);
+  const wantedRef = useRef<Size>(FALLBACK_SIZE);
+  const resizeTimer = useRef<number | undefined>(undefined);
+  const lastUserInput = useRef(0);
+  const fontRef = useRef({ fontFamily, fontSize });
+  fontRef.current = { fontFamily, fontSize };
 
-  const fit = useCallback(() => {
+  const measure = useCallback((): Size | null => {
+    const dims = fitRef.current?.proposeDimensions();
+    return dims && Number.isFinite(dims.cols) && Number.isFinite(dims.rows) ? dims : null;
+  }, []);
+
+  const syncSize = useCallback(() => {
     const term = xtermRef.current;
-    const scroll = scrollRef.current;
-    if (!term || !scroll) return;
-    const size = fitFontSize(scroll.clientWidth - TERMINAL_PADDING * 2, sizeRef.current.cols, charWidthPerPixel());
-    if (term.options.fontSize !== size) term.options.fontSize = size;
+    const size = measure();
+    if (!term || !size) return;
+    const wanted = wantedRef.current;
+    if (size.cols === wanted.cols && size.rows === wanted.rows) return;
+    wantedRef.current = size;
+    term.resize(size.cols, size.rows);
+    window.clearTimeout(resizeTimer.current);
+    resizeTimer.current = window.setTimeout(() => void api.resizeChat(size).catch(() => undefined), RESIZE_DEBOUNCE_MS);
+  }, [measure]);
+
+  const takeSize = useCallback(() => {
+    const term = xtermRef.current;
+    const wanted = wantedRef.current;
+    if (!term || (term.cols === wanted.cols && term.rows === wanted.rows)) return;
+    window.clearTimeout(resizeTimer.current);
+    term.resize(wanted.cols, wanted.rows);
+    void api.resizeChat(wanted).catch(() => undefined);
   }, []);
 
   const followCursor = useCallback(() => {
     const term = xtermRef.current;
     const scroll = scrollRef.current;
-    if (!term || !scroll || term.rows === 0 || term.cols === 0) return;
-    const rowHeight = (scroll.scrollHeight - TERMINAL_PADDING * 2) / term.rows;
-    const cursorTop = TERMINAL_PADDING + term.buffer.active.cursorY * rowHeight;
+    const screen = hostRef.current?.querySelector<HTMLElement>(".xterm-screen");
+    if (!term || !scroll || !screen || (scroll.scrollWidth <= scroll.clientWidth && scroll.scrollHeight <= scroll.clientHeight)) return;
+    const rowHeight = screen.offsetHeight / term.rows;
+    const cursorTop = screen.offsetTop + term.buffer.active.cursorY * rowHeight;
     if (cursorTop < scroll.scrollTop || cursorTop + rowHeight > scroll.scrollTop + scroll.clientHeight) {
       scroll.scrollTop = Math.max(0, cursorTop - scroll.clientHeight + rowHeight * 3);
     }
-    const colWidth = (scroll.scrollWidth - TERMINAL_PADDING * 2) / term.cols;
-    const cursorLeft = TERMINAL_PADDING + term.buffer.active.cursorX * colWidth;
+    const colWidth = screen.offsetWidth / term.cols;
+    const cursorLeft = screen.offsetLeft + term.buffer.active.cursorX * colWidth;
     if (cursorLeft < scroll.scrollLeft || cursorLeft + colWidth > scroll.scrollLeft + scroll.clientWidth) {
       scroll.scrollLeft = Math.max(0, cursorLeft - scroll.clientWidth + colWidth * 8);
     }
   }, []);
 
   const disposeTerminal = useCallback(() => {
+    window.clearTimeout(resizeTimer.current);
     xtermRef.current?.dispose();
     xtermRef.current = null;
+    fitRef.current = null;
   }, []);
 
   const pick = useCallback(async (reason: string) => {
@@ -99,27 +130,40 @@ export function ChatPanel({ width, label, connectionKey, onTerminal, onCollapse 
       const host = hostRef.current;
       if (!host) return;
       const term = new XTerm({
-        fontFamily: TERMINAL_FONT,
-        fontSize: MAX_FONT_SIZE,
+        ...fontRef.current,
         lineHeight: 1.15,
         scrollback: 0,
         cursorBlink: true,
         allowProposedApi: true,
         theme: LIGHT_THEME,
       });
+      const fitAddon = new FitAddon();
+      term.loadAddon(fitAddon);
       term.loadAddon(new Unicode11Addon());
       term.unicode.activeVersion = "11";
       xtermRef.current = term;
+      fitRef.current = fitAddon;
       host.replaceChildren();
       term.open(host);
-      term.onData((data) => void api.chatInput(data).catch(() => undefined));
+      term.attachCustomWheelEventHandler(() => false);
+      term.onData((data) => {
+        if (performance.now() - lastUserInput.current < USER_INPUT_WINDOW_MS) takeSize();
+        void api.chatInput(data).catch(() => undefined);
+      });
+      const size = measure() ?? FALLBACK_SIZE;
+      wantedRef.current = size;
+      term.resize(size.cols, size.rows);
       try {
-        const size = await api.attachChat(terminal.address, (bytes) => {
-          term.write(bytes, followCursor);
-        });
-        sizeRef.current = { cols: size.cols, rows: size.rows };
-        term.resize(size.cols, size.rows);
-        fit();
+        await api.attachChat(
+          terminal.address,
+          size,
+          (bytes) => term.write(bytes, followCursor),
+          (next) => {
+            term.resize(next.cols, next.rows);
+            followCursor();
+          },
+        );
+        if (xtermRef.current !== term) return;
         term.focus();
         setPhase({ kind: "attached", terminal });
         onTerminal(terminal);
@@ -129,7 +173,7 @@ export function ChatPanel({ width, label, connectionKey, onTerminal, onCollapse 
         onTerminal(null);
       }
     },
-    [disposeTerminal, fit, followCursor, onTerminal],
+    [disposeTerminal, measure, takeSize, followCursor, onTerminal],
   );
 
   const find = useCallback(async () => {
@@ -154,13 +198,6 @@ export function ChatPanel({ width, label, connectionKey, onTerminal, onCollapse 
 
   useEffect(() => {
     const unlisten = [
-      events.chatSize((size) => {
-        const term = xtermRef.current;
-        if (!term || phase.kind !== "attached" || size.terminal !== phase.terminal.address) return;
-        sizeRef.current = { cols: size.cols, rows: size.rows };
-        term.resize(size.cols, size.rows);
-        fit();
-      }),
       events.chatEnded((terminal) => {
         if (phase.kind === "attached" && terminal === phase.terminal.address) {
           setPhase({ kind: "ended", terminal: phase.terminal });
@@ -172,15 +209,34 @@ export function ChatPanel({ width, label, connectionKey, onTerminal, onCollapse 
       }),
     ];
     return () => unlisten.forEach((p) => void p.then((fn) => fn()));
-  }, [phase, fit, pick, onTerminal]);
+  }, [phase, pick, onTerminal]);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const mark = () => {
+      lastUserInput.current = performance.now();
+    };
+    USER_INPUT_EVENTS.forEach((type) => host.addEventListener(type, mark, true));
+    return () => USER_INPUT_EVENTS.forEach((type) => host.removeEventListener(type, mark, true));
+  }, []);
 
   useLayoutEffect(() => {
     const scroll = scrollRef.current;
     if (!scroll) return;
-    const observer = new ResizeObserver(() => fit());
+    const observer = new ResizeObserver(() => syncSize());
     observer.observe(scroll);
     return () => observer.disconnect();
-  }, [fit]);
+  }, [syncSize]);
+
+  useEffect(() => {
+    const term = xtermRef.current;
+    if (!term) return;
+    term.options.fontFamily = fontFamily;
+    term.options.fontSize = fontSize;
+    const frame = requestAnimationFrame(syncSize);
+    return () => cancelAnimationFrame(frame);
+  }, [fontFamily, fontSize, syncSize]);
 
   const attachedName = phase.kind === "attached" || phase.kind === "ended" ? phase.terminal.name || phase.terminal.address : null;
 

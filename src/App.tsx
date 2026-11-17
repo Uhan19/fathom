@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText, events, ROW_ORDER, type BoardView, type Card, type HerdrStatus, type RowKey, type Settings, type Terminal } from "./api";
+import { appearanceOf, boardStyle, CHAT_FONTS, fontChoice, type Appearance } from "./appearance";
 import { rowCounts } from "./board";
 import { startDrag } from "./drag";
 import { Board } from "./components/Board";
@@ -22,6 +23,7 @@ export default function App() {
   const [chatOpen, setChatOpen] = useState(true);
   const [chatTerminal, setChatTerminal] = useState<Terminal | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [preview, setPreview] = useState<Appearance | null>(null);
   const [detailWidth, setDetailWidth] = useState(DETAIL_WIDTH.initial);
   const [chatWidth, setChatWidth] = useState(CHAT_WIDTH.initial);
   const launchLogged = useRef(false);
@@ -63,6 +65,14 @@ export default function App() {
     };
   }, [accept]);
 
+  const appearance = useMemo(() => preview ?? (settings ? appearanceOf(settings) : null), [preview, settings]);
+
+  useEffect(() => {
+    if (!appearance) return;
+    const root = document.documentElement.style;
+    Object.entries(boardStyle(appearance)).forEach(([name, value]) => root.setProperty(name, value));
+  }, [appearance]);
+
   const rowNames = useMemo(() => {
     const names = Object.fromEntries(ROW_ORDER.map((r) => [r, r])) as Record<RowKey, string>;
     view?.rowNames.forEach((r) => (names[r.row] = r.name));
@@ -83,6 +93,7 @@ export default function App() {
 
   const onSettingsSaved = (saved: Settings) => {
     setSettings(saved);
+    setPreview(null);
     setSettingsOpen(false);
     void api.readBoard().then(accept).catch((e) => setReadError(errorText(e)));
   };
@@ -175,6 +186,8 @@ export default function App() {
             <ChatPanel
               width={chatWidth}
               label={settings.terminalLabel}
+              fontFamily={fontChoice(CHAT_FONTS, (appearance ?? settings).chatFont).stack}
+              fontSize={(appearance ?? settings).chatFontSize}
               connectionKey={connectionKey}
               onTerminal={setChatTerminal}
               onCollapse={() => setChatOpen(false)}
@@ -189,7 +202,16 @@ export default function App() {
         )}
       </main>
       {settingsOpen && settings && (
-        <SettingsDialog settings={settings} rowNames={rowNames} onSaved={onSettingsSaved} onClose={() => setSettingsOpen(false)} />
+        <SettingsDialog
+          settings={settings}
+          rowNames={rowNames}
+          onPreview={setPreview}
+          onSaved={onSettingsSaved}
+          onClose={() => {
+            setPreview(null);
+            setSettingsOpen(false);
+          }}
+        />
       )}
     </div>
   );

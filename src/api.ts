@@ -61,6 +61,10 @@ export interface Settings {
   terminalLabel: string;
   hcSession: string;
   hcSocket: string;
+  chatFont: string;
+  chatFontSize: number;
+  boardFont: string;
+  boardFontSize: number;
 }
 
 export interface Terminal {
@@ -75,10 +79,13 @@ export interface Terminal {
   rows: number;
 }
 
-export interface ChatSize {
-  terminal: string;
+export interface Size {
   cols: number;
   rows: number;
+}
+
+export interface ChatSize extends Size {
+  terminal: string;
 }
 
 export interface HerdrStatus {
@@ -107,12 +114,15 @@ export const api = {
   herdrStatus: () => invoke<HerdrStatus>("herdr_status"),
   findChatTerminal: () => invoke<Terminal | null>("find_chat_terminal"),
   listTerminals: () => invoke<Terminal[]>("list_terminals"),
-  attachChat: (terminal: string, onOutput: (bytes: Uint8Array) => void) => {
-    const output = new Channel<ArrayBuffer | number[]>((message) => {
-      onOutput(message instanceof ArrayBuffer ? new Uint8Array(message) : Uint8Array.from(message));
+  attachChat: (terminal: string, size: Size, onOutput: (bytes: Uint8Array) => void, onSize: (size: Size) => void) => {
+    const output = new Channel<ArrayBuffer | number[] | Size>((message) => {
+      if (message instanceof ArrayBuffer) onOutput(new Uint8Array(message));
+      else if (Array.isArray(message)) onOutput(Uint8Array.from(message));
+      else onSize(message);
     });
-    return invoke<ChatSize>("attach_chat", { terminal, output });
+    return invoke<ChatSize>("attach_chat", { terminal, cols: size.cols, rows: size.rows, output });
   },
+  resizeChat: (size: Size) => invoke<void>("resize_chat", { cols: size.cols, rows: size.rows }),
   chatInput: (data: string) => invoke<void>("chat_input", { data }),
   detachChat: () => invoke<void>("detach_chat"),
   sendToTerminal: (terminal: string, text: string) => invoke<void>("send_to_terminal", { terminal, text }),
@@ -124,8 +134,6 @@ export const events = {
   herdr: (handler: (status: HerdrStatus) => void): Promise<UnlistenFn> =>
     listen<HerdrStatus>("herdr://status", (e) => handler(e.payload)),
   terminals: (handler: () => void): Promise<UnlistenFn> => listen("herdr://terminals", () => handler()),
-  chatSize: (handler: (size: ChatSize) => void): Promise<UnlistenFn> =>
-    listen<ChatSize>("chat://size", (e) => handler(e.payload)),
   chatEnded: (handler: (terminal: string) => void): Promise<UnlistenFn> =>
     listen<string>("chat://ended", (e) => handler(e.payload)),
 };

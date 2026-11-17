@@ -7,12 +7,17 @@ const params = new URLSearchParams(location.search);
 const noLabel = params.has("nolabel");
 const failing = params.has("error");
 const empty = params.has("empty");
+const otherClient = params.get("other")?.match(/^(\d+)x(\d+)$/);
 
 let settings: Settings = {
   home: "/home/demo/firstmate",
   terminalLabel: "firstmate.role=primary",
   hcSession: "",
   hcSocket: "",
+  chatFont: "sf-mono",
+  chatFontSize: 13,
+  boardFont: "default",
+  boardFontSize: 14,
 };
 let columns = FIXTURE_COLUMNS.map((c) => ({ ...c }));
 const rowNames = new Map<string, string>();
@@ -31,7 +36,7 @@ const view = (fromCache: boolean): BoardView => ({
   error: failing && !fromCache ? "fm-tasks-axi.sh exited with status 1: error: \"backlog not found\"" : null,
 });
 
-type Output = { onmessage: (bytes: number[]) => void };
+type Output = { onmessage: (message: number[] | { cols: number; rows: number }) => void };
 
 mockIPC(
   (cmd, payload) => {
@@ -64,8 +69,13 @@ mockIPC(
         return { path: "/home/demo/Library/Application Support/app.fathom.board.dev/fathom.sqlite", bytes: 49152 };
       case "export_data":
         return `${args.directory}/fathom-export-1763400000000`;
-      case "open_link":
       case "chat_input":
+        console.info("chat_input", JSON.stringify(args.data));
+        return null;
+      case "resize_chat":
+        console.info("resize_chat", args.cols, args.rows);
+        return null;
+      case "open_link":
       case "detach_chat":
         return null;
       case "send_to_terminal":
@@ -80,7 +90,11 @@ mockIPC(
       case "attach_chat": {
         const output = args.output as Output;
         setTimeout(() => output.onmessage([...new TextEncoder().encode(FIXTURE_SCREEN)]), 50);
-        return { terminal: args.terminal, cols: 120, rows: 40 };
+        if (otherClient) {
+          const [cols, rows] = [Number(otherClient[1]), Number(otherClient[2])];
+          setTimeout(() => output.onmessage({ cols, rows }), 300);
+        }
+        return { terminal: args.terminal, cols: args.cols, rows: args.rows };
       }
       case "plugin:dialog|open":
         return "/home/demo/exports";

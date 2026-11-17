@@ -6,11 +6,12 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use notify::RecommendedWatcher;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter};
 
 use crate::db::{Column, Db, RowName, Snapshot};
-use crate::herdr::{self, Herdr, Notice};
+use crate::herdr::{self, Frame, Herdr, Notice};
 use crate::tasks::{self, Card};
 use crate::watch;
 
@@ -22,13 +23,21 @@ const LAUNCH_LOG: &str = "launch.log";
 pub const EVENT_BOARD: &str = "board://updated";
 pub const EVENT_HERDR: &str = "herdr://status";
 pub const EVENT_TERMINALS: &str = "herdr://terminals";
-pub const EVENT_CHAT_SIZE: &str = "chat://size";
 pub const EVENT_CHAT_ENDED: &str = "chat://ended";
 
 const KEY_HOME: &str = "home";
 const KEY_LABEL: &str = "terminalLabel";
 const KEY_SESSION: &str = "hcSession";
 const KEY_SOCKET: &str = "hcSocket";
+const KEY_CHAT_FONT: &str = "chatFont";
+const KEY_CHAT_FONT_SIZE: &str = "chatFontSize";
+const KEY_BOARD_FONT: &str = "boardFont";
+const KEY_BOARD_FONT_SIZE: &str = "boardFontSize";
+const DEFAULT_CHAT_FONT: &str = "sf-mono";
+const DEFAULT_CHAT_FONT_SIZE: u16 = 13;
+const DEFAULT_BOARD_FONT: &str = "default";
+const DEFAULT_BOARD_FONT_SIZE: u16 = 14;
+const FONT_SIZES: std::ops::RangeInclusive<u16> = 9..=28;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,6 +46,10 @@ pub struct Settings {
     pub terminal_label: String,
     pub hc_session: String,
     pub hc_socket: String,
+    pub chat_font: String,
+    pub chat_font_size: u16,
+    pub board_font: String,
+    pub board_font_size: u16,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -100,11 +113,22 @@ pub fn load_settings(db: &Db) -> Result<Settings, String> {
             .cloned()
             .unwrap_or(fallback)
     };
+    let size = |key: &str, fallback: u16| {
+        stored
+            .get(key)
+            .and_then(|v| v.trim().parse::<u16>().ok())
+            .filter(|v| FONT_SIZES.contains(v))
+            .unwrap_or(fallback)
+    };
     Ok(Settings {
         home: get(KEY_HOME, default_home()),
         terminal_label: get(KEY_LABEL, DEFAULT_LABEL.to_string()),
         hc_session: get(KEY_SESSION, String::new()),
         hc_socket: get(KEY_SOCKET, String::new()),
+        chat_font: get(KEY_CHAT_FONT, DEFAULT_CHAT_FONT.to_string()),
+        chat_font_size: size(KEY_CHAT_FONT_SIZE, DEFAULT_CHAT_FONT_SIZE),
+        board_font: get(KEY_BOARD_FONT, DEFAULT_BOARD_FONT.to_string()),
+        board_font_size: size(KEY_BOARD_FONT_SIZE, DEFAULT_BOARD_FONT_SIZE),
     })
 }
 
@@ -216,6 +240,10 @@ impl AppState {
             db.set_setting(KEY_LABEL, next.terminal_label.trim())?;
             db.set_setting(KEY_SESSION, next.hc_session.trim())?;
             db.set_setting(KEY_SOCKET, next.hc_socket.trim())?;
+            db.set_setting(KEY_CHAT_FONT, next.chat_font.trim())?;
+            db.set_setting(KEY_CHAT_FONT_SIZE, &next.chat_font_size.to_string())?;
+            db.set_setting(KEY_BOARD_FONT, next.board_font.trim())?;
+            db.set_setting(KEY_BOARD_FONT_SIZE, &next.board_font_size.to_string())?;
         }
         let saved = load_settings(&self.db.lock().unwrap())?;
         *self.settings.lock().unwrap() = saved.clone();
@@ -257,12 +285,22 @@ impl AppState {
     pub fn attach_chat(
         &self,
         terminal: &str,
+        cols: u16,
+        rows: u16,
         channel: Channel<InvokeResponseBody>,
     ) -> Result<ChatSize, String> {
-        let (cols, rows) = self.herdr.attach(
+        self.herdr.attach(
             terminal,
-            Box::new(move |bytes| {
-                let _ = channel.send(InvokeResponseBody::Raw(bytes.to_vec()));
+            cols,
+            rows,
+            Box::new(move |frame| {
+                let body = match frame {
+                    Frame::Bytes(bytes) => InvokeResponseBody::Raw(bytes.to_vec()),
+                    Frame::Size { cols, rows } => {
+                        InvokeResponseBody::Json(json!({ "cols": cols, "rows": rows }).to_string())
+                    }
+                };
+                let _ = channel.send(body);
             }),
         )?;
         Ok(ChatSize {
@@ -326,22 +364,32 @@ fn on_herdr_notice(
         Notice::TerminalsChanged => {
             let _ = app.emit(EVENT_TERMINALS, ());
         }
-        Notice::Resized {
-            terminal,
-            cols,
-            rows,
-        } => {
-            let _ = app.emit(
-                EVENT_CHAT_SIZE,
-                ChatSize {
-                    terminal,
-                    cols,
-                    rows,
-                },
-            );
-        }
         Notice::AttachEnded { terminal } => {
             let _ = app.emit(EVENT_CHAT_ENDED, terminal);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn font_settings_default_and_reject_sizes_out_of_range() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path()).unwrap();
+        let fresh = load_settings(&db).unwrap();
+        assert_eq!(fresh.chat_font, DEFAULT_CHAT_FONT);
+        assert_eq!(fresh.chat_font_size, DEFAULT_CHAT_FONT_SIZE);
+        assert_eq!(fresh.board_font, DEFAULT_BOARD_FONT);
+        assert_eq!(fresh.board_font_size, DEFAULT_BOARD_FONT_SIZE);
+
+        db.set_setting(KEY_CHAT_FONT, "menlo").unwrap();
+        db.set_setting(KEY_CHAT_FONT_SIZE, "17").unwrap();
+        db.set_setting(KEY_BOARD_FONT_SIZE, "400").unwrap();
+        let stored = load_settings(&db).unwrap();
+        assert_eq!(stored.chat_font, "menlo");
+        assert_eq!(stored.chat_font_size, 17);
+        assert_eq!(stored.board_font_size, DEFAULT_BOARD_FONT_SIZE);
     }
 }
