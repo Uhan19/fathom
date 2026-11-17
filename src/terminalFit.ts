@@ -1,6 +1,6 @@
 export const TERMINAL_FONT = '"SF Mono", Menlo, Monaco, monospace';
 export const MAX_FONT_SIZE = 13;
-export const MIN_FONT_SIZE = 7;
+export const MIN_FONT_SIZE = 12;
 
 let probe: CanvasRenderingContext2D | null = null;
 

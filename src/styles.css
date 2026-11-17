@@ -837,14 +837,17 @@ code,
 .terminal-scroll {
   flex: 1;
   min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: auto;
   padding: 12px;
   cursor: text;
 }
 
 .terminal-scroll.hidden {
   display: none;
+}
+
+.terminal-host {
+  width: max-content;
 }
 
 .terminal-host .xterm {

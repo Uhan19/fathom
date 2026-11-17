@@ -65,11 +65,16 @@ export function ChatPanel({ width, label, connectionKey, onTerminal, onCollapse 
   const followCursor = useCallback(() => {
     const term = xtermRef.current;
     const scroll = scrollRef.current;
-    if (!term || !scroll || term.rows === 0) return;
+    if (!term || !scroll || term.rows === 0 || term.cols === 0) return;
     const rowHeight = (scroll.scrollHeight - TERMINAL_PADDING * 2) / term.rows;
     const cursorTop = TERMINAL_PADDING + term.buffer.active.cursorY * rowHeight;
     if (cursorTop < scroll.scrollTop || cursorTop + rowHeight > scroll.scrollTop + scroll.clientHeight) {
       scroll.scrollTop = Math.max(0, cursorTop - scroll.clientHeight + rowHeight * 3);
+    }
+    const colWidth = (scroll.scrollWidth - TERMINAL_PADDING * 2) / term.cols;
+    const cursorLeft = TERMINAL_PADDING + term.buffer.active.cursorX * colWidth;
+    if (cursorLeft < scroll.scrollLeft || cursorLeft + colWidth > scroll.scrollLeft + scroll.clientWidth) {
+      scroll.scrollLeft = Math.max(0, cursorLeft - scroll.clientWidth + colWidth * 8);
     }
   }, []);
 

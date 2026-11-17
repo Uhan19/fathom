@@ -9,7 +9,7 @@ import { ChevronLeft } from "./components/Icons";
 import { SettingsDialog } from "./components/SettingsDialog";
 
 const DETAIL_WIDTH = { initial: 460, min: 340, max: 900 };
-const CHAT_WIDTH = { initial: 520, min: 300, max: 1400 };
+const CHAT_WIDTH = { initial: 600, min: 300, max: 1400 };
 
 const clamp = (value: number, range: { min: number; max: number }) => Math.max(range.min, Math.min(range.max, value));
 
