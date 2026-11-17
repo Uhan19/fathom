@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Fathom Dev",
+  "identifier": "app.fathom.board.dev",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Fathom (dev)",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 960,
+        "minHeight": 600
+      }
+    ]
+  }
+}
