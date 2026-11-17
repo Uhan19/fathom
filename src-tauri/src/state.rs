@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -10,20 +11,24 @@ use serde_json::json;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter};
 
-use crate::db::{Column, Db, RowName, Snapshot};
+use crate::db::{CardPlace, Column, Db, MoveRequest, MoveStatus, RowName, Snapshot};
 use crate::herdr::{self, Frame, Herdr, Notice};
-use crate::tasks::{self, Card};
-use crate::watch;
+use crate::requests;
+use crate::tasks::{self, Card, Row};
+use crate::watch::{self, StateChange};
+use crate::workers::{self, Worker};
 
 pub const DEFAULT_LABEL: &str = "firstmate.role=primary";
 const DEFAULT_HOME_RELATIVE: &str = "Documents/firstmate";
 const REFRESH_DEBOUNCE: Duration = Duration::from_millis(250);
+const WORKERS_DEBOUNCE: Duration = Duration::from_millis(80);
 const LAUNCH_LOG: &str = "launch.log";
 
 pub const EVENT_BOARD: &str = "board://updated";
 pub const EVENT_HERDR: &str = "herdr://status";
 pub const EVENT_TERMINALS: &str = "herdr://terminals";
 pub const EVENT_CHAT_ENDED: &str = "chat://ended";
+pub const EVENT_WORKERS: &str = "workers://updated";
 
 const KEY_HOME: &str = "home";
 const KEY_LABEL: &str = "terminalLabel";
@@ -66,6 +71,26 @@ pub struct BoardView {
     pub home: String,
     pub from_cache: bool,
     pub error: Option<String>,
+    #[serde(flatten)]
+    pub overlay: Overlay,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Overlay {
+    pub places: Vec<CardPlace>,
+    pub requests: Vec<MoveRequest>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Placement {
+    pub card_id: String,
+    pub title: String,
+    pub project: String,
+    pub from_row: Row,
+    pub to_row: Row,
+    pub order: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -89,7 +114,9 @@ pub struct AppState {
     pub herdr_status: Arc<Mutex<HerdrStatus>>,
     pub settings: Mutex<Settings>,
     refresh: Sender<()>,
-    watcher: Mutex<Option<RecommendedWatcher>>,
+    workers_tick: Sender<()>,
+    published_workers: Mutex<Option<Vec<Worker>>>,
+    watchers: Mutex<Vec<RecommendedWatcher>>,
     started: Instant,
     launch_logged: AtomicBool,
     log_dir: PathBuf,
@@ -176,17 +203,25 @@ impl AppState {
     ) -> Result<Arc<AppState>, String> {
         let settings = load_settings(&db)?;
         let (refresh, requests) = mpsc::channel();
+        let (workers_tick, worker_ticks) = mpsc::channel();
         let herdr_status = Arc::new(Mutex::new(HerdrStatus {
             connected: false,
             message: "connecting".into(),
         }));
         let notify_app = app.clone();
         let notify_refresh = refresh.clone();
+        let notify_workers = workers_tick.clone();
         let notify_status = Arc::clone(&herdr_status);
         let herdr = Herdr::new(
             connection_of(&settings),
             Arc::new(move |notice| {
-                on_herdr_notice(&notify_app, &notify_refresh, &notify_status, notice)
+                on_herdr_notice(
+                    &notify_app,
+                    &notify_refresh,
+                    &notify_workers,
+                    &notify_status,
+                    notice,
+                )
             }),
         );
         let state = Arc::new(AppState {
@@ -195,12 +230,15 @@ impl AppState {
             herdr_status,
             settings: Mutex::new(settings),
             refresh,
-            watcher: Mutex::new(None),
+            workers_tick,
+            published_workers: Mutex::new(None),
+            watchers: Mutex::new(Vec::new()),
             started,
             launch_logged: AtomicBool::new(false),
             log_dir,
         });
         spawn_refresher(app.clone(), Arc::clone(&state), requests);
+        spawn_worker_publisher(app.clone(), Arc::clone(&state), worker_ticks);
         state.restart_watcher();
         state.herdr.start_events();
         Ok(state)
@@ -226,13 +264,19 @@ impl AppState {
             home,
             from_cache: true,
             error: None,
+            overlay: overlay_of(&db)?,
         })
+    }
+
+    pub fn overlay(&self) -> Result<Overlay, String> {
+        overlay_of(&self.db.lock().unwrap())
     }
 
     pub fn read_board(&self) -> Result<BoardView, String> {
         let home = self.home();
         match tasks::read_board(&home) {
             Ok(cards) => {
+                self.reconcile_requests(&home, &cards)?;
                 let mut db = self.db.lock().unwrap();
                 let projects: Vec<String> = cards.iter().map(|c| c.project.clone()).collect();
                 let columns = db.ensure_columns(&projects)?;
@@ -250,6 +294,7 @@ impl AppState {
                     home: snapshot.home,
                     from_cache: false,
                     error: None,
+                    overlay: overlay_of(&db)?,
                 })
             }
             Err(error) => {
@@ -283,6 +328,7 @@ impl AppState {
         if saved.home != previous.home {
             self.restart_watcher();
             self.request_refresh();
+            self.request_workers();
         }
         if connection_of(&saved) != connection_of(&previous) {
             self.herdr.set_connection(connection_of(&saved));
@@ -291,14 +337,145 @@ impl AppState {
     }
 
     pub fn restart_watcher(&self) {
+        let home = self.home();
         let refresh = self.refresh.clone();
-        let watcher = watch::watch_task_list(&self.home(), move || {
+        let task_list = watch::watch_task_list(&home, move || {
             let _ = refresh.send(());
         });
-        if let Err(error) = &watcher {
-            eprintln!("fathom: {error}");
+        let refresh = self.refresh.clone();
+        let workers = self.workers_tick.clone();
+        let state = watch::watch_state(&home, move |change| {
+            let _ = match change {
+                StateChange::Workers => workers.send(()),
+                StateChange::Replies => refresh.send(()),
+            };
+        });
+        let mut watchers = self.watchers.lock().unwrap();
+        watchers.clear();
+        for watcher in [task_list, state] {
+            match watcher {
+                Ok(watcher) => watchers.push(watcher),
+                Err(error) => eprintln!("fathom: {error}"),
+            }
         }
-        *self.watcher.lock().unwrap() = watcher.ok();
+    }
+
+    pub fn request_workers(&self) {
+        let _ = self.workers_tick.send(());
+    }
+
+    pub fn workers(&self) -> Vec<Worker> {
+        if !self.herdr_status.lock().unwrap().connected {
+            return vec![];
+        }
+        let session = self.settings.lock().unwrap().hc_session.clone();
+        workers::live_workers(
+            &workers::read_bindings(&self.home()),
+            &session,
+            &self.herdr.terminals(),
+        )
+    }
+
+    pub fn place_card(&self, placement: Placement) -> Result<Overlay, String> {
+        let request = {
+            let mut db = self.db.lock().unwrap();
+            db.place_cards(
+                &placement.card_id,
+                &placement.project,
+                placement.to_row,
+                &placement.order,
+            )?;
+            if placement.from_row == placement.to_row {
+                None
+            } else {
+                let created_ms = now_ms();
+                let request = MoveRequest {
+                    request_id: requests::request_id(&placement.card_id, created_ms),
+                    card_id: placement.card_id,
+                    title: placement.title,
+                    from_row: placement.from_row,
+                    to_row: placement.to_row,
+                    created_ms,
+                    status: MoveStatus::Sending,
+                    note_id: None,
+                    answer: None,
+                    error: None,
+                };
+                db.add_request(&request)?;
+                Some(request)
+            }
+        };
+        if let Some(request) = request {
+            self.send_request(&request)?;
+        }
+        self.overlay()
+    }
+
+    pub fn resend_request(&self, request_id: &str) -> Result<Overlay, String> {
+        let request = self.db.lock().unwrap().request(request_id)?;
+        match request {
+            Some(request) if request.status == MoveStatus::Failed => self.send_request(&request)?,
+            Some(_) => {}
+            None => return Err(format!("no move request {request_id}")),
+        }
+        self.overlay()
+    }
+
+    pub fn dismiss_request(&self, request_id: &str) -> Result<Overlay, String> {
+        self.db
+            .lock()
+            .unwrap()
+            .set_request_status(request_id, MoveStatus::Dismissed)?;
+        self.overlay()
+    }
+
+    fn send_request(&self, request: &MoveRequest) -> Result<(), String> {
+        let body = requests::move_body(
+            &request.card_id,
+            &request.title,
+            request.from_row,
+            request.to_row,
+        );
+        let outcome = requests::send_note(&self.home(), &request.request_id, &body);
+        self.db
+            .lock()
+            .unwrap()
+            .finish_send(&request.request_id, &outcome)
+    }
+
+    fn reconcile_requests(&self, home: &Path, cards: &[Card]) -> Result<(), String> {
+        let waiting: Vec<MoveRequest> = self
+            .db
+            .lock()
+            .unwrap()
+            .open_requests()?
+            .into_iter()
+            .filter(|r| matches!(r.status, MoveStatus::Asked | MoveStatus::Failed))
+            .collect();
+        if waiting.is_empty() {
+            return Ok(());
+        }
+        let replies: HashMap<String, String> = if waiting.iter().any(|r| r.note_id.is_some()) {
+            requests::replies(home).unwrap_or_else(|error| {
+                eprintln!("fathom: cannot read Firstmate's replies: {error}");
+                HashMap::new()
+            })
+        } else {
+            HashMap::new()
+        };
+        let db = self.db.lock().unwrap();
+        for request in waiting {
+            match settle(&request, &replies, cards) {
+                Some(Settlement::Answered(answer)) => {
+                    db.answer_request(&request.request_id, &answer)?
+                }
+                Some(Settlement::Landed) => {
+                    db.set_request_status(&request.request_id, MoveStatus::Landed)?
+                }
+                None => {}
+            }
+        }
+        Ok(())
     }
 
     pub fn log_launch(&self, source: &str, cards: usize) -> Option<u128> {
@@ -358,6 +535,48 @@ fn append(path: &Path, line: &str) {
     }
 }
 
+#[derive(Debug, PartialEq)]
+enum Settlement {
+    Answered(String),
+    Landed,
+}
+
+fn settle(
+    request: &MoveRequest,
+    replies: &HashMap<String, String>,
+    cards: &[Card],
+) -> Option<Settlement> {
+    let answer = request.note_id.as_ref().and_then(|id| replies.get(id));
+    if let Some(answer) = answer.filter(|_| request.status == MoveStatus::Asked) {
+        return Some(Settlement::Answered(answer.clone()));
+    }
+    cards
+        .iter()
+        .any(|c| c.id == request.card_id && c.row == request.to_row)
+        .then_some(Settlement::Landed)
+}
+
+fn overlay_of(db: &Db) -> Result<Overlay, String> {
+    Ok(Overlay {
+        places: db.places()?,
+        requests: db.open_requests()?,
+    })
+}
+
+fn spawn_worker_publisher(app: AppHandle, state: Arc<AppState>, ticks: Receiver<()>) {
+    std::thread::spawn(move || {
+        while ticks.recv().is_ok() {
+            while ticks.recv_timeout(WORKERS_DEBOUNCE).is_ok() {}
+            let workers = state.workers();
+            let mut published = state.published_workers.lock().unwrap();
+            if published.as_ref() != Some(&workers) {
+                let _ = app.emit(EVENT_WORKERS, &workers);
+                *published = Some(workers);
+            }
+        }
+    });
+}
+
 fn spawn_refresher(app: AppHandle, state: Arc<AppState>, requests: Receiver<()>) {
     std::thread::spawn(move || {
         while requests.recv().is_ok() {
@@ -375,6 +594,7 @@ fn spawn_refresher(app: AppHandle, state: Arc<AppState>, requests: Receiver<()>)
 fn on_herdr_notice(
     app: &AppHandle,
     refresh: &Sender<()>,
+    workers: &Sender<()>,
     status: &Mutex<HerdrStatus>,
     notice: Notice,
 ) {
@@ -387,10 +607,16 @@ fn on_herdr_notice(
             connected: true,
             message: String::new(),
         }),
-        Notice::EventsDown(message) => publish(HerdrStatus {
-            connected: false,
-            message,
-        }),
+        Notice::EventsDown(message) => {
+            publish(HerdrStatus {
+                connected: false,
+                message,
+            });
+            let _ = workers.send(());
+        }
+        Notice::WorkersChanged => {
+            let _ = workers.send(());
+        }
         Notice::Activity => {
             let _ = refresh.send(());
         }
@@ -444,5 +670,68 @@ mod tests {
         let stored = load_settings(&db).unwrap();
         assert_eq!(stored.chat_added_fonts, ["Fira Code", "Iosevka"]);
         assert!(stored.board_added_fonts.is_empty());
+    }
+
+    fn card(id: &str, row: Row) -> Card {
+        Card {
+            id: id.into(),
+            title: id.into(),
+            state: String::new(),
+            kind: String::new(),
+            project: "reef".into(),
+            row,
+            hold_kind: String::new(),
+            hold_until: String::new(),
+            hold_reason: String::new(),
+            blocked_by: vec![],
+            links: vec![],
+            closed: String::new(),
+        }
+    }
+
+    fn asked(card_id: &str, to: Row, status: MoveStatus) -> MoveRequest {
+        MoveRequest {
+            request_id: format!("r-{card_id}"),
+            card_id: card_id.into(),
+            title: card_id.into(),
+            from_row: Row::Seabed,
+            to_row: to,
+            created_ms: 1,
+            status,
+            note_id: (status == MoveStatus::Asked).then(|| format!("n-{card_id}")),
+            answer: None,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn a_request_settles_on_a_reply_first_then_on_the_task_list() {
+        let replies = HashMap::from([("n-a".to_string(), "Not yet.".to_string())]);
+        let cards = [
+            card("a", Row::Shallows),
+            card("b", Row::Shallows),
+            card("c", Row::Seabed),
+        ];
+        let settle_one = |r: MoveRequest| settle(&r, &replies, &cards);
+        assert_eq!(
+            settle_one(asked("a", Row::Shallows, MoveStatus::Asked)),
+            Some(Settlement::Answered("Not yet.".into()))
+        );
+        assert_eq!(
+            settle_one(asked("b", Row::Shallows, MoveStatus::Asked)),
+            Some(Settlement::Landed)
+        );
+        assert_eq!(
+            settle_one(asked("c", Row::Shallows, MoveStatus::Asked)),
+            None
+        );
+        assert_eq!(
+            settle_one(asked("b", Row::Shallows, MoveStatus::Failed)),
+            Some(Settlement::Landed)
+        );
+        assert_eq!(
+            settle_one(asked("missing", Row::Deep, MoveStatus::Asked)),
+            None
+        );
     }
 }

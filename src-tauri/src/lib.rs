@@ -3,11 +3,13 @@ mod db;
 mod export;
 mod fonts;
 mod herdr;
+mod requests;
 mod shell_path;
 mod state;
 mod tasks;
 mod toon;
 mod watch;
+mod workers;
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -44,6 +46,10 @@ pub fn run() {
             commands::card_detail,
             commands::update_column,
             commands::set_row_name,
+            commands::place_card,
+            commands::resend_request,
+            commands::dismiss_request,
+            commands::workers,
             commands::get_settings,
             commands::save_settings,
             commands::installed_fonts,

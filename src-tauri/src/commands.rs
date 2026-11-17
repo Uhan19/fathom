@@ -8,8 +8,11 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use crate::export;
 use crate::fonts;
 use crate::herdr::Terminal;
-use crate::state::{AppState, BoardView, ChatSize, HerdrStatus, Settings, now_ms};
+use crate::state::{
+    AppState, BoardView, ChatSize, HerdrStatus, Overlay, Placement, Settings, now_ms,
+};
 use crate::tasks::{self, Detail, Row};
+use crate::workers::Worker;
 
 type AppStateRef<'a> = State<'a, Arc<AppState>>;
 
@@ -67,6 +70,28 @@ pub fn update_column(
 #[tauri::command]
 pub fn set_row_name(state: AppStateRef, row: Row, name: String) -> Result<(), String> {
     state.db.lock().unwrap().set_row_name(row, &name)
+}
+
+#[tauri::command]
+pub async fn place_card(state: AppStateRef<'_>, placement: Placement) -> Result<Overlay, String> {
+    let state = Arc::clone(&state);
+    blocking(move || state.place_card(placement)).await
+}
+
+#[tauri::command]
+pub async fn resend_request(state: AppStateRef<'_>, request_id: String) -> Result<Overlay, String> {
+    let state = Arc::clone(&state);
+    blocking(move || state.resend_request(&request_id)).await
+}
+
+#[tauri::command]
+pub fn dismiss_request(state: AppStateRef, request_id: String) -> Result<Overlay, String> {
+    state.dismiss_request(&request_id)
+}
+
+#[tauri::command]
+pub fn workers(state: AppStateRef) -> Vec<Worker> {
+    state.workers()
 }
 
 #[tauri::command]

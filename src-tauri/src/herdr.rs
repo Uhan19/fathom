@@ -27,6 +27,15 @@ const ACTIVITY_EVENTS: [&str; 6] = [
     "status",
     "turn",
 ];
+const WORKER_EVENTS: [&str; 7] = [
+    "created",
+    "finished",
+    "lost",
+    "removed",
+    "restarted",
+    "status",
+    "turn",
+];
 const RECONNECT_DELAY: Duration = Duration::from_secs(2);
 const ATTACH_READ_BUFFER: usize = 16 * 1024;
 const PTY_ATTEMPTS: u32 = 4;
@@ -43,22 +52,41 @@ pub struct Connection {
 #[serde(rename_all = "camelCase")]
 pub struct Terminal {
     pub address: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "or_default")]
     pub name: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "or_default")]
     pub title: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "or_default")]
     pub state: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "status_field")]
+    pub status: String,
+    #[serde(default, deserialize_with = "or_default")]
     pub cwd: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "or_default")]
     pub agent: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "or_default")]
     pub labels: BTreeMap<String, String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "or_default")]
     pub cols: u16,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "or_default")]
     pub rows: u16,
+}
+
+fn or_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Default + serde::de::DeserializeOwned,
+{
+    Ok(serde_json::from_value(Value::deserialize(deserializer)?).unwrap_or_default())
+}
+
+fn status_field<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    Ok(status_of(&Value::deserialize(deserializer)?))
+}
+
+fn status_of(value: &Value) -> String {
+    let state = value.get("state").unwrap_or(value);
+    state.as_str().unwrap_or_default().to_string()
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -67,6 +95,7 @@ pub enum Notice {
     EventsDown(String),
     Activity,
     TerminalsChanged,
+    WorkersChanged,
     AttachEnded { terminal: String },
 }
 
@@ -145,6 +174,10 @@ impl Herdr {
         *self.connection.lock().unwrap() = connection;
         self.detach();
         self.start_events();
+    }
+
+    pub fn terminals(&self) -> BTreeMap<String, Terminal> {
+        self.terminals.lock().unwrap().clone()
     }
 
     pub fn list(&self) -> Result<Vec<Terminal>, String> {
@@ -545,7 +578,12 @@ pub fn apply_event(terminals: &mut BTreeMap<String, Terminal>, message: &Value) 
         let fresh: Vec<Terminal> = serde_json::from_value(list.clone()).unwrap_or_default();
         terminals.clear();
         terminals.extend(fresh.into_iter().map(|t| (t.address.clone(), t)));
-        return vec![Notice::EventsUp, Notice::TerminalsChanged, Notice::Activity];
+        return vec![
+            Notice::EventsUp,
+            Notice::TerminalsChanged,
+            Notice::WorkersChanged,
+            Notice::Activity,
+        ];
     }
     let Some(params) = message.get("params") else {
         return vec![];
@@ -610,7 +648,15 @@ pub fn apply_event(terminals: &mut BTreeMap<String, Terminal>, message: &Value) 
             }
             notices.push(Notice::TerminalsChanged);
         }
+        "status" | "turn" => {
+            if let Some(t) = terminals.get_mut(&address) {
+                t.status = status_of(data.get("status").unwrap_or(&data));
+            }
+        }
         _ => {}
+    }
+    if WORKER_EVENTS.contains(&kind) {
+        notices.push(Notice::WorkersChanged);
     }
     if ACTIVITY_EVENTS.contains(&kind) {
         notices.push(Notice::Activity);
@@ -639,7 +685,12 @@ mod tests {
         let notices = apply_event(&mut terminals, &snapshot());
         assert_eq!(
             notices,
-            vec![Notice::EventsUp, Notice::TerminalsChanged, Notice::Activity]
+            vec![
+                Notice::EventsUp,
+                Notice::TerminalsChanged,
+                Notice::WorkersChanged,
+                Notice::Activity
+            ]
         );
         assert_eq!(terminals["t1"].cols, 200);
         assert_eq!(terminals["t1"].labels["role"], "lead");
@@ -662,12 +713,64 @@ mod tests {
         apply_event(&mut terminals, &snapshot());
         assert_eq!(
             apply_event(&mut terminals, &event("turn", json!({"turn": 2}))),
-            vec![Notice::Activity]
+            vec![Notice::WorkersChanged, Notice::Activity]
         );
         assert!(apply_event(&mut terminals, &event("heartbeat", json!({}))).is_empty());
         let removed = apply_event(&mut terminals, &event("removed", json!({})));
-        assert_eq!(removed, vec![Notice::TerminalsChanged, Notice::Activity]);
+        assert_eq!(
+            removed,
+            vec![
+                Notice::TerminalsChanged,
+                Notice::WorkersChanged,
+                Notice::Activity
+            ]
+        );
         assert!(terminals.is_empty());
+    }
+
+    #[test]
+    fn agent_status_follows_the_snapshot_status_and_turn_events() {
+        let mut terminals = BTreeMap::new();
+        apply_event(
+            &mut terminals,
+            &json!({"channel": null, "seq": 1, "terminals": [
+                {"address": "t1", "name": null, "title": "", "state": "live", "labels": {},
+                 "status": {"app": "lab", "kind": "permission", "state": "blocked"}},
+                {"address": "t2", "name": null, "state": "live", "status": null}
+            ]}),
+        );
+        assert_eq!(terminals["t1"].status, "blocked");
+        assert_eq!(terminals["t1"].name, "");
+        assert_eq!(terminals["t2"].status, "");
+
+        let working = event(
+            "status",
+            json!({"records": {}, "reported": true, "status": {"app": "lab", "state": "working"}}),
+        );
+        assert_eq!(
+            apply_event(&mut terminals, &working),
+            vec![Notice::WorkersChanged, Notice::Activity]
+        );
+        assert_eq!(terminals["t1"].status, "working");
+
+        apply_event(
+            &mut terminals,
+            &event("turn", json!({"state": "idle", "turn": 3})),
+        );
+        assert_eq!(terminals["t1"].status, "idle");
+
+        let cleared = event(
+            "status",
+            json!({"records": {}, "reported": false, "status": null}),
+        );
+        apply_event(&mut terminals, &cleared);
+        assert_eq!(terminals["t1"].status, "");
+    }
+
+    #[test]
+    fn hc_ls_reports_status_as_a_plain_string() {
+        let json = r#"{"terminals":[{"address":"t1","agent":"lab","state":"live","status":"working","turn":1}]}"#;
+        assert_eq!(parse_terminals(json).unwrap()[0].status, "working");
     }
 
     #[test]
