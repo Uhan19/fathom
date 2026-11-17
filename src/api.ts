@@ -46,7 +46,51 @@ export interface RowName {
   name: string;
 }
 
-export interface BoardView {
+export type MoveStatus = "sending" | "asked" | "failed" | "answered" | "landed" | "superseded" | "dismissed";
+
+export interface CardPlace {
+  cardId: string;
+  project: string | null;
+  row: RowKey;
+  position: number;
+}
+
+export interface MoveRequest {
+  requestId: string;
+  cardId: string;
+  title: string;
+  fromRow: RowKey;
+  toRow: RowKey;
+  createdMs: number;
+  status: MoveStatus;
+  noteId: string | null;
+  answer: string | null;
+  error: string | null;
+}
+
+export interface Overlay {
+  places: CardPlace[];
+  requests: MoveRequest[];
+}
+
+export interface Placement {
+  cardId: string;
+  title: string;
+  project: string;
+  fromRow: RowKey;
+  toRow: RowKey;
+  order: string[];
+}
+
+export type WorkerStatus = "working" | "idle";
+
+export interface Worker {
+  taskId: string;
+  terminal: string;
+  status: WorkerStatus;
+}
+
+export interface BoardView extends Overlay {
   columns: Column[];
   rowNames: RowName[];
   cards: Card[];
@@ -108,6 +152,10 @@ export const api = {
   updateColumn: (project: string, change: { width?: number; collapsed?: boolean }) =>
     invoke<void>("update_column", { project, width: change.width ?? null, collapsed: change.collapsed ?? null }),
   setRowName: (row: RowKey, name: string) => invoke<void>("set_row_name", { row, name }),
+  placeCard: (placement: Placement) => invoke<Overlay>("place_card", { placement }),
+  resendRequest: (requestId: string) => invoke<Overlay>("resend_request", { requestId }),
+  dismissRequest: (requestId: string) => invoke<Overlay>("dismiss_request", { requestId }),
+  workers: () => invoke<Worker[]>("workers"),
   getSettings: () => invoke<Settings>("get_settings"),
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
   dataInfo: () => invoke<DataInfo>("data_info"),
@@ -137,6 +185,8 @@ export const events = {
   herdr: (handler: (status: HerdrStatus) => void): Promise<UnlistenFn> =>
     listen<HerdrStatus>("herdr://status", (e) => handler(e.payload)),
   terminals: (handler: () => void): Promise<UnlistenFn> => listen("herdr://terminals", () => handler()),
+  workers: (handler: (workers: Worker[]) => void): Promise<UnlistenFn> =>
+    listen<Worker[]>("workers://updated", (e) => handler(e.payload)),
   chatEnded: (handler: (terminal: string) => void): Promise<UnlistenFn> =>
     listen<string>("chat://ended", (e) => handler(e.payload)),
 };

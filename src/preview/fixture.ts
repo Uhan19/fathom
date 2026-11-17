@@ -1,4 +1,4 @@
-import type { Card, Column, Detail, RowKey, Terminal } from "../api";
+import type { Card, Column, Detail, MoveRequest, RowKey, Terminal, Worker } from "../api";
 
 type Seed = [id: string, project: string, row: RowKey, title: string, extra?: Partial<Card>];
 
@@ -49,6 +49,33 @@ export const FIXTURE_CARDS: Card[] = SEEDS.map(([id, project, row, title, extra]
   closed: "",
   ...extra,
 }));
+
+export const FIXTURE_WORKERS: Worker[] = [
+  { taskId: "atl-09", terminal: "t3", status: "working" },
+  { taskId: "hrb-18", terminal: "t4", status: "idle" },
+];
+
+const fixtureRequest = (over: Partial<MoveRequest> & Pick<MoveRequest, "cardId" | "fromRow" | "toRow">): MoveRequest => ({
+  requestId: `fathom-move-${over.cardId}-1763400000000`,
+  title: FIXTURE_CARDS.find((c) => c.id === over.cardId)?.title ?? "",
+  createdMs: 1763400000000,
+  status: "asked",
+  noteId: `1763400000-${over.cardId}`,
+  answer: null,
+  error: null,
+  ...over,
+});
+
+export const FIXTURE_REQUESTS: MoveRequest[] = [
+  fixtureRequest({ cardId: "lan-27", fromRow: "seabed", toRow: "shallows" }),
+  fixtureRequest({
+    cardId: "kel-05",
+    fromRow: "deep",
+    toRow: "shallows",
+    status: "answered",
+    answer: "Not yet: completions depend on the flag rename in kel-07. I will pick this up once that ships.",
+  }),
+];
 
 export const FIXTURE_COLUMNS: Column[] = [...new Set(FIXTURE_CARDS.map((c) => c.project))]
   .sort()

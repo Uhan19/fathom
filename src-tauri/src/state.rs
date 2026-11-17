@@ -407,8 +407,20 @@ impl AppState {
         };
         if let Some(request) = request {
             self.send_request(&request)?;
+            let home = self.home();
+            let cards = self.cached_cards(&home)?;
+            self.reconcile_requests(&home, &cards)?;
         }
         self.overlay()
+    }
+
+    fn cached_cards(&self, home: &Path) -> Result<Vec<Card>, String> {
+        let home = home.display().to_string();
+        let snapshot = self.db.lock().unwrap().snapshot()?;
+        Ok(snapshot
+            .filter(|s| s.home == home)
+            .map(|s| s.cards)
+            .unwrap_or_default())
     }
 
     pub fn resend_request(&self, request_id: &str) -> Result<Overlay, String> {

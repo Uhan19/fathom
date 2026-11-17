@@ -1,7 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, errorText, events, ROW_ORDER, type BoardView, type Card, type HerdrStatus, type RowKey, type Settings, type Terminal } from "./api";
+import {
+  api,
+  errorText,
+  events,
+  ROW_ORDER,
+  type BoardView,
+  type Card,
+  type HerdrStatus,
+  type Overlay,
+  type Placement,
+  type RowKey,
+  type Settings,
+  type Terminal,
+  type Worker,
+  type WorkerStatus,
+} from "./api";
 import { appearanceOf, boardStyle, chatFontStack, type Appearance } from "./appearance";
-import { rowCounts } from "./board";
+import { placeLocally, rowCounts, shownRequest } from "./board";
 import { startDrag } from "./drag";
 import { Board } from "./components/Board";
 import { CardDetail } from "./components/CardDetail";
@@ -26,6 +41,8 @@ export default function App() {
   const [preview, setPreview] = useState<Appearance | null>(null);
   const [detailWidth, setDetailWidth] = useState(DETAIL_WIDTH.initial);
   const [chatWidth, setChatWidth] = useState(CHAT_WIDTH.initial);
+  const [workers, setWorkers] = useState<Worker[]>([]);
+  const [moveError, setMoveError] = useState<string | null>(null);
   const launchLogged = useRef(false);
 
   const logLaunch = useCallback((board: BoardView) => {
@@ -47,7 +64,11 @@ export default function App() {
 
   useEffect(() => {
     let alive = true;
-    const unlisten = [events.board((b) => alive && accept(b)), events.herdr((s) => alive && setHerdr(s))];
+    const unlisten = [
+      events.board((b) => alive && accept(b)),
+      events.herdr((s) => alive && setHerdr(s)),
+      events.workers((w) => alive && setWorkers(w)),
+    ];
     api
       .cachedBoard()
       .then((cached) => alive && cached.cards.length > 0 && accept(cached))
@@ -59,6 +80,7 @@ export default function App() {
       );
     api.getSettings().then((s) => alive && setSettings(s));
     api.herdrStatus().then((s) => alive && setHerdr(s));
+    api.workers().then((w) => alive && setWorkers(w));
     return () => {
       alive = false;
       unlisten.forEach((p) => void p.then((fn) => fn()));
@@ -88,6 +110,28 @@ export default function App() {
     void api.updateColumn(project, change);
   };
 
+  const overlay: Overlay = { places: view?.places ?? [], requests: view?.requests ?? [] };
+  const workerStatus = useMemo(
+    () => Object.fromEntries(workers.map((w) => [w.taskId, w.status])) as Record<string, WorkerStatus>,
+    [workers],
+  );
+  const applyOverlay = (next: Overlay) => setView((v) => v && { ...v, ...next });
+  const changeOverlay = (change: Promise<Overlay>) =>
+    change
+      .then((next) => {
+        setMoveError(null);
+        applyOverlay(next);
+      })
+      .catch((e) => {
+        setMoveError(errorText(e));
+        void api.cachedBoard().then((cached) => applyOverlay({ places: cached.places, requests: cached.requests }));
+      });
+
+  const placeCard = (placement: Placement) => {
+    setView((v) => v && { ...v, ...placeLocally({ places: v.places, requests: v.requests }, placement, Date.now()) });
+    void changeOverlay(api.placeCard(placement));
+  };
+
   const anyCollapsed = view?.columns.some((c) => c.collapsed) ?? false;
   const expandAll = () => view?.columns.filter((c) => c.collapsed).forEach((c) => changeColumn(c.project, { collapsed: false }));
 
@@ -106,7 +150,7 @@ export default function App() {
       <header className="top">
         <div className="brand">
           <span className="brand-name">Fathom</span>
-          <span className="brand-sub">Read-only view of Firstmate's tasks. Click a card for details.</span>
+          <span className="brand-sub">Firstmate's tasks. Drag a card to arrange it or to ask Firstmate to move it. Click for details.</span>
         </div>
         <span className="count surface-count">{counts.surface} at the surface</span>
         <span className="count">{counts.shallows} in the shallows</span>
@@ -130,16 +174,24 @@ export default function App() {
           Could not read tasks: {readError}
         </div>
       )}
+      {moveError && (
+        <div className="banner" role="status">
+          Could not save the move: {moveError}
+        </div>
+      )}
       <main className="main">
         {view ? (
           view.columns.length > 0 ? (
             <Board
               cards={cards}
               columns={view.columns}
+              overlay={overlay}
+              workers={workerStatus}
               rowNames={rowNames}
               selectedId={selectedId}
               onSelect={selectCard}
               onColumnChange={changeColumn}
+              onPlace={placeCard}
             />
           ) : (
             <div className="board-empty">No tasks yet in {view.home}.</div>
@@ -162,11 +214,14 @@ export default function App() {
             </div>
             <CardDetail
               card={selected}
-              rowName={rowNames[selected.row]}
+              rowNames={rowNames}
+              request={shownRequest(selected.id, overlay.requests)}
               width={detailWidth}
               chatTerminal={chatTerminal}
               onClose={() => setSelectedId(null)}
               onOpenCard={(id) => cards.some((c) => c.id === id) && setSelectedId(id)}
+              onResend={(id) => void changeOverlay(api.resendRequest(id))}
+              onDismiss={(id) => void changeOverlay(api.dismissRequest(id))}
             />
           </>
         )}
