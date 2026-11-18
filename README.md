@@ -126,6 +126,9 @@ The goal is under 0.5 s on a warm start.
 | anything else (queued) | Seabed |
 
 - Columns are seeded one per project the first time a project appears; collapse and width are saved per column.
+- Clicking a column's name in its header renames the column in Fathom.
+  Enter or a click elsewhere saves, Escape cancels, and an empty name returns to the project's name.
+  The project itself and Firstmate's task list keep their names.
 
 A release build opened from Finder does not inherit your shell's PATH.
 Fathom asks your login shell for its PATH once at startup and uses it to find `hc` and `tasks-axi`.

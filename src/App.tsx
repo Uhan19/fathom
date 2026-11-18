@@ -111,6 +111,11 @@ export default function App() {
     void api.updateColumn(project, change);
   };
 
+  const renameColumn = (project: string, name: string) => {
+    setView((v) => v && { ...v, columns: v.columns.map((c) => (c.project === project ? { ...c, name } : c)) });
+    void api.setColumnName(project, name);
+  };
+
   const overlay: Overlay = { places: view?.places ?? [], requests: view?.requests ?? [] };
   const workerByTask = useMemo(() => Object.fromEntries(workers.map((w) => [w.taskId, w])) as Record<string, Worker>, [workers]);
   const watchedWorker = watched ? workers.find((w) => w.terminal === watched.terminal) : undefined;
@@ -190,6 +195,7 @@ export default function App() {
               selectedId={selectedId}
               onSelect={selectCard}
               onColumnChange={changeColumn}
+              onColumnRename={renameColumn}
               onPlace={placeCard}
               onWatch={(card, worker) => setWatched({ taskId: card.id, title: card.title, terminal: worker.terminal })}
             />

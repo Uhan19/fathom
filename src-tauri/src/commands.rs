@@ -67,6 +67,11 @@ pub fn update_column(
 }
 
 #[tauri::command]
+pub fn set_column_name(state: AppStateRef, project: String, name: String) -> Result<(), String> {
+    state.db.lock().unwrap().set_column_name(&project, &name)
+}
+
+#[tauri::command]
 pub fn set_row_name(state: AppStateRef, row: Row, name: String) -> Result<(), String> {
     state.db.lock().unwrap().set_row_name(row, &name)
 }

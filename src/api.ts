@@ -158,6 +158,7 @@ export const api = {
   cardDetail: (id: string) => invoke<Detail>("card_detail", { id }),
   updateColumn: (project: string, change: { width?: number; collapsed?: boolean }) =>
     invoke<void>("update_column", { project, width: change.width ?? null, collapsed: change.collapsed ?? null }),
+  setColumnName: (project: string, name: string) => invoke<void>("set_column_name", { project, name }),
   setRowName: (row: RowKey, name: string) => invoke<void>("set_row_name", { row, name }),
   placeCard: (placement: Placement) => invoke<Overlay>("place_card", { placement }),
   resendRequest: (requestId: string) => invoke<Overlay>("resend_request", { requestId }),

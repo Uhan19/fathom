@@ -9,6 +9,7 @@ import {
   holdHeading,
   insertAt,
   linkLabel,
+  renamedColumn,
   placeLocally,
   rowCounts,
   shownRequest,
@@ -174,5 +175,22 @@ describe("card places and move requests", () => {
     expect(insertAt(["a", "b", "c"], "a", 2)).toEqual(["b", "c", "a"]);
     expect(insertAt(["a", "b"], "x", 0)).toEqual(["x", "a", "b"]);
     expect(insertAt(["a", "b"], "x", 9)).toEqual(["a", "b", "x"]);
+  });
+});
+
+describe("renaming a column", () => {
+  const column = { project: "harbor-web", name: "harbor-web" };
+
+  it("saves a trimmed new name", () => {
+    expect(renamedColumn(column, "  Harbor web ")).toBe("Harbor web");
+  });
+
+  it("returns an empty name to the project's own name", () => {
+    expect(renamedColumn({ ...column, name: "Harbor web" }, "   ")).toBe("harbor-web");
+  });
+
+  it("saves nothing when the name is unchanged", () => {
+    expect(renamedColumn(column, "harbor-web ")).toBeNull();
+    expect(renamedColumn(column, "")).toBeNull();
   });
 });

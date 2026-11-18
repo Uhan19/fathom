@@ -101,6 +101,10 @@ mockIPC(
             : c,
         );
         return null;
+      case "set_column_name":
+        console.info("set_column_name", args.project, JSON.stringify(args.name));
+        columns = columns.map((c) => (c.project === args.project ? { ...c, name: (args.name as string).trim() || c.project } : c));
+        return null;
       case "set_row_name":
         rowNames.set(args.row as string, args.name as string);
         return null;
