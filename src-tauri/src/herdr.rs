@@ -220,7 +220,14 @@ impl Herdr {
             ));
         }
         let output = self.run(&["ls", "--json", "--label", label])?;
-        Ok(parse_terminals(&output)?.into_iter().next())
+        Ok(parse_terminals(&output)?
+            .into_iter()
+            .next()
+            .map(|listed| self.get(&listed.address).unwrap_or(listed)))
+    }
+
+    pub fn get(&self, terminal: &str) -> Result<Terminal, String> {
+        parse_terminal(&self.run(&["get", terminal, "--json"])?)
     }
 
     pub fn send(&self, terminal: &str, text: &str) -> Result<(), String> {
@@ -293,7 +300,7 @@ impl Herdr {
         &self.panes[view as usize]
     }
 
-    fn run(&self, args: &[&str]) -> Result<String, String> {
+    pub(crate) fn run(&self, args: &[&str]) -> Result<String, String> {
         run_hc(&self.connection(), args)
     }
 }
@@ -533,7 +540,7 @@ fn pty_size((cols, rows): Size) -> PtySize {
     }
 }
 
-fn program() -> Result<std::path::PathBuf, String> {
+pub(crate) fn program() -> Result<std::path::PathBuf, String> {
     #[cfg(test)]
     if let Some(fake) = tests::FAKE_HC.with(|fake| fake.borrow().clone()) {
         return Ok(fake);
@@ -561,6 +568,10 @@ fn apply_env(command: &mut Command, connection: &Connection) {
             None => command.env_remove(key),
         };
     }
+}
+
+pub(crate) fn parse_terminal(json: &str) -> Result<Terminal, String> {
+    serde_json::from_str(json).map_err(|e| format!("unexpected hc terminal: {e}"))
 }
 
 fn parse_terminals(json: &str) -> Result<Vec<Terminal>, String> {
@@ -714,7 +725,7 @@ pub fn apply_event(terminals: &mut BTreeMap<String, Terminal>, message: &Value) 
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use serde_json::json;
     use std::cell::RefCell;
@@ -959,6 +970,16 @@ done
         let list = parse_terminals(json).unwrap();
         assert_eq!(list[0].name, "probe");
         assert_eq!(list[0].agent, "sh");
+    }
+
+    #[test]
+    fn a_terminal_from_hc_get_keeps_its_labels() {
+        let json = r#"{"address":"t1","agent":"claude","cwd":"/w","labels":{"fathom.agent":"claude","fathom.role":"chat"},"name":null,"status":null,"state":"live","cols":200,"rows":120}"#;
+        let terminal = parse_terminal(json).unwrap();
+        assert_eq!(terminal.address, "t1");
+        assert_eq!(terminal.name, "");
+        assert_eq!(terminal.labels["fathom.agent"], "claude");
+        assert_eq!((terminal.cols, terminal.rows), (200, 120));
     }
 
     fn wait_for(what: &str, mut check: impl FnMut() -> bool) {

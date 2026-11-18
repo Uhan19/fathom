@@ -9,6 +9,7 @@ use crate::db::{Column, MoveTo};
 use crate::export;
 use crate::fonts;
 use crate::herdr::{Terminal, View};
+use crate::launch::{Agent, LaunchError};
 use crate::moves::Placement;
 use crate::source::Source;
 use crate::state::{
@@ -182,11 +183,20 @@ pub fn herdr_status(state: AppStateRef) -> HerdrStatus {
 #[tauri::command]
 pub async fn find_chat_terminal(state: AppStateRef<'_>) -> Result<Option<Terminal>, String> {
     let state = Arc::clone(&state);
-    blocking(move || {
-        let label = state.settings.lock().unwrap().terminal_label.clone();
-        state.herdr.find_by_label(&label)
-    })
-    .await
+    blocking(move || state.find_chat_terminal()).await
+}
+
+#[tauri::command]
+pub async fn open_chat_terminal(
+    state: AppStateRef<'_>,
+    agent: Agent,
+) -> Result<Terminal, LaunchError> {
+    let state = Arc::clone(&state);
+    tauri::async_runtime::spawn_blocking(move || state.open_chat_terminal(agent))
+        .await
+        .map_err(|e| LaunchError::Failed {
+            message: e.to_string(),
+        })?
 }
 
 #[tauri::command]
