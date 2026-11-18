@@ -227,7 +227,7 @@ fn families_json(families: &[String]) -> String {
     serde_json::to_string(&clean_families(families.to_vec())).unwrap_or_else(|_| "[]".into())
 }
 
-fn connection_of(settings: &Settings) -> herdr::Connection {
+pub(crate) fn connection_of(settings: &Settings) -> herdr::Connection {
     herdr::Connection {
         session: settings.hc_session.clone(),
         socket: settings.hc_socket.clone(),
@@ -412,6 +412,8 @@ impl AppState {
             &Launch {
                 agent,
                 role: launch::CHAT_ROLE,
+                task: None,
+                prompt: None,
                 cwd: &cwd,
                 server: &server,
                 shell: shell.as_deref(),
@@ -482,15 +484,14 @@ impl AppState {
         if !self.herdr_status.lock().unwrap().connected {
             return vec![];
         }
-        let Source::Firstmate { home } = self.source() else {
-            return vec![];
-        };
-        let session = self.settings.lock().unwrap().hc_session.clone();
-        workers::live_workers(
-            &workers::read_bindings(&home),
-            &session,
-            &self.herdr.terminals(),
-        )
+        let terminals = self.herdr.terminals();
+        match self.source() {
+            Source::Firstmate { home } => {
+                let session = self.settings.lock().unwrap().hc_session.clone();
+                workers::live_workers(&workers::read_bindings(&home), &session, &terminals)
+            }
+            Source::Backlog => workers::task_workers(&terminals),
+        }
     }
 
     pub fn add_column(&self, name: &str) -> Result<Vec<Column>, String> {

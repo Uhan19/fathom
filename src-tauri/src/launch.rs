@@ -8,7 +8,9 @@ use crate::mcp::{DB_FLAG, MCP_FLAG};
 
 pub const ROLE_KEY: &str = "fathom.role";
 pub const AGENT_KEY: &str = "fathom.agent";
+pub const TASK_KEY: &str = "fathom.task";
 pub const CHAT_ROLE: &str = "chat";
+pub const WORKER_ROLE: &str = "worker";
 pub const HERDR_CORE: &str = "herdr-core";
 const SERVER_NAME: &str = "fathom";
 const MCP_CONFIG_FILE: &str = "fathom-mcp.json";
@@ -19,7 +21,7 @@ const POSIX_SHELLS: &[&str] = &[
 ];
 const FISH: &str = "fish";
 const FALLBACK_SHELL: &str = "/bin/sh";
-const POSIX_EXEC: &str = r#"exec "$0" "$@""#;
+pub(crate) const POSIX_EXEC: &str = r#"exec "$0" "$@""#;
 const FISH_EXEC: &str = "exec $argv";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -55,6 +57,10 @@ pub fn chat_label() -> String {
     label(ROLE_KEY, CHAT_ROLE)
 }
 
+pub fn task_label(task: i64) -> String {
+    label(TASK_KEY, &task.to_string())
+}
+
 pub struct FathomServer {
     pub program: PathBuf,
     pub db: PathBuf,
@@ -77,6 +83,8 @@ impl FathomServer {
 pub struct Launch<'a> {
     pub agent: Agent,
     pub role: &'a str,
+    pub task: Option<i64>,
+    pub prompt: Option<&'a str>,
     pub cwd: &'a Path,
     pub server: &'a FathomServer,
     pub shell: Option<&'a Path>,
@@ -87,6 +95,15 @@ pub struct Launch<'a> {
 pub enum LaunchError {
     Missing { tool: String },
     Failed { message: String },
+}
+
+impl std::fmt::Display for LaunchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            LaunchError::Missing { tool } => write!(f, "{tool} is not installed or not on PATH"),
+            LaunchError::Failed { message } => f.write_str(message),
+        }
+    }
 }
 
 fn failed(message: impl Into<String>) -> LaunchError {
@@ -127,9 +144,13 @@ pub fn open(
         label(ROLE_KEY, launch.role),
         "--label".into(),
         label(AGENT_KEY, launch.agent.key()),
-        "--".into(),
     ];
+    if let Some(task) = launch.task {
+        args.extend(["--label".into(), task_label(task)]);
+    }
+    args.push("--".into());
     let mut command = vec![program.display().to_string()];
+    command.extend(launch.prompt.map(String::from));
     command.extend(agent_args(launch.agent, launch.server)?);
     args.extend(through_login_shell(launch.shell, command));
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
@@ -274,6 +295,8 @@ esac
             let launch = Launch {
                 agent,
                 role: CHAT_ROLE,
+                task: None,
+                prompt: None,
                 cwd: self.folder.path(),
                 server: &self.server(),
                 shell: Some(&self.shell()),
@@ -459,6 +482,8 @@ esac
         let launch = Launch {
             agent: Agent::Claude,
             role: CHAT_ROLE,
+            task: None,
+            prompt: None,
             cwd: &folder,
             server: &server,
             shell: None,
@@ -576,6 +601,8 @@ while IFS= read -r line; do printf 'GOT:%s\n' "$line"; done
             let launch = Launch {
                 agent,
                 role: CHAT_ROLE,
+                task: None,
+                prompt: None,
                 cwd,
                 server: &server,
                 shell: Some(&shell),

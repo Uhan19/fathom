@@ -4,10 +4,11 @@ use std::path::Path;
 use serde::Serialize;
 
 use crate::herdr::Terminal;
+use crate::launch::TASK_KEY;
 
 const META_EXTENSION: &str = "meta";
 const HC_BACKEND: &str = "hc";
-const LIVE: &str = "live";
+pub const LIVE: &str = "live";
 const WORKING: &str = "working";
 const DEFAULT_SESSION: &str = "default";
 const REQUIRED_KEYS: [&str; 3] = ["backend", "hc_session", "hc_terminal"];
@@ -108,17 +109,32 @@ pub fn live_workers(
         .filter(|b| b.session == session)
         .filter_map(|b| {
             let terminal = terminals.get(&b.terminal).filter(|t| t.state == LIVE)?;
-            Some(Worker {
-                task_id: b.task_id.clone(),
-                terminal: b.terminal.clone(),
-                status: if terminal.status == WORKING {
-                    WorkerStatus::Working
-                } else {
-                    WorkerStatus::Idle
-                },
-            })
+            Some(worker_on(&b.task_id, terminal))
         })
         .collect()
+}
+
+pub fn task_workers(terminals: &BTreeMap<String, Terminal>) -> Vec<Worker> {
+    terminals
+        .values()
+        .filter(|t| t.state == LIVE)
+        .filter_map(|t| {
+            let task: i64 = t.labels.get(TASK_KEY)?.trim().parse().ok()?;
+            Some(worker_on(&task.to_string(), t))
+        })
+        .collect()
+}
+
+fn worker_on(task_id: &str, terminal: &Terminal) -> Worker {
+    Worker {
+        task_id: task_id.to_string(),
+        terminal: terminal.address.clone(),
+        status: if terminal.status == WORKING {
+            WorkerStatus::Working
+        } else {
+            WorkerStatus::Idle
+        },
+    }
 }
 
 #[cfg(test)]
@@ -215,6 +231,72 @@ mod tests {
         assert_eq!(
             live_workers(&bindings, "lab", &terminals)[0].task_id,
             "elsewhere"
+        );
+    }
+
+    fn labeled(address: &str, state: &str, status: &str, labels: &[(&str, &str)]) -> Terminal {
+        Terminal {
+            labels: labels
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            ..terminal(address, state, status)
+        }
+    }
+
+    #[test]
+    fn live_terminals_labeled_with_a_fathom_task_are_its_workers() {
+        let terminals: BTreeMap<String, Terminal> = [
+            labeled(
+                "t1",
+                "live",
+                "working",
+                &[("fathom.task", "7"), ("fathom.agent", "claude")],
+            ),
+            labeled("t2", "live", "idle", &[("fathom.task", "8")]),
+            labeled("t3", "live", "blocked", &[("fathom.task", " 9 ")]),
+            labeled("t4", "finished", "working", &[("fathom.task", "10")]),
+            labeled("t5", "live", "working", &[("fathom.task", "reef")]),
+            labeled("t6", "live", "working", &[("fathom.role", "chat")]),
+            labeled("t7", "live", "working", &[("firstmate.task", "11")]),
+        ]
+        .into_iter()
+        .map(|t| (t.address.clone(), t))
+        .collect();
+        let seen: Vec<(String, String, WorkerStatus)> = task_workers(&terminals)
+            .into_iter()
+            .map(|w| (w.task_id, w.terminal, w.status))
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                ("7".into(), "t1".into(), WorkerStatus::Working),
+                ("8".into(), "t2".into(), WorkerStatus::Idle),
+                ("9".into(), "t3".into(), WorkerStatus::Idle),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_firstmate_home_binds_by_meta_file_and_ignores_fathom_task_labels() {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(home.path().join("state")).unwrap();
+        std::fs::write(home.path().join("state/atl-12.meta"), GOOD).unwrap();
+        let terminals: BTreeMap<String, Terminal> = [
+            labeled("t4", "live", "working", &[]),
+            labeled("t5", "live", "working", &[("fathom.task", "atl-13")]),
+            labeled("t6", "live", "idle", &[("fathom.task", "3")]),
+        ]
+        .into_iter()
+        .map(|t| (t.address.clone(), t))
+        .collect();
+        assert_eq!(
+            live_workers(&read_bindings(home.path()), "reef", &terminals),
+            [Worker {
+                task_id: "atl-12".into(),
+                terminal: "t4".into(),
+                status: WorkerStatus::Working,
+            }]
         );
     }
 

@@ -27,9 +27,10 @@ const ACTIVITY_EVENTS: [&str; 6] = [
     "status",
     "turn",
 ];
-const WORKER_EVENTS: [&str; 7] = [
+const WORKER_EVENTS: [&str; 8] = [
     "created",
     "finished",
+    "labels",
     "lost",
     "removed",
     "restarted",
@@ -213,17 +214,21 @@ impl Herdr {
     }
 
     pub fn find_by_label(&self, label: &str) -> Result<Option<Terminal>, String> {
+        Ok(self
+            .labeled(label)?
+            .into_iter()
+            .next()
+            .map(|listed| self.get(&listed.address).unwrap_or(listed)))
+    }
+
+    pub fn labeled(&self, label: &str) -> Result<Vec<Terminal>, String> {
         let label = label.trim();
         if !label.contains('=') {
             return Err(format!(
                 "the terminal label must look like key=value, got \"{label}\""
             ));
         }
-        let output = self.run(&["ls", "--json", "--label", label])?;
-        Ok(parse_terminals(&output)?
-            .into_iter()
-            .next()
-            .map(|listed| self.get(&listed.address).unwrap_or(listed)))
+        parse_terminals(&self.run(&["ls", "--json", "--label", label])?)
     }
 
     pub fn get(&self, terminal: &str) -> Result<Terminal, String> {
@@ -864,6 +869,21 @@ done
             ]
         );
         assert!(terminals.is_empty());
+    }
+
+    #[test]
+    fn a_label_change_can_add_or_remove_a_worker() {
+        let mut terminals = BTreeMap::new();
+        apply_event(&mut terminals, &snapshot());
+        let notices = apply_event(
+            &mut terminals,
+            &event("labels", json!({"labels": {"fathom.task": "7"}})),
+        );
+        assert_eq!(
+            notices,
+            vec![Notice::TerminalsChanged, Notice::WorkersChanged]
+        );
+        assert_eq!(terminals["t1"].labels["fathom.task"], "7");
     }
 
     #[test]
