@@ -768,6 +768,48 @@ mod tests {
     }
 
     #[test]
+    fn a_bound_task_follows_its_terminal_from_idle_to_working_to_gone() {
+        use crate::workers::{WorkerStatus, live_workers, read_bindings};
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(home.path().join("state")).unwrap();
+        std::fs::write(
+            home.path().join("state/atl-12.meta"),
+            "backend=hc\nhc_session=reef\nhc_terminal=t1\n",
+        )
+        .unwrap();
+        let bindings = read_bindings(home.path());
+        let shown = |terminals: &BTreeMap<String, Terminal>| -> Vec<WorkerStatus> {
+            live_workers(&bindings, "reef", terminals)
+                .into_iter()
+                .map(|w| w.status)
+                .collect()
+        };
+        let listing = |list: Value| json!({"channel": null, "seq": 1, "terminals": list});
+        let mut terminals = BTreeMap::new();
+
+        apply_event(
+            &mut terminals,
+            &listing(json!([{"address": "t1", "name": null, "state": "live", "status": null}])),
+        );
+        assert_eq!(shown(&terminals), [WorkerStatus::Idle]);
+        apply_event(
+            &mut terminals,
+            &event(
+                "status",
+                json!({"records": {}, "reported": true, "status": {"app": "lab", "state": "working"}}),
+            ),
+        );
+        assert_eq!(shown(&terminals), [WorkerStatus::Working]);
+        apply_event(
+            &mut terminals,
+            &event("turn", json!({"state": "idle", "turn": 4})),
+        );
+        assert_eq!(shown(&terminals), [WorkerStatus::Idle]);
+        apply_event(&mut terminals, &listing(json!([])));
+        assert!(shown(&terminals).is_empty());
+    }
+
+    #[test]
     fn hc_ls_reports_status_as_a_plain_string() {
         let json = r#"{"terminals":[{"address":"t1","agent":"lab","state":"live","status":"working","turn":1}]}"#;
         assert_eq!(parse_terminals(json).unwrap()[0].status, "working");

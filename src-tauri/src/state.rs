@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -13,8 +12,8 @@ use tauri::{AppHandle, Emitter};
 
 use crate::db::{CardPlace, Column, Db, MoveRequest, MoveStatus, RowName, Snapshot};
 use crate::herdr::{self, Frame, Herdr, Notice};
-use crate::requests;
-use crate::tasks::{self, Card, Row};
+use crate::moves::{self, Placement};
+use crate::tasks::{self, Card};
 use crate::watch::{self, StateChange};
 use crate::workers::{self, Worker};
 
@@ -80,17 +79,6 @@ pub struct BoardView {
 pub struct Overlay {
     pub places: Vec<CardPlace>,
     pub requests: Vec<MoveRequest>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Placement {
-    pub card_id: String,
-    pub title: String,
-    pub project: String,
-    pub from_row: Row,
-    pub to_row: Row,
-    pub order: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -276,7 +264,7 @@ impl AppState {
         let home = self.home();
         match tasks::read_board(&home) {
             Ok(cards) => {
-                self.reconcile_requests(&home, &cards)?;
+                moves::reconcile(&self.db, &home, &cards)?;
                 let mut db = self.db.lock().unwrap();
                 let projects: Vec<String> = cards.iter().map(|c| c.project.clone()).collect();
                 let columns = db.ensure_columns(&projects)?;
@@ -377,59 +365,12 @@ impl AppState {
     }
 
     pub fn place_card(&self, placement: Placement) -> Result<Overlay, String> {
-        let request = {
-            let mut db = self.db.lock().unwrap();
-            db.place_cards(
-                &placement.card_id,
-                &placement.project,
-                placement.to_row,
-                &placement.order,
-            )?;
-            if placement.from_row == placement.to_row {
-                None
-            } else {
-                let created_ms = now_ms();
-                let request = MoveRequest {
-                    request_id: requests::request_id(&placement.card_id, created_ms),
-                    card_id: placement.card_id,
-                    title: placement.title,
-                    from_row: placement.from_row,
-                    to_row: placement.to_row,
-                    created_ms,
-                    status: MoveStatus::Sending,
-                    note_id: None,
-                    answer: None,
-                    error: None,
-                };
-                db.add_request(&request)?;
-                Some(request)
-            }
-        };
-        if let Some(request) = request {
-            self.send_request(&request)?;
-            let home = self.home();
-            let cards = self.cached_cards(&home)?;
-            self.reconcile_requests(&home, &cards)?;
-        }
+        moves::place(&self.db, &self.home(), placement, now_ms())?;
         self.overlay()
     }
 
-    fn cached_cards(&self, home: &Path) -> Result<Vec<Card>, String> {
-        let home = home.display().to_string();
-        let snapshot = self.db.lock().unwrap().snapshot()?;
-        Ok(snapshot
-            .filter(|s| s.home == home)
-            .map(|s| s.cards)
-            .unwrap_or_default())
-    }
-
     pub fn resend_request(&self, request_id: &str) -> Result<Overlay, String> {
-        let request = self.db.lock().unwrap().request(request_id)?;
-        match request {
-            Some(request) if request.status == MoveStatus::Failed => self.send_request(&request)?,
-            Some(_) => {}
-            None => return Err(format!("no move request {request_id}")),
-        }
+        moves::resend(&self.db, &self.home(), request_id)?;
         self.overlay()
     }
 
@@ -439,55 +380,6 @@ impl AppState {
             .unwrap()
             .set_request_status(request_id, MoveStatus::Dismissed)?;
         self.overlay()
-    }
-
-    fn send_request(&self, request: &MoveRequest) -> Result<(), String> {
-        let body = requests::move_body(
-            &request.card_id,
-            &request.title,
-            request.from_row,
-            request.to_row,
-        );
-        let outcome = requests::send_note(&self.home(), &request.request_id, &body);
-        self.db
-            .lock()
-            .unwrap()
-            .finish_send(&request.request_id, &outcome)
-    }
-
-    fn reconcile_requests(&self, home: &Path, cards: &[Card]) -> Result<(), String> {
-        let waiting: Vec<MoveRequest> = self
-            .db
-            .lock()
-            .unwrap()
-            .open_requests()?
-            .into_iter()
-            .filter(|r| matches!(r.status, MoveStatus::Asked | MoveStatus::Failed))
-            .collect();
-        if waiting.is_empty() {
-            return Ok(());
-        }
-        let replies: HashMap<String, String> = if waiting.iter().any(|r| r.note_id.is_some()) {
-            requests::replies(home).unwrap_or_else(|error| {
-                eprintln!("fathom: cannot read Firstmate's replies: {error}");
-                HashMap::new()
-            })
-        } else {
-            HashMap::new()
-        };
-        let db = self.db.lock().unwrap();
-        for request in waiting {
-            match settle(&request, &replies, cards) {
-                Some(Settlement::Answered(answer)) => {
-                    db.answer_request(&request.request_id, &answer)?
-                }
-                Some(Settlement::Landed) => {
-                    db.set_request_status(&request.request_id, MoveStatus::Landed)?
-                }
-                None => {}
-            }
-        }
-        Ok(())
     }
 
     pub fn log_launch(&self, source: &str, cards: usize) -> Option<u128> {
@@ -545,27 +437,6 @@ fn append(path: &Path, line: &str) {
     {
         let _ = file.write_all(line.as_bytes());
     }
-}
-
-#[derive(Debug, PartialEq)]
-enum Settlement {
-    Answered(String),
-    Landed,
-}
-
-fn settle(
-    request: &MoveRequest,
-    replies: &HashMap<String, String>,
-    cards: &[Card],
-) -> Option<Settlement> {
-    let answer = request.note_id.as_ref().and_then(|id| replies.get(id));
-    if let Some(answer) = answer.filter(|_| request.status == MoveStatus::Asked) {
-        return Some(Settlement::Answered(answer.clone()));
-    }
-    cards
-        .iter()
-        .any(|c| c.id == request.card_id && c.row == request.to_row)
-        .then_some(Settlement::Landed)
 }
 
 fn overlay_of(db: &Db) -> Result<Overlay, String> {
@@ -682,68 +553,5 @@ mod tests {
         let stored = load_settings(&db).unwrap();
         assert_eq!(stored.chat_added_fonts, ["Fira Code", "Iosevka"]);
         assert!(stored.board_added_fonts.is_empty());
-    }
-
-    fn card(id: &str, row: Row) -> Card {
-        Card {
-            id: id.into(),
-            title: id.into(),
-            state: String::new(),
-            kind: String::new(),
-            project: "reef".into(),
-            row,
-            hold_kind: String::new(),
-            hold_until: String::new(),
-            hold_reason: String::new(),
-            blocked_by: vec![],
-            links: vec![],
-            closed: String::new(),
-        }
-    }
-
-    fn asked(card_id: &str, to: Row, status: MoveStatus) -> MoveRequest {
-        MoveRequest {
-            request_id: format!("r-{card_id}"),
-            card_id: card_id.into(),
-            title: card_id.into(),
-            from_row: Row::Seabed,
-            to_row: to,
-            created_ms: 1,
-            status,
-            note_id: (status == MoveStatus::Asked).then(|| format!("n-{card_id}")),
-            answer: None,
-            error: None,
-        }
-    }
-
-    #[test]
-    fn a_request_settles_on_a_reply_first_then_on_the_task_list() {
-        let replies = HashMap::from([("n-a".to_string(), "Not yet.".to_string())]);
-        let cards = [
-            card("a", Row::Shallows),
-            card("b", Row::Shallows),
-            card("c", Row::Seabed),
-        ];
-        let settle_one = |r: MoveRequest| settle(&r, &replies, &cards);
-        assert_eq!(
-            settle_one(asked("a", Row::Shallows, MoveStatus::Asked)),
-            Some(Settlement::Answered("Not yet.".into()))
-        );
-        assert_eq!(
-            settle_one(asked("b", Row::Shallows, MoveStatus::Asked)),
-            Some(Settlement::Landed)
-        );
-        assert_eq!(
-            settle_one(asked("c", Row::Shallows, MoveStatus::Asked)),
-            None
-        );
-        assert_eq!(
-            settle_one(asked("b", Row::Shallows, MoveStatus::Failed)),
-            Some(Settlement::Landed)
-        );
-        assert_eq!(
-            settle_one(asked("missing", Row::Deep, MoveStatus::Asked)),
-            None
-        );
     }
 }

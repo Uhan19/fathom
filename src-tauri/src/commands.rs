@@ -8,9 +8,8 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use crate::export;
 use crate::fonts;
 use crate::herdr::Terminal;
-use crate::state::{
-    AppState, BoardView, ChatSize, HerdrStatus, Overlay, Placement, Settings, now_ms,
-};
+use crate::moves::Placement;
+use crate::state::{AppState, BoardView, ChatSize, HerdrStatus, Overlay, Settings, now_ms};
 use crate::tasks::{self, Detail, Row};
 use crate::workers::Worker;
 

@@ -3,6 +3,7 @@ mod db;
 mod export;
 mod fonts;
 mod herdr;
+mod moves;
 mod requests;
 mod shell_path;
 mod state;
