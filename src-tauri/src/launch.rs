@@ -806,7 +806,8 @@ esac
     }
 
     const STUB_AGENT: &str = r#"#!/bin/sh
-for arg in "$@"; do printf '%s\n' "$arg"; done > "$0.$$.args"
+for arg in "$@"; do printf '%s\n' "$arg"; done > "$0.$$.partial"
+mv "$0.$$.partial" "$0.$$.args"
 printf 'stub %s in %s\n' "$(basename "$0")" "$PWD"
 printf 'RC:%s\n' "${FATHOM_RC_MARKER:-missing}"
 while IFS= read -r line; do printf 'GOT:%s\n' "$line"; done

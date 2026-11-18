@@ -316,13 +316,19 @@ fn replace(target: &mut String, value: Option<String>) {
     }
 }
 
+impl Fathom {
+    fn source(&self) -> Result<Source, String> {
+        Ok(Source::of(&settings::load(&self.db.lock().unwrap())?.home))
+    }
+}
+
 #[tool_router(router = helper_tools)]
 impl Fathom {
     #[tool(
         description = "Read the board layout: columns in order (id, name, project, width, collapsed), row names, the project names and the current project filter."
     )]
     fn get_board_layout(&self) -> Result<String, String> {
-        reply(control::board_layout(&self.db.lock().unwrap()))
+        reply(control::board_layout(&self.db, &self.source()?))
     }
 
     #[tool(
@@ -381,7 +387,6 @@ impl Fathom {
         description = "Delete a column. A column that still has cards needs move_to_column, the column that takes them."
     )]
     fn delete_column(&self, Parameters(p): Parameters<DeleteColumn>) -> Result<String, String> {
-        let home = settings::load(&self.db.lock().unwrap())?.home;
         let move_to = match (p.move_to_column, p.move_to_new_column) {
             (Some(_), Some(_)) => {
                 return Err("give move_to_column or move_to_new_column, not both".into());
@@ -392,7 +397,7 @@ impl Fathom {
         };
         reply(control::delete_column(
             &self.db,
-            &Source::of(&home),
+            &self.source()?,
             p.id,
             move_to.as_ref(),
         ))
@@ -1270,6 +1275,23 @@ esac
         assert_eq!(layout["columns"].as_array().unwrap().len(), 3);
         assert_eq!(layout["rows"].as_array().unwrap().len(), 5);
         assert_eq!(layout["projectFilter"], json!([]));
+    }
+
+    #[test]
+    fn the_layout_includes_a_project_the_window_has_not_read_yet() {
+        let (_dir, _store, server, _) = helper_board();
+        add(&server, "Raise the mast", "mast-works", None);
+        let layout: Value = ok(server.get_board_layout());
+        assert_eq!(
+            layout["projects"],
+            json!(["dry-dock", "mast-works", "reef-map", "rigging"])
+        );
+        let mast = &layout["columns"][3];
+        assert_eq!(mast["project"], "mast-works");
+        let shown: Value = ok(server.show_projects(Parameters(ShowProjects {
+            projects: vec!["mast-works".into()],
+        })));
+        assert_eq!(shown["projectFilter"], json!(["mast-works"]));
     }
 
     #[test]

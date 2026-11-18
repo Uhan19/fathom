@@ -17,12 +17,14 @@ pub struct BoardLayout {
     pub project_filter: Vec<String>,
 }
 
-pub fn board_layout(db: &Db) -> Result<BoardLayout, String> {
-    let columns = db.columns()?;
+pub fn board_layout(db: &Mutex<Db>, source: &Source) -> Result<BoardLayout, String> {
+    let cards = layout_cards(db, source)?;
+    let mut db = db.lock().unwrap();
+    let columns = db.ensure_columns(&cards)?;
     Ok(BoardLayout {
         projects: projects(&columns),
         rows: db.row_names()?,
-        project_filter: settings::load(db)?.project_filter,
+        project_filter: settings::load(&db)?.project_filter,
         columns,
     })
 }
