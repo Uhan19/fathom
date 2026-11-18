@@ -2,7 +2,7 @@
 
 Fathom is a macOS desktop board for Firstmate's tasks.
 Each task is a card, each project starts as a column, and each row shows how deep the work sits.
-You can add your own columns and delete ones you no longer need.
+You can add your own columns, drag columns into the order you like, and delete ones you no longer need.
 It shows the board, opens card details, and embeds Firstmate's live terminal as a chat panel.
 Cards can be dragged to arrange them, and a drag to another row asks Firstmate to move the task.
 A small sailor on a card shows that a crewmate is on the task: its red visor glows and blinks while it works and dims while idle.
@@ -135,11 +135,17 @@ The goal is under 0.5 s on a warm start.
   An added column has no project name to return to, so emptying its name keeps the current one.
   The project itself and Firstmate's task list keep their names.
 
-## Adding and deleting columns
+## Adding, reordering and deleting columns
 
 - "Add column" after the last column header asks for a name and adds an empty column at the end.
   An added column belongs to no project; drag cards into it to group them however you like.
   It renames, collapses and resizes like any other column.
+- Drag a column by its header to move it, with all of its cards in every row, to a new place among the columns.
+  A collapsed column drags by its strip the same way.
+  The drag starts only after the pointer moves a few pixels, so clicks and renames work as before.
+  A dashed line shows where the column will land, and the board scrolls when the pointer nears its edge.
+  Escape, or dropping it back where it started, leaves the order unchanged.
+  The order is saved and survives restarts; columns added later, by you or for a new project, still go at the end.
 - Hovering a column header shows a trash button that deletes the column after a confirmation.
 - Deleting a column that still shows cards first moves them, so no card ever drops off the board.
   The dialog says how many cards the column holds and asks where they go: any other column, or a new column you name.
@@ -152,7 +158,7 @@ The goal is under 0.5 s on a warm start.
   There is no restore button.
   It comes back by itself only when a new task of that project has no other column to show in.
   Adding a column with the same name makes a new added column, not the project column.
-- Adding and deleting columns only change Fathom's database; Firstmate's task list is never touched.
+- Adding, reordering and deleting columns only change Fathom's database; Firstmate's task list is never touched.
 
 A release build opened from Finder does not inherit your shell's PATH.
 Fathom asks your login shell for its PATH once at startup and uses it to find `hc` and `tasks-axi`.

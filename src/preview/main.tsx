@@ -2,6 +2,7 @@ import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import { ROW_ORDER, type BoardView, type Card, type CardPlace, type Column, type Layout, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type Settings } from "../api";
 import { cellCount, groupCards, type Cells } from "../board";
+import { moveTo } from "../columnOrder";
 import { FIXTURE_CARDS, FIXTURE_COLUMNS, FIXTURE_LATE_CARD, FIXTURE_REQUESTS, FIXTURE_SCREEN, FIXTURE_TERMINALS, FIXTURE_WORKERS, fixtureDetail, workerScreen } from "./fixture";
 
 const params = new URLSearchParams(location.search);
@@ -168,6 +169,9 @@ mockIPC(
         console.info("set_column_name", args.id, JSON.stringify(args.name));
         columns = columns.map((c) => (c.id === args.id ? { ...c, name: (args.name as string).trim() || c.project || c.name } : c));
         return null;
+      case "move_column":
+        columns = moveTo(columns, args.id as number, args.index as number).map((c, position) => ({ ...c, position }));
+        return columns;
       case "add_column":
         return addColumn(args.name as string);
       case "delete_column":

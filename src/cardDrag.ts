@@ -1,10 +1,8 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import type { Card, RowKey } from "./api";
 import { pickTarget, sameTarget, type DropTarget, type RowBox } from "./dropTarget";
+import { scrollStep, START_DISTANCE } from "./drag";
 
-const START_DISTANCE = 5;
-const EDGE = 56;
-const MAX_SCROLL_STEP = 18;
 
 export interface CardDrag {
   card: Card;
@@ -129,16 +127,4 @@ function measureRows(board: HTMLElement, draggedId: string): RowBox[] {
 function insideBoard(board: HTMLElement, p: { x: number; y: number }): boolean {
   const box = board.getBoundingClientRect();
   return p.x >= box.left && p.x <= box.right && p.y >= box.top && p.y <= box.bottom;
-}
-
-function scrollStep(board: HTMLElement | null, p: { x: number; y: number }): { x: number; y: number } | null {
-  const box = board?.getBoundingClientRect();
-  if (!box) return null;
-  const along = (pos: number, low: number, high: number) => {
-    if (pos < low + EDGE) return -MAX_SCROLL_STEP * Math.min(1, (low + EDGE - pos) / EDGE);
-    if (pos > high - EDGE) return MAX_SCROLL_STEP * Math.min(1, (pos - (high - EDGE)) / EDGE);
-    return 0;
-  };
-  const step = { x: Math.round(along(p.x, box.left, box.right)), y: Math.round(along(p.y, box.top, box.bottom)) };
-  return step.x || step.y ? step : null;
 }

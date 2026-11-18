@@ -71,6 +71,11 @@ pub fn set_column_name(state: AppStateRef, id: i64, name: String) -> Result<(), 
 }
 
 #[tauri::command]
+pub fn move_column(state: AppStateRef, id: i64, index: usize) -> Result<Vec<Column>, String> {
+    state.db.lock().unwrap().move_column(id, index)
+}
+
+#[tauri::command]
 pub fn add_column(state: AppStateRef, name: String) -> Result<Vec<Column>, String> {
     state.add_column(&name)
 }
