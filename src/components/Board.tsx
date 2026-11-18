@@ -1,7 +1,8 @@
 import { useRef, useState, type ReactNode } from "react";
 import { ROW_ORDER, type Card, type Column, type MoveRequest, type Overlay, type Placement, type RowKey, type Worker } from "../api";
 import { boardMinWidth, cardNote, clampWidth, columnTemplate, groupCards, insertAt, shownRequest } from "../board";
-import { useCardDrag, type CardDrag, type DropTarget } from "../cardDrag";
+import { useCardDrag, type CardDrag } from "../cardDrag";
+import type { DropTarget } from "../dropTarget";
 import { startDrag } from "../drag";
 import { ChevronLeft, ChevronRight, Sailor, Wave } from "./Icons";
 
@@ -106,7 +107,13 @@ export function Board({ cards, columns, overlay, workers, rowNames, selectedId, 
           })}
         </div>
         {ROW_ORDER.map((row) => (
-          <section key={row} className={`row row-${row}`} aria-label={rowNames[row]} style={{ gridTemplateColumns: template }}>
+          <section
+            key={row}
+            className={`row row-${row}`}
+            data-row={row}
+            aria-label={rowNames[row]}
+            style={{ gridTemplateColumns: template }}
+          >
             <h2 className="row-name">{rowNames[row]}</h2>
             {shown.map((column) => {
               const here = cells.get(column.project)?.get(row) ?? [];
