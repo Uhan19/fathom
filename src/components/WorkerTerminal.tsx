@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { errorText, events, type WorkerStatus } from "../api";
 import { useLiveTerminal } from "../liveTerminal";
 import { isPlainEscape } from "../terminalInput";
+import type { Theme } from "../theme";
 import { Close, Sailor } from "./Icons";
 
 export interface Watched {
@@ -17,12 +18,13 @@ interface WorkerTerminalProps {
   status: WorkerStatus | null;
   fontFamily: string;
   fontSize: number;
+  theme: Theme;
   onClose: () => void;
 }
 
-export function WorkerTerminal({ watched, status, fontFamily, fontSize, onClose }: WorkerTerminalProps) {
+export function WorkerTerminal({ watched, status, fontFamily, fontSize, theme, onClose }: WorkerTerminalProps) {
   const [phase, setPhase] = useState<Phase>({ kind: "attaching" });
-  const { hostRef, scrollRef, attach: attachLive, release, focus } = useLiveTerminal("worker", fontFamily, fontSize);
+  const { hostRef, scrollRef, attach: attachLive, release, focus } = useLiveTerminal("worker", fontFamily, fontSize, theme);
 
   const attach = useCallback(async () => {
     setPhase({ kind: "attaching" });

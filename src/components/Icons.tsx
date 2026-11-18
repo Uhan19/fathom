@@ -44,7 +44,7 @@ export function Wave() {
       <path
         d="M0 6 Q5 2 10 6 T20 6 T30 6 T40 6 T50 6 T60 6 T70 6 T80 6 T90 6 T100 6 T110 6 T120 6"
         fill="none"
-        stroke="#2F6F95"
+        stroke="#1B4F77"
         strokeWidth="1.5"
         vectorEffect="non-scaling-stroke"
       />

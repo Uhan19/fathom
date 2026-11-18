@@ -25,6 +25,7 @@ import { ChatPanel } from "./components/ChatPanel";
 import { WorkerTerminal, type Watched } from "./components/WorkerTerminal";
 import { ChevronLeft } from "./components/Icons";
 import { SettingsDialog } from "./components/SettingsDialog";
+import { INITIAL_THEME, otherTheme, themeToggleLabel, type Theme } from "./theme";
 
 const DETAIL_WIDTH = { initial: 460, min: 340, max: 900 };
 const CHAT_WIDTH = { initial: 600, min: 300, max: 1400 };
@@ -47,6 +48,7 @@ export default function App() {
   const [moveError, setMoveError] = useState<string | null>(null);
   const [columnError, setColumnError] = useState<string | null>(null);
   const [watched, setWatched] = useState<Watched | null>(null);
+  const [theme, setTheme] = useState<Theme>(INITIAL_THEME);
   const launchLogged = useRef(false);
 
   const logLaunch = useCallback((board: BoardView) => {
@@ -98,6 +100,10 @@ export default function App() {
     const root = document.documentElement.style;
     Object.entries(boardStyle(appearance)).forEach(([name, value]) => root.setProperty(name, value));
   }, [appearance]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   const rowNames = useMemo(() => {
     const names = Object.fromEntries(ROW_ORDER.map((r) => [r, r])) as Record<RowKey, string>;
@@ -175,20 +181,30 @@ export default function App() {
     <div className="app">
       <header className="top">
         <div className="brand">
-          <span className="brand-name">Fathom</span>
-          <span className="brand-sub">Firstmate's tasks. Drag a card to arrange it or to ask Firstmate to move it. Click for details.</span>
+          <span className="brand-name" role="img" aria-label="Fathom">
+            <span aria-hidden="true">FATHOM</span>
+          </span>
         </div>
-        <span className="count surface-count">{counts.surface} at the surface</span>
-        <span className="count">{counts.shallows} in the shallows</span>
+        <span className="count">
+          <span className="count-label">At the surface</span>
+          <b className="count-surface">{counts.surface}</b>
+        </span>
+        <span className="count">
+          <span className="count-label">In the shallows</span>
+          <b className="count-shallows">{counts.shallows}</b>
+        </span>
         <span className={`herdr-dot${herdr.connected ? " up" : ""}`} title={herdr.connected ? "herdr-core connected" : herdr.message}>
           herdr-core
         </span>
         {anyCollapsed && (
-          <button className="btn" onClick={expandAll}>
+          <button className="btn btn-header" onClick={expandAll}>
             Expand all
           </button>
         )}
-        <button className="btn" onClick={() => setSettingsOpen(true)} disabled={!settings}>
+        <button className="btn btn-header" onClick={() => setTheme(otherTheme)}>
+          {themeToggleLabel(theme)}
+        </button>
+        <button className="btn btn-header" onClick={() => setSettingsOpen(true)} disabled={!settings}>
           Settings
         </button>
         <button className="btn btn-dark" onClick={() => setChatOpen((o) => !o)}>
@@ -278,6 +294,7 @@ export default function App() {
               label={settings.terminalLabel}
               fontFamily={chatFontStack(appearance ?? appearanceOf(settings))}
               fontSize={(appearance ?? settings).chatFontSize}
+              theme={theme}
               connectionKey={connectionKey}
               onTerminal={setChatTerminal}
               onCollapse={() => setChatOpen(false)}
@@ -298,6 +315,7 @@ export default function App() {
           status={watchedWorker?.status ?? null}
           fontFamily={chatFontStack(appearance ?? appearanceOf(settings))}
           fontSize={(appearance ?? settings).chatFontSize}
+          theme={theme}
           onClose={() => setWatched(null)}
         />
       )}
