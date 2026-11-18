@@ -1,0 +1,2 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512" role="img" aria-label="Fathom"><defs><linearGradient id="bg" x1="0" y1="0" x2=".4" y2="1"><stop offset="0" stop-color="#1B4F77"/><stop offset="1" stop-color="#0B2447"/></linearGradient></defs><rect width="64" height="64" rx="14" fill="url(#bg)"/><g transform="translate(32 32) scale(.62) translate(-32 -32)"><path d="M49.54 12.77 A26 26 0 0 0 12.77 49.54 Z" fill="#F4F1EA"/><path d="M51.23 14.46 A26 26 0 0 1 14.46 51.23 Z" fill="#C9A45C"/></g></svg>
+
