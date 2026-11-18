@@ -5,6 +5,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import "@xterm/xterm/css/xterm.css";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { api, type Size, type View } from "./api";
+import { TERMINAL_OPTIONS } from "./terminalOptions";
 import { forwardClipboardWrites, isShiftEnter, shiftEnterSequence, trackKittyKeyboard } from "./terminalInput";
 
 const FALLBACK_SIZE = { cols: 80, rows: 24 };
@@ -117,11 +118,7 @@ export function useLiveTerminal(view: View, fontFamily: string, fontSize: number
       if (!host) return false;
       const term = new XTerm({
         ...fontRef.current,
-        lineHeight: 1.15,
-        scrollback: 0,
-        cursorBlink: true,
-        allowProposedApi: true,
-        macOptionClickForcesSelection: true,
+        ...TERMINAL_OPTIONS,
         theme: LIGHT_THEME,
       });
       const fitAddon = new FitAddon();
@@ -132,7 +129,6 @@ export function useLiveTerminal(view: View, fontFamily: string, fontSize: number
       fitRef.current = fitAddon;
       host.replaceChildren();
       term.open(host);
-      term.attachCustomWheelEventHandler(() => false);
       const kitty = trackKittyKeyboard(term);
       forwardClipboardWrites(term, copyText);
       term.attachCustomKeyEventHandler((e) => {

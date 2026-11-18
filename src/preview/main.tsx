@@ -133,7 +133,7 @@ mockIPC(
         return `${args.directory}/fathom-export-1763400000000`;
       case "terminal_input":
         console.info("terminal_input", args.view, JSON.stringify(args.data));
-        outputs.get(args.view)?.onmessage(bytes((args.data as string).replace(/\r/g, "\r\n")));
+        if (!(args.data as string).includes("\x1b")) outputs.get(args.view)?.onmessage(bytes((args.data as string).replace(/\r/g, "\r\n")));
         return null;
       case "resize_terminal":
         console.info("resize_terminal", args.view, args.cols, args.rows);
@@ -174,6 +174,8 @@ mockIPC(
   { shouldMockEvents: true },
 );
 
-Object.assign(window, { previewEmit: emit });
+const previewFeed = (view: string, text: string) => outputs.get(view)?.onmessage(bytes(text));
+
+Object.assign(window, { previewEmit: emit, previewFeed });
 
 await import("../main");

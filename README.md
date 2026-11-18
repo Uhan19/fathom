@@ -182,6 +182,14 @@ The chat panel attaches to the terminal that carries the configured label.
 If none carries it, the panel lists the terminals herdr-core knows and lets you pick one.
 Keystrokes in the panel go into that terminal.
 
+### Scrolling
+
+- The mouse wheel or trackpad scrolls back through the last 10,000 lines the panel received, in the chat and in a crewmate's view.
+  New output does not move a view that is scrolled back; scrolling down or typing returns to the live bottom.
+- An attach starts from herdr-core's repaint of the current screen, so lines from before the attach are not in the scrollback.
+- When the program asks for mouse input, the wheel goes to the program instead.
+  In a full-screen program without mouse input, the wheel presses the up and down arrow keys.
+
 ### Keys and the clipboard
 
 - Shift+Enter sends a new line instead of submitting, encoded the way herdr-core's own key encoder does it.
