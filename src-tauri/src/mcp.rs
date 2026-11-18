@@ -14,7 +14,7 @@ use crate::db::{Db, MoveTo};
 use crate::fonts;
 use crate::herdr::Herdr;
 use crate::launch::{self, Agent, FathomServer, Launch};
-use crate::settings::{self, CHAT_WIDTH, DETAIL_WIDTH, Surface, Theme};
+use crate::settings::{self, CHAT_WIDTH, DETAIL_WIDTH, Surface, Theme, WindowChange};
 use crate::shell_path;
 use crate::source::Source;
 use crate::state::{connection_of, now_ms};
@@ -419,10 +419,11 @@ impl Fathom {
 
     #[tool(description = "Switch between the light and dark theme.")]
     fn set_theme(&self, Parameters(p): Parameters<SetTheme>) -> Result<String, String> {
-        self.change_settings(|s| {
-            s.theme = p.theme;
-            Ok(())
-        })
+        let change = WindowChange {
+            theme: Some(p.theme),
+            ..WindowChange::default()
+        };
+        reply(settings::change_window(&self.db.lock().unwrap(), &change).map(settings_view))
     }
 
     #[tool(
@@ -445,12 +446,13 @@ impl Fathom {
         description = "Show or hide the chat panel and change the chat and card detail widths. Leave out what stays the same."
     )]
     fn set_panels(&self, Parameters(p): Parameters<SetPanels>) -> Result<String, String> {
-        self.change_settings(|s| {
-            s.chat_open = p.chat_open.unwrap_or(s.chat_open);
-            s.chat_width = p.chat_width.unwrap_or(s.chat_width);
-            s.detail_width = p.detail_width.unwrap_or(s.detail_width);
-            Ok(())
-        })
+        let change = WindowChange {
+            theme: None,
+            chat_open: p.chat_open,
+            chat_width: p.chat_width,
+            detail_width: p.detail_width,
+        };
+        reply(settings::change_window(&self.db.lock().unwrap(), &change).map(settings_view))
     }
 
     #[tool(

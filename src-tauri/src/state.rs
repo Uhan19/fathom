@@ -15,7 +15,7 @@ use crate::db::{CardPlace, Column, Db, MoveRequest, MoveStatus, MoveTo, RowName,
 use crate::herdr::{self, Frame, Herdr, Notice, Terminal, View};
 use crate::launch::{self, Agent, FathomServer, Launch, LaunchError, SignIn};
 use crate::moves::{self, Placement};
-use crate::settings::{self, Settings};
+use crate::settings::{self, Settings, WindowChange};
 use crate::shell_path;
 use crate::source::{Source, SourceKind};
 use crate::tasks::Card;
@@ -242,6 +242,18 @@ impl AppState {
 
     pub fn save_settings(&self, next: Settings) -> Result<Settings, String> {
         let saved = settings::store(&self.db.lock().unwrap(), &next)?;
+        self.adopt_settings(saved.clone());
+        Ok(saved)
+    }
+
+    pub fn change_window(&self, change: &WindowChange) -> Result<Settings, String> {
+        let saved = settings::change_window(&self.db.lock().unwrap(), change)?;
+        self.adopt_settings(saved.clone());
+        Ok(saved)
+    }
+
+    pub fn show_all_projects(&self) -> Result<Settings, String> {
+        let saved = control::show_all_projects(&self.db.lock().unwrap())?;
         self.adopt_settings(saved.clone());
         Ok(saved)
     }

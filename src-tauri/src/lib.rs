@@ -68,6 +68,8 @@ pub fn run() {
             commands::workers,
             commands::get_settings,
             commands::save_settings,
+            commands::change_window,
+            commands::show_all_projects,
             commands::installed_fonts,
             commands::data_info,
             commands::export_data,

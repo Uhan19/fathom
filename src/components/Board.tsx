@@ -33,7 +33,7 @@ interface BoardProps {
   onColumnChange: (id: number, change: { width?: number; collapsed?: boolean }) => void;
   onColumnRename: (id: number, name: string) => void;
   onColumnMove: (id: number, index: number) => void;
-  onColumnAdd: (name: string) => void;
+  onColumnAdd?: (name: string) => void;
   onColumnDelete: (id: number, moveTo?: MoveTo) => Promise<void>;
   onPlace: (placement: Placement) => void;
   onWatch: (card: Card, worker: Worker) => void;
@@ -141,7 +141,7 @@ export function Board(props: BoardProps) {
               </div>
             );
           })}
-          <AddColumn onAdd={props.onColumnAdd} />
+          {props.onColumnAdd && <AddColumn onAdd={props.onColumnAdd} />}
         </div>
         {ROW_ORDER.map((row) => (
           <section

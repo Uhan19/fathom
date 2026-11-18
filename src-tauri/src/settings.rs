@@ -97,6 +97,15 @@ pub struct Settings {
     pub helper_started: bool,
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowChange {
+    pub theme: Option<Theme>,
+    pub chat_open: Option<bool>,
+    pub chat_width: Option<u32>,
+    pub detail_width: Option<u32>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FontPreset {
     pub key: String,
@@ -266,6 +275,16 @@ pub fn update(
     store(db, &next)
 }
 
+pub fn change_window(db: &Db, change: &WindowChange) -> Result<Settings, String> {
+    update(db, |s| {
+        s.theme = change.theme.unwrap_or(s.theme);
+        s.chat_open = change.chat_open.unwrap_or(s.chat_open);
+        s.chat_width = change.chat_width.unwrap_or(s.chat_width);
+        s.detail_width = change.detail_width.unwrap_or(s.detail_width);
+        Ok(())
+    })
+}
+
 fn check(next: &Settings) -> Result<(), String> {
     for (surface, size) in [
         (Surface::Chat, next.chat_font_size),
@@ -398,6 +417,36 @@ mod tests {
         assert_eq!(stored.chat_font, "menlo");
         assert_eq!(stored.chat_font_size, 17);
         assert_eq!(stored.board_font_size, DEFAULT_BOARD_FONT_SIZE);
+    }
+
+    #[test]
+    fn a_window_change_keeps_what_it_leaves_out() {
+        let (_dir, db) = fresh();
+        let before = update(&db, |s| {
+            s.chat_font_size = 15;
+            s.project_filter = vec!["atlas".into()];
+            Ok(())
+        })
+        .unwrap();
+        let change = WindowChange {
+            theme: Some(Theme::Dark),
+            chat_width: Some(720),
+            ..WindowChange::default()
+        };
+        let after = change_window(&db, &change).unwrap();
+        assert_eq!(after.theme, Theme::Dark);
+        assert_eq!(after.chat_width, 720);
+        assert_eq!(after.chat_open, before.chat_open);
+        assert_eq!(after.detail_width, before.detail_width);
+        assert_eq!(after.chat_font_size, 15);
+        assert_eq!(after.project_filter, ["atlas"]);
+
+        let too_wide = WindowChange {
+            detail_width: Some(5000),
+            ..WindowChange::default()
+        };
+        assert!(change_window(&db, &too_wide).is_err());
+        assert_eq!(load(&db).unwrap(), after);
     }
 
     #[test]

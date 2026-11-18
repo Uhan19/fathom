@@ -12,7 +12,7 @@ use crate::fonts;
 use crate::herdr::{Terminal, View};
 use crate::launch::{Agent, LaunchError};
 use crate::moves::Placement;
-use crate::settings::Settings;
+use crate::settings::{Settings, WindowChange};
 use crate::source::Source;
 use crate::state::{
     AppState, AttachedSize, BoardView, HelperCheck, HelperStatus, HerdrStatus, Layout, Overlay,
@@ -133,6 +133,16 @@ pub fn get_settings(state: AppStateRef) -> Settings {
 #[tauri::command]
 pub fn save_settings(state: AppStateRef, settings: Settings) -> Result<Settings, String> {
     state.save_settings(settings)
+}
+
+#[tauri::command]
+pub fn change_window(state: AppStateRef, change: WindowChange) -> Result<Settings, String> {
+    state.change_window(&change)
+}
+
+#[tauri::command]
+pub fn show_all_projects(state: AppStateRef) -> Result<Settings, String> {
+    state.show_all_projects()
 }
 
 #[tauri::command]

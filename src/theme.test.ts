@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { INITIAL_THEME, otherTheme, themeToggleLabel } from "./theme";
+import { DEFAULT_THEME, otherTheme, themeToggleLabel } from "./theme";
 import { TERMINAL_THEMES } from "./terminalOptions";
 
 describe("theme", () => {
-  it("opens in light mode", () => {
-    expect(INITIAL_THEME).toBe("light");
+  it("uses the light theme until the stored theme loads", () => {
+    expect(DEFAULT_THEME).toBe("light");
   });
 
   it("labels the toggle with the theme it switches to", () => {
