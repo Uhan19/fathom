@@ -8,21 +8,52 @@ export interface FontChoice {
   added?: boolean;
 }
 
-export const CHAT_FONTS: FontChoice[] = [
-  { key: "sf-mono", name: "SF Mono", stack: 'ui-monospace, "SF Mono", Menlo, monospace' },
-  { key: "menlo", name: "Menlo", stack: "Menlo, monospace" },
-  { key: "monaco", name: "Monaco", stack: "Monaco, monospace" },
-  { key: "courier", name: "Courier New", stack: '"Courier New", Courier, monospace' },
-];
+export type Platform = "macos" | "linux";
 
 const BODY_STACK = "Inter, system-ui, sans-serif";
+const DEFAULT_BOARD_FONT: FontChoice = { key: "default", name: "Inter + Saira", stack: BODY_STACK, heading: '"Saira", Inter, system-ui, sans-serif' };
+const INTER: FontChoice = { key: "inter", name: "Inter", stack: BODY_STACK };
 
-export const BOARD_FONTS: FontChoice[] = [
-  { key: "default", name: "Inter + Saira", stack: BODY_STACK, heading: '"Saira", Inter, system-ui, sans-serif' },
-  { key: "inter", name: "Inter", stack: BODY_STACK },
-  { key: "system", name: "SF Pro (system)", stack: "system-ui, -apple-system, sans-serif" },
-  { key: "avenir", name: "Avenir Next", stack: '"Avenir Next", Avenir, system-ui, sans-serif' },
-];
+const PRESETS: Record<Platform, Record<Surface, FontChoice[]>> = {
+  macos: {
+    chat: [
+      { key: "sf-mono", name: "SF Mono", stack: 'ui-monospace, "SF Mono", Menlo, monospace' },
+      { key: "menlo", name: "Menlo", stack: "Menlo, monospace" },
+      { key: "monaco", name: "Monaco", stack: "Monaco, monospace" },
+      { key: "courier", name: "Courier New", stack: '"Courier New", Courier, monospace' },
+    ],
+    board: [
+      DEFAULT_BOARD_FONT,
+      INTER,
+      { key: "system", name: "SF Pro (system)", stack: "system-ui, -apple-system, sans-serif" },
+      { key: "avenir", name: "Avenir Next", stack: '"Avenir Next", Avenir, system-ui, sans-serif' },
+    ],
+  },
+  linux: {
+    chat: [
+      { key: "jetbrains-mono", name: "JetBrains Mono", stack: '"JetBrains Mono", monospace' },
+      { key: "dejavu-sans-mono", name: "DejaVu Sans Mono", stack: '"DejaVu Sans Mono", monospace' },
+      { key: "liberation-mono", name: "Liberation Mono", stack: '"Liberation Mono", monospace' },
+      { key: "noto-sans-mono", name: "Noto Sans Mono", stack: '"Noto Sans Mono", monospace' },
+    ],
+    board: [
+      DEFAULT_BOARD_FONT,
+      INTER,
+      { key: "system", name: "System UI", stack: "system-ui, sans-serif" },
+      { key: "dejavu-sans", name: "DejaVu Sans", stack: '"DejaVu Sans", system-ui, sans-serif' },
+    ],
+  },
+};
+
+export function platformOf(navigatorPlatform: string): Platform {
+  return navigatorPlatform.startsWith("Mac") ? "macos" : "linux";
+}
+
+export const PLATFORM = platformOf(globalThis.navigator?.platform ?? "");
+
+export function presetFonts(surface: Surface, platform: Platform = PLATFORM): FontChoice[] {
+  return PRESETS[platform][surface];
+}
 
 const CHAT_FALLBACK = "ui-monospace, monospace";
 const BOARD_FALLBACK = "system-ui, sans-serif";
@@ -60,18 +91,18 @@ function addedChoice(family: string, fallback: string): FontChoice {
   return { key: addedFontKey(family), name: family, stack: `${cssFamily(family)}, ${fallback}`, added: true };
 }
 
-export function surfaceFonts(appearance: Appearance, surface: Surface): FontChoice[] {
+export function surfaceFonts(appearance: Appearance, surface: Surface, platform: Platform = PLATFORM): FontChoice[] {
   return surface === "chat"
-    ? [...CHAT_FONTS, ...appearance.chatAddedFonts.map((f) => addedChoice(f, CHAT_FALLBACK))]
-    : [...BOARD_FONTS, ...appearance.boardAddedFonts.map((f) => addedChoice(f, BOARD_FALLBACK))];
+    ? [...presetFonts("chat", platform), ...appearance.chatAddedFonts.map((f) => addedChoice(f, CHAT_FALLBACK))]
+    : [...presetFonts("board", platform), ...appearance.boardAddedFonts.map((f) => addedChoice(f, BOARD_FALLBACK))];
 }
 
 export function fontChoice(fonts: FontChoice[], key: string): FontChoice {
   return fonts.find((f) => f.key === key) ?? fonts[0];
 }
 
-export function chatFontStack(appearance: Appearance): string {
-  return fontChoice(surfaceFonts(appearance, "chat"), appearance.chatFont).stack;
+export function chatFontStack(appearance: Appearance, platform: Platform = PLATFORM): string {
+  return fontChoice(surfaceFonts(appearance, "chat", platform), appearance.chatFont).stack;
 }
 
 export function addFont(appearance: Appearance, surface: Surface, family: string): Appearance {
@@ -82,23 +113,23 @@ export function addFont(appearance: Appearance, surface: Surface, family: string
     : { ...appearance, boardAddedFonts: list, boardFont: addedFontKey(family) };
 }
 
-export function removeFont(appearance: Appearance, surface: Surface, family: string): Appearance {
+export function removeFont(appearance: Appearance, surface: Surface, family: string, platform: Platform = PLATFORM): Appearance {
   const key = addedFontKey(family);
   return surface === "chat"
     ? {
         ...appearance,
         chatAddedFonts: appearance.chatAddedFonts.filter((f) => f !== family),
-        chatFont: appearance.chatFont === key ? CHAT_FONTS[0].key : appearance.chatFont,
+        chatFont: appearance.chatFont === key ? presetFonts("chat", platform)[0].key : appearance.chatFont,
       }
     : {
         ...appearance,
         boardAddedFonts: appearance.boardAddedFonts.filter((f) => f !== family),
-        boardFont: appearance.boardFont === key ? BOARD_FONTS[0].key : appearance.boardFont,
+        boardFont: appearance.boardFont === key ? presetFonts("board", platform)[0].key : appearance.boardFont,
       };
 }
 
-export function boardStyle(appearance: Appearance): Record<string, string> {
-  const font = fontChoice(surfaceFonts(appearance, "board"), appearance.boardFont);
+export function boardStyle(appearance: Appearance, platform: Platform = PLATFORM): Record<string, string> {
+  const font = fontChoice(surfaceFonts(appearance, "board", platform), appearance.boardFont);
   return {
     "--body-font": font.stack,
     "--heading": font.heading ?? font.stack,

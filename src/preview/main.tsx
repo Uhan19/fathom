@@ -1,6 +1,7 @@
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import { ROW_ORDER, type BoardView, type Card, type CardPlace, type Column, type Layout, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type Settings } from "../api";
+import { presetFonts } from "../appearance";
 import { cellCount, groupCards, type Cells } from "../board";
 import { moveTo } from "../columnOrder";
 import {
@@ -29,7 +30,7 @@ let settings: Settings = {
   terminalLabel: "firstmate.role=primary",
   hcSession: "",
   hcSocket: "",
-  chatFont: "sf-mono",
+  chatFont: presetFonts("chat")[0].key,
   chatFontSize: 13,
   boardFont: "default",
   boardFontSize: 14,

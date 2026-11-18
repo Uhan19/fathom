@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   addFont,
-  BOARD_FONTS,
   boardStyle,
-  CHAT_FONTS,
   chatFontStack,
   cssFamily,
   fontChoice,
+  platformOf,
+  presetFonts,
   removeFont,
   surfaceFonts,
   type Appearance,
@@ -23,12 +23,31 @@ const base: Appearance = {
 
 describe("appearance", () => {
   it("falls back to the first font for an unknown key", () => {
-    expect(fontChoice(CHAT_FONTS, "comic").key).toBe("sf-mono");
-    expect(fontChoice(CHAT_FONTS, "menlo").name).toBe("Menlo");
+    expect(fontChoice(presetFonts("chat", "macos"), "comic").key).toBe("sf-mono");
+    expect(fontChoice(presetFonts("chat", "macos"), "menlo").name).toBe("Menlo");
+  });
+
+  it("tells macOS from Linux by the navigator platform", () => {
+    expect(platformOf("MacIntel")).toBe("macos");
+    expect(platformOf("Linux x86_64")).toBe("linux");
+    expect(platformOf("Linux aarch64")).toBe("linux");
+  });
+
+  it("offers Linux presets with the bundled JetBrains Mono first", () => {
+    const chat = presetFonts("chat", "linux");
+    expect(chat.map((f) => f.name)).toEqual(["JetBrains Mono", "DejaVu Sans Mono", "Liberation Mono", "Noto Sans Mono"]);
+    expect(chatFontStack({ ...base, chatFont: "sf-mono" }, "linux")).toBe('"JetBrains Mono", monospace');
+    expect(presetFonts("board", "linux").map((f) => f.name)).toEqual(["Inter + Saira", "Inter", "System UI", "DejaVu Sans"]);
+    expect(presetFonts("board", "linux")[0]).toEqual(presetFonts("board", "macos")[0]);
+  });
+
+  it("keeps the macOS presets", () => {
+    expect(presetFonts("chat", "macos").map((f) => f.name)).toEqual(["SF Mono", "Menlo", "Monaco", "Courier New"]);
+    expect(presetFonts("board", "macos").map((f) => f.name)).toEqual(["Inter + Saira", "Inter", "SF Pro (system)", "Avenir Next"]);
   });
 
   it("scales the board from a 14 px base and keeps headings on the chosen font", () => {
-    const style = boardStyle({ ...base, chatFont: "menlo", boardFont: "avenir", boardFontSize: 21 });
+    const style = boardStyle({ ...base, chatFont: "menlo", boardFont: "avenir", boardFontSize: 21 }, "macos");
     expect(style["--board-scale"]).toBe("1.5");
     expect(style["--heading"]).toBe(style["--body-font"]);
   });
@@ -36,7 +55,7 @@ describe("appearance", () => {
   it("keeps the Saira headings for the default board font", () => {
     const style = boardStyle(base);
     expect(style["--board-scale"]).toBe("1");
-    expect(style["--heading"]).toBe(BOARD_FONTS[0].heading);
+    expect(style["--heading"]).toBe(presetFonts("board", "macos")[0].heading);
   });
 
   it("adds an installed font to one surface, selects it, and adds it only once", () => {
@@ -55,10 +74,12 @@ describe("appearance", () => {
   });
 
   it("falls back to the default font when the chosen added font is removed", () => {
-    const removed = removeFont(addFont(base, "board", "Georgia"), "board", "Georgia");
+    const removed = removeFont(addFont(base, "board", "Georgia"), "board", "Georgia", "macos");
     expect(removed.boardAddedFonts).toEqual([]);
     expect(removed.boardFont).toBe("default");
-    const kept = removeFont(addFont({ ...addFont(base, "chat", "Iosevka"), chatFont: "menlo" }, "chat", "PT Mono"), "chat", "Iosevka");
+    expect(removeFont(addFont(base, "chat", "Iosevka"), "chat", "Iosevka", "macos").chatFont).toBe("sf-mono");
+    expect(removeFont(addFont(base, "chat", "Iosevka"), "chat", "Iosevka", "linux").chatFont).toBe("jetbrains-mono");
+    const kept = removeFont(addFont({ ...addFont(base, "chat", "Iosevka"), chatFont: "menlo" }, "chat", "PT Mono"), "chat", "Iosevka", "macos");
     expect(kept.chatFont).toBe("family:PT Mono");
   });
 
