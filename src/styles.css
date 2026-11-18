@@ -474,8 +474,20 @@ code,
 
 .brand {
   display: flex;
+  align-items: center;
+  gap: calc(12px * var(--board-scale));
   margin-right: auto;
   min-width: 0;
+}
+
+.brand-mark {
+  flex: none;
+  width: calc(26px * var(--board-scale));
+  height: calc(26px * var(--board-scale));
+}
+
+.brand-mark-gap {
+  stroke: var(--header-bg);
 }
 
 .brand-name {

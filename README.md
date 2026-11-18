@@ -1,6 +1,6 @@
 # Fathom
 
-Fathom is a macOS desktop board for an agent's tasks.
+Fathom is a desktop board for an agent's tasks, for macOS and Linux.
 It reads Firstmate's task list when a Firstmate home is set, and otherwise keeps its own backlog that any agent fills through Fathom's MCP server.
 Each task is a card, each project starts as a column, and each row shows how deep the work sits.
 You can add your own columns, drag columns into the order you like, and delete ones you no longer need.
@@ -12,10 +12,28 @@ Clicking the sailor opens that crewmate's live terminal.
 
 ## Requirements
 
-- macOS, Rust (stable), Node 22 or newer, and pnpm.
+- macOS, or Linux on x86_64 or arm64.
+- Rust (stable), Node 22 or newer, and pnpm.
 - For Firstmate's tasks: Firstmate installed, with `bin/fm-tasks-axi.sh` and `bin/fm-inbox.sh` in its home.
-- `hc` (herdr-core) and `tasks-axi` on your login shell's PATH.
+- herdr-core and `tasks-axi` on your login shell's PATH.
+  Fathom looks for `herdr-core` first and then for `hc`, so it still works where another program owns the name `hc`.
 - To open an agent from the chat panel: `claude` or `codex` on your login shell's PATH.
+
+On Linux, also install Tauri's system packages.
+On Debian or Ubuntu:
+
+```sh
+sudo apt-get install build-essential curl wget file pkg-config libxdo-dev libssl-dev \
+  libayatana-appindicator3-dev librsvg2-dev libwebkit2gtk-4.1-dev
+```
+
+herdr-core installs the same way on both systems:
+
+```sh
+curl -fsSL https://releases.herdr.dev/core/install.sh | sh
+```
+
+On Linux, herdr-core keeps terminals running after Fathom quits through the systemd user manager, which mainstream desktop distributions run.
 
 ## Run the dev build
 
@@ -43,6 +61,7 @@ pnpm check
 ```
 
 This runs the TypeScript compiler, the vitest suite, `cargo fmt --check`, `cargo clippy -D warnings`, and `cargo test`.
+GitHub Actions runs the same checks on Ubuntu 24.04 for every pull request and every push to `main`.
 
 Three Rust tests are ignored by default because they need outside state:
 
@@ -67,13 +86,31 @@ FATHOM_LAB_SESSION=<lab session> FATHOM_LAB_SOCKET=<lab socket> \
 pnpm release
 ```
 
-The script reads the version from `src-tauri/tauri.conf.json` and builds `release/<version>/Fathom.app` with an ad-hoc signature.
-It refuses to overwrite an existing version, so bump the version first.
+The script reads the version from `src-tauri/tauri.conf.json` and builds into `release/<version>/`:
+
+- on macOS, `Fathom.app` with an ad-hoc signature;
+- on Linux, a Debian package `Fathom_<version>_<arch>.deb` and an AppImage `Fathom_<version>_<arch>.AppImage`.
+
+Each system builds only its own bundles.
+The script refuses to overwrite an existing version, so bump the version first.
 It keeps the newest two versions, deletes older ones, and installs nothing.
 `release/` is ignored by git.
 
-Open the app from Finder or with `open release/<version>/Fathom.app`.
+On macOS, open the app from Finder or with `open release/<version>/Fathom.app`.
 The first launch of a new build can take several seconds while macOS checks the new binary; later launches paint from the cache.
+
+On Linux, install the Debian package and start Fathom from the desktop's app menu or with `fathom`:
+
+```sh
+sudo apt install ./release/<version>/Fathom_<version>_<arch>.deb
+```
+
+Or run the AppImage directly, which needs no install:
+
+```sh
+chmod +x release/<version>/Fathom_<version>_<arch>.AppImage
+release/<version>/Fathom_<version>_<arch>.AppImage
+```
 
 ## Roll back
 
@@ -83,14 +120,20 @@ Quit Fathom and open the previous version from `release/`.
 open release/<previous version>/Fathom.app
 ```
 
+On Linux, install the previous Debian package with `sudo apt install --allow-downgrades ./release/<previous version>/Fathom_<previous version>_<arch>.deb`, or run the previous AppImage.
+
 Both versions share the same database, and migrations only ever add, so an older build still reads it.
 
 ## Where the data lives
 
-| What | Release build | Dev build |
-| --- | --- | --- |
-| Database | `~/Library/Application Support/app.fathom.board/fathom.sqlite` | `~/Library/Application Support/app.fathom.board.dev/fathom.sqlite` |
-| Launch timing log | `~/Library/Logs/app.fathom.board/launch.log` | `~/Library/Logs/app.fathom.board.dev/launch.log` |
+| What | System | Release build | Dev build |
+| --- | --- | --- | --- |
+| Database | macOS | `~/Library/Application Support/app.fathom.board/fathom.sqlite` | `~/Library/Application Support/app.fathom.board.dev/fathom.sqlite` |
+| Database | Linux | `~/.local/share/app.fathom.board/fathom.sqlite` | `~/.local/share/app.fathom.board.dev/fathom.sqlite` |
+| Launch timing log | macOS | `~/Library/Logs/app.fathom.board/launch.log` | `~/Library/Logs/app.fathom.board.dev/launch.log` |
+| Launch timing log | Linux | `~/.local/share/app.fathom.board/logs/launch.log` | `~/.local/share/app.fathom.board.dev/logs/launch.log` |
+
+On Linux, `~/.local/share` is `$XDG_DATA_HOME` when that is set.
 
 The database holds Fathom's own backlog and what Fathom adds on top of either task source:
 
@@ -111,6 +154,8 @@ The same export runs from the command line:
 ```sh
 release/<version>/Fathom.app/Contents/MacOS/fathom --export <directory>
 ```
+
+On Linux, run `fathom --export <directory>` after installing the Debian package, or pass `--export` to the AppImage.
 
 Deleting the database resets Fathom; nothing in Firstmate's home is affected.
 
@@ -197,6 +242,8 @@ Or pass it for one session with `claude --mcp-config fathom-mcp.json`, where `fa
 }
 ```
 
+On Linux, the command is `/usr/bin/fathom` once the Debian package is installed, or the path of the AppImage.
+
 Release builds live in versioned folders, so point the command at the new build after an upgrade.
 
 ### Board requests and the nudge
@@ -242,8 +289,8 @@ A change triggers the same debounced re-read the Firstmate watchers use, so the 
   Adding a column with the same name makes a new added column, not the project column.
 - Adding, reordering and deleting columns only change Fathom's database; Firstmate's task list is never touched.
 
-A release build opened from Finder does not inherit your shell's PATH.
-Fathom asks your login shell for its PATH once at startup and uses it to find `hc` and `tasks-axi`.
+A release build opened from Finder or a Linux desktop launcher does not inherit your shell's PATH.
+Fathom asks your login shell for its PATH once at startup and uses it to find herdr-core and `tasks-axi`.
 
 ## Arranging cards and asking for moves
 
@@ -271,7 +318,7 @@ Fathom asks your login shell for its PATH once at startup and uses it to find `h
   Only records with `backend=hc` and exactly one `hc_session` and `hc_terminal` count.
 - The sailor shows when that session is the one set in Settings and herdr-core lists the terminal as live.
 - Its visor glows and blinks while herdr-core reports the terminal as `working` and stays dimmed for any other status.
-  With reduced motion turned on in macOS, the working visor glows without blinking.
+  With reduced motion turned on in the system settings, the working visor glows without blinking.
 - Changes come from herdr-core events and from changes to the `.meta` files; there is no polling loop.
 - Clicking the sailor opens the crewmate's terminal in a large view, attached the same way as the chat panel, so you can watch and type.
   The chat panel stays attached to its terminal meanwhile.
@@ -289,7 +336,9 @@ Fathom asks your login shell for its PATH once at startup and uses it to find `h
 - herdr-core session and socket; empty means herdr-core's defaults.
 - Row names.
 - Appearance: a font and a size for the chat, and a font and a size for the board.
-  "Add an installed font…" in either font menu lists every font family installed on the Mac, each shown in its own face.
+  The font menus offer fonts that come with each system: SF Mono, Menlo, Monaco and Courier New for the chat on macOS, and JetBrains Mono (bundled with Fathom), DejaVu Sans Mono, Liberation Mono and Noto Sans Mono on Linux.
+  The chat font defaults to SF Mono on macOS and to JetBrains Mono on Linux.
+  "Add an installed font…" in either font menu lists every font family installed on the computer (through fontconfig on Linux), each shown in its own face.
   An added font joins that menu and is selected; the same list removes it again.
   Changes show at once while the dialog is open; Save keeps them across launches and Cancel puts them back.
 
@@ -312,7 +361,7 @@ The panel offers Claude Code and Codex, and Firstmate as well on a board with a 
 It remembers the last agent you opened.
 The panel's title names the agent; on the backlog it never says Firstmate.
 
-Fathom starts the agent with `hc run --bg` on its own herdr-core session and labels the terminal `fathom.role=chat` and `fathom.agent=<claude|codex|firstmate>`.
+Fathom starts the agent with herdr-core's `run --bg` on its own herdr-core session and labels the terminal `fathom.role=chat` and `fathom.agent=<claude|codex|firstmate>`.
 The label makes it the chat terminal, so the panel finds it again after Fathom restarts.
 herdr-core runs the program in its own environment, so Fathom looks the command up on your login shell's PATH and starts it by its full path.
 
@@ -337,12 +386,13 @@ If herdr-core or the agent's command is missing, the panel says which one, and a
 - Shift+Enter sends a new line instead of submitting, encoded the way herdr-core's own key encoder does it.
   It sends `ESC[13;2u` while the program has kitty keyboard mode on and `ESC[27;2;13~` otherwise.
   Fathom follows the kitty mode from the program's output, including the mode herdr-core restores when an attach starts.
+- On Linux, Ctrl+Shift+V or Shift+Insert pastes into the chat; Ctrl+V reaches the program as a control key.
 - Selecting text in the chat with the mouse copies it to the clipboard.
-  Option-drag selects text even when the program takes the mouse.
+  Option-drag on macOS, or Shift-drag on Linux, selects text even when the program takes the mouse.
 - A program can copy to the clipboard with OSC 52, for example when it handles mouse selection itself.
   Fathom never answers a program's request to read the clipboard.
-- Dropping files from Finder onto the chat panel types their full paths, as a paste, without pressing Enter.
-  Each path is escaped with backslashes the way macOS terminal apps do it, and the paths are separated and followed by a space.
+- Dropping files from Finder or a Linux file manager onto the chat panel types their full paths, as a paste, without pressing Enter.
+  Each path is escaped with backslashes the way macOS and Linux terminal apps do it, and the paths are separated and followed by a space.
   A file dropped anywhere else in the window does nothing.
 
 The message box on a card sends `<card title> (<task id>): <text>` to the same terminal with `hc send`.

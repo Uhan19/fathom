@@ -11,7 +11,7 @@ use serde_json::Value;
 
 use crate::shell_path;
 
-const PROGRAM: &str = "hc";
+const PROGRAMS: [&str; 2] = ["herdr-core", "hc"];
 const AMBIENT_ENV: [&str; 5] = [
     "HC_TERMINAL_ID",
     "HC_TERMINAL_SOCKET",
@@ -545,7 +545,7 @@ pub(crate) fn program() -> Result<std::path::PathBuf, String> {
     if let Some(fake) = tests::FAKE_HC.with(|fake| fake.borrow().clone()) {
         return Ok(fake);
     }
-    shell_path::find(PROGRAM).ok_or_else(|| "hc (herdr-core) is not on PATH".to_string())
+    shell_path::find_first(&PROGRAMS).ok_or_else(|| "herdr-core (hc) is not on PATH".to_string())
 }
 
 fn connection_env(connection: &Connection) -> Vec<(&'static str, Option<String>)> {

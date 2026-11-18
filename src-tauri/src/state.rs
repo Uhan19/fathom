@@ -46,7 +46,10 @@ const KEY_CHAT_ADDED_FONTS: &str = "chatAddedFonts";
 const KEY_BOARD_ADDED_FONTS: &str = "boardAddedFonts";
 const KEY_AGENT_FOLDER: &str = "agentFolder";
 const KEY_CHAT_AGENT: &str = "chatAgent";
+#[cfg(target_os = "macos")]
 const DEFAULT_CHAT_FONT: &str = "sf-mono";
+#[cfg(not(target_os = "macos"))]
+const DEFAULT_CHAT_FONT: &str = "jetbrains-mono";
 const DEFAULT_CHAT_FONT_SIZE: u16 = 13;
 const DEFAULT_BOARD_FONT: &str = "default";
 const DEFAULT_BOARD_FONT_SIZE: u16 = 14;
@@ -411,7 +414,7 @@ impl AppState {
                 cwd: &cwd,
                 server: &server,
             },
-            shell_path::find,
+            |program| shell_path::find_first(&[program]),
         )
     }
 

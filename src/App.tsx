@@ -22,6 +22,7 @@ import { emptyBoardText } from "./source";
 import { moveTo } from "./columnOrder";
 import { startDrag } from "./drag";
 import { Board } from "./components/Board";
+import { Brand } from "./components/Brand";
 import { CardDetail } from "./components/CardDetail";
 import { ChatPanel } from "./components/ChatPanel";
 import { chatTitle, initialAgent, type AgentKey } from "./agents";
@@ -192,11 +193,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="top">
-        <div className="brand">
-          <span className="brand-name" role="img" aria-label="Fathom">
-            <span aria-hidden="true">FATHOM</span>
-          </span>
-        </div>
+        <Brand />
         <span className="count">
           <span className="count-label">At the surface</span>
           <b className="count-surface">{counts.surface}</b>
