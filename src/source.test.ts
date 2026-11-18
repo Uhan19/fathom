@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emptyBoardText, moveCopy, projectTasks } from "./source";
+import { cardMessageLabel, cardMessagePrompt, emptyBoardText, moveCopy, projectTasks } from "./source";
 
 const move = "from Seabed to Surface";
 
@@ -39,5 +39,15 @@ describe("board wording", () => {
   it("explains an empty board for each source", () => {
     expect(emptyBoardText("firstmate", "/work/firstmate")).toBe("No tasks yet in /work/firstmate.");
     expect(emptyBoardText("fathom", "")).toBe("No tasks yet. Agents add them through Fathom's MCP server.");
+  });
+});
+
+describe("cardMessagePrompt", () => {
+  it("names Firstmate only on Firstmate boards", () => {
+    expect(cardMessagePrompt("firstmate", true)).toBe("Message Firstmate about this card…");
+    expect(cardMessagePrompt("firstmate", false)).toBe("Connect the chat panel to message Firstmate");
+    expect(cardMessagePrompt("fathom", true)).toBe("Message the agent about this card…");
+    expect(cardMessagePrompt("fathom", false)).toBe("Connect the chat panel to message the agent");
+    expect(cardMessageLabel("fathom")).toBe("Message the agent about this card");
   });
 });

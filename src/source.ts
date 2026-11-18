@@ -46,6 +46,14 @@ export function moveCopy(source: SourceKind, status: MoveStatus, move: string): 
   }
 }
 
+export function cardMessageLabel(source: SourceKind): string {
+  return `Message ${OWNERS[source].agent} about this card`;
+}
+
+export function cardMessagePrompt(source: SourceKind, connected: boolean): string {
+  return connected ? `${cardMessageLabel(source)}…` : `Connect the chat panel to message ${OWNERS[source].agent}`;
+}
+
 export function projectTasks(source: SourceKind): string {
   return OWNERS[source].tasks;
 }

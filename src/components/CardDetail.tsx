@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, errorText, type Card, type Detail, type MoveRequest, type RowKey, type SourceKind, type Terminal } from "../api";
 import { cardMessage, holdHeading, linkLabel } from "../board";
-import { moveCopy } from "../source";
+import { cardMessageLabel, cardMessagePrompt, moveCopy } from "../source";
 import { Close } from "./Icons";
 
 interface CardDetailProps {
@@ -126,12 +126,12 @@ export function CardDetail({ card, source, rowNames, request, width, chatTermina
       >
         <div className="send-row">
           <label className="grow">
-            <span className="sr-only">Message Firstmate about this card</span>
+            <span className="sr-only">{cardMessageLabel(source)}</span>
             <input
               className="text-input"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder={chatTerminal ? "Message Firstmate about this card…" : "Connect the chat panel to message Firstmate"}
+              placeholder={cardMessagePrompt(source, chatTerminal !== null)}
               disabled={!chatTerminal}
             />
           </label>
