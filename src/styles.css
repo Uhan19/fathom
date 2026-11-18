@@ -969,9 +969,13 @@ button.column-name:focus-visible,
 .column-ghost {
   max-width: 320px;
   padding: 0 8px;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-line);
+  border-radius: 6px;
+}
+
+.column-ghost .column-name {
+  color: var(--card-ink);
 }
 
 .column-slot {
