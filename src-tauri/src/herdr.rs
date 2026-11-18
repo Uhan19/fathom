@@ -1119,4 +1119,25 @@ done
         herdr.detach_all();
         herdr.stop_events();
     }
+
+    #[test]
+    #[ignore = "needs FATHOM_LAB_SESSION, FATHOM_LAB_SOCKET and FATHOM_LAB_TASK for a worker started in a throwaway herdr-core session"]
+    fn lists_a_started_worker_in_a_lab_session_as_its_task_sailor() {
+        let connection = Connection {
+            session: std::env::var("FATHOM_LAB_SESSION").expect("FATHOM_LAB_SESSION"),
+            socket: std::env::var("FATHOM_LAB_SOCKET").expect("FATHOM_LAB_SOCKET"),
+        };
+        let task = std::env::var("FATHOM_LAB_TASK").expect("FATHOM_LAB_TASK");
+        let herdr = Herdr::new(connection, Arc::new(|_| {}));
+        herdr.start_events();
+        wait_for("the worker to show as a sailor", || {
+            crate::workers::task_workers(&herdr.terminals())
+                .iter()
+                .any(|w| w.task_id == task)
+        });
+        for worker in crate::workers::task_workers(&herdr.terminals()) {
+            println!("sailor {worker:?}");
+        }
+        herdr.stop_events();
+    }
 }
