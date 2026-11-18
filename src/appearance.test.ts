@@ -33,7 +33,7 @@ describe("appearance", () => {
     expect(style["--heading"]).toBe(style["--body-font"]);
   });
 
-  it("keeps the Space Grotesk headings for the default board font", () => {
+  it("keeps the Saira headings for the default board font", () => {
     const style = boardStyle(base);
     expect(style["--board-scale"]).toBe("1");
     expect(style["--heading"]).toBe(BOARD_FONTS[0].heading);

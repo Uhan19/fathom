@@ -18,7 +18,7 @@ export const CHAT_FONTS: FontChoice[] = [
 const BODY_STACK = "Inter, system-ui, sans-serif";
 
 export const BOARD_FONTS: FontChoice[] = [
-  { key: "default", name: "Inter + Space Grotesk", stack: BODY_STACK, heading: '"Space Grotesk", Inter, system-ui, sans-serif' },
+  { key: "default", name: "Inter + Saira", stack: BODY_STACK, heading: '"Saira", Inter, system-ui, sans-serif' },
   { key: "inter", name: "Inter", stack: BODY_STACK },
   { key: "system", name: "SF Pro (system)", stack: "system-ui, -apple-system, sans-serif" },
   { key: "avenir", name: "Avenir Next", stack: '"Avenir Next", Avenir, system-ui, sans-serif' },
