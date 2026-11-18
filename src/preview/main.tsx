@@ -1,6 +1,7 @@
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
-import type { BoardView, Card, CardPlace, MoveRequest, Overlay, Placement, Settings } from "../api";
+import type { BoardView, Card, CardPlace, Column, MoveRequest, Overlay, Placement, Settings } from "../api";
+import { cellCount, groupCards } from "../board";
 import { FIXTURE_CARDS, FIXTURE_COLUMNS, FIXTURE_REQUESTS, FIXTURE_SCREEN, FIXTURE_TERMINALS, FIXTURE_WORKERS, fixtureDetail, workerScreen } from "./fixture";
 
 const params = new URLSearchParams(location.search);
@@ -24,7 +25,8 @@ let settings: Settings = {
   boardAddedFonts: [],
 };
 const INSTALLED_FONTS = ["American Typewriter", "Andale Mono", "Avenir Next", "Courier New", "Georgia", "Helvetica Neue", "Menlo", "PT Mono", "Times New Roman", "Trebuchet MS"];
-let columns = FIXTURE_COLUMNS.map((c) => ({ ...c }));
+let columns: Column[] = FIXTURE_COLUMNS.map((c) => ({ ...c }));
+let nextColumnId = columns.length + 1;
 const rowNames = new Map<string, string>();
 const cards: Card[] = empty ? [] : FIXTURE_CARDS;
 let places: CardPlace[] = [];
@@ -40,10 +42,10 @@ const sendRequest = (request: MoveRequest) => {
 };
 
 const placeCard = (p: Placement) => {
-  const previous = new Map(places.map((place) => [place.cardId, place.project]));
+  const previous = new Map(places.map((place) => [place.cardId, place.column]));
   places = [
     ...places.filter((place) => !p.order.includes(place.cardId)),
-    ...p.order.map((id, position) => ({ cardId: id, project: id === p.cardId ? p.project : (previous.get(id) ?? null), row: p.toRow, position })),
+    ...p.order.map((id, position) => ({ cardId: id, column: id === p.cardId ? p.column : (previous.get(id) ?? null), row: p.toRow, position })),
   ];
   if (p.fromRow === p.toRow) return;
   requests.filter((r) => r.cardId === p.cardId && OPEN.includes(r.status)).forEach((r) => (r.status = "superseded"));
@@ -62,6 +64,24 @@ const placeCard = (p: Placement) => {
   requests.push(request);
   sendRequest(request);
   if (cards.find((c) => c.id === p.cardId)?.row === p.toRow) request.status = "landed";
+};
+
+const addColumn = (name: string): Column[] => {
+  const trimmed = name.trim();
+  if (!trimmed) throw "a new column needs a name";
+  const position = Math.max(-1, ...columns.map((c) => c.position)) + 1;
+  columns = [...columns, { id: nextColumnId++, project: null, name: trimmed, position, width: 240, collapsed: false }];
+  return columns;
+};
+
+const deleteColumn = (id: number): Column[] => {
+  const column = columns.find((c) => c.id === id);
+  if (!column) return columns;
+  const held = cellCount(groupCards(cards, columns, overlay()), id);
+  if (held > 0) throw `${column.name} still holds ${held} ${held === 1 ? "card" : "cards"}; move them to another column first`;
+  places = places.map((place) => (place.column === id ? { ...place, column: null } : place));
+  columns = columns.filter((c) => c.id !== id);
+  return columns;
 };
 
 const view = (fromCache: boolean): BoardView => ({
@@ -98,15 +118,19 @@ mockIPC(
         return fixtureDetail(cards.find((c) => c.id === args.id) ?? FIXTURE_CARDS[0]);
       case "update_column":
         columns = columns.map((c) =>
-          c.project === args.project
+          c.id === args.id
             ? { ...c, width: (args.width as number | null) ?? c.width, collapsed: (args.collapsed as boolean | null) ?? c.collapsed }
             : c,
         );
         return null;
       case "set_column_name":
-        console.info("set_column_name", args.project, JSON.stringify(args.name));
-        columns = columns.map((c) => (c.project === args.project ? { ...c, name: (args.name as string).trim() || c.project } : c));
+        console.info("set_column_name", args.id, JSON.stringify(args.name));
+        columns = columns.map((c) => (c.id === args.id ? { ...c, name: (args.name as string).trim() || c.project || c.name } : c));
         return null;
+      case "add_column":
+        return addColumn(args.name as string);
+      case "delete_column":
+        return deleteColumn(args.id as number);
       case "set_row_name":
         rowNames.set(args.row as string, args.name as string);
         return null;

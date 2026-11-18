@@ -107,10 +107,10 @@ function measureRows(board: HTMLElement, draggedId: string): RowBox[] {
       row: rowEl.dataset.row as RowKey,
       top: band.top,
       bottom: band.bottom,
-      cells: [...rowEl.querySelectorAll<HTMLElement>(".cell[data-project]")].map((cell) => {
+      cells: [...rowEl.querySelectorAll<HTMLElement>(".cell[data-column]")].map((cell) => {
         const box = cell.getBoundingClientRect();
         return {
-          project: cell.dataset.project!,
+          column: Number(cell.dataset.column),
           left: box.left,
           right: box.right,
           collapsed: cell.dataset.collapsed === "true",

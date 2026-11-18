@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OptionalExtension, params};
@@ -9,16 +9,20 @@ use crate::tasks::{Card, Row};
 pub const FILE_NAME: &str = "fathom.sqlite";
 pub const DEFAULT_COLUMN_WIDTH: i64 = 240;
 
-const MIGRATIONS: [&str; 2] = [
+const MIGRATIONS: [&str; 3] = [
     include_str!("../migrations/0001_init.sql"),
     include_str!("../migrations/0002_card_moves.sql"),
+    include_str!("../migrations/0003_column_ids.sql"),
 ];
+const COLUMN_FIELDS: &str = "id, project, name, position, width, collapsed";
+const NEXT_POSITION: &str = "(SELECT COALESCE(MAX(position) + 1, 0) FROM columns)";
 const OPEN_STATUSES: &str = "'sending', 'asked', 'failed', 'answered'";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Column {
-    pub project: String,
+    pub id: i64,
+    pub project: Option<String>,
     pub name: String,
     pub position: i64,
     pub width: i64,
@@ -44,7 +48,7 @@ pub struct Snapshot {
 #[serde(rename_all = "camelCase")]
 pub struct CardPlace {
     pub card_id: String,
-    pub project: Option<String>,
+    pub column: Option<i64>,
     pub row: Row,
     pub position: i64,
 }
@@ -152,75 +156,145 @@ impl Db {
     }
 
     pub fn columns(&self) -> Result<Vec<Column>, String> {
+        self.query_columns(false)
+    }
+
+    pub fn deleted_columns(&self) -> Result<Vec<Column>, String> {
+        self.query_columns(true)
+    }
+
+    fn query_columns(&self, deleted: bool) -> Result<Vec<Column>, String> {
         let mut stmt = self
             .conn
-            .prepare("SELECT project, name, position, width, collapsed FROM columns ORDER BY position, project")
+            .prepare(&format!(
+                "SELECT {COLUMN_FIELDS} FROM columns WHERE deleted = ?1 ORDER BY position, id"
+            ))
             .map_err(err)?;
         let rows = stmt
-            .query_map([], |r| {
+            .query_map(params![deleted], |r| {
                 Ok(Column {
-                    project: r.get(0)?,
-                    name: r.get(1)?,
-                    position: r.get(2)?,
-                    width: r.get(3)?,
-                    collapsed: r.get(4)?,
+                    id: r.get(0)?,
+                    project: r.get(1)?,
+                    name: r.get(2)?,
+                    position: r.get(3)?,
+                    width: r.get(4)?,
+                    collapsed: r.get(5)?,
                 })
             })
             .map_err(err)?;
         rows.collect::<Result<_, _>>().map_err(err)
     }
 
-    pub fn ensure_columns(&mut self, projects: &[String]) -> Result<Vec<Column>, String> {
-        let existing = self.columns()?;
-        let first = existing.iter().map(|c| c.position + 1).max().unwrap_or(0);
-        let mut missing: Vec<&String> = projects
+    pub fn ensure_columns(&mut self, cards: &[Card]) -> Result<Vec<Column>, String> {
+        let columns = self.columns()?;
+        let placed = self.placed_columns()?;
+        let homeless: BTreeSet<&str> = cards
             .iter()
-            .filter(|p| !existing.iter().any(|c| &c.project == *p))
+            .filter(|card| shown_column(card, &placed, &columns).is_none())
+            .map(|card| card.project.as_str())
             .collect();
-        missing.sort();
-        missing.dedup();
-        if missing.is_empty() {
-            return Ok(existing);
+        if homeless.is_empty() {
+            return Ok(columns);
         }
         let tx = self.conn.transaction().map_err(err)?;
-        for (position, project) in (first..).zip(missing) {
-            tx.execute(
-                "INSERT INTO columns (project, name, position, width, collapsed) VALUES (?1, ?1, ?2, ?3, 0)",
-                params![project, position, DEFAULT_COLUMN_WIDTH],
+        for project in homeless {
+            let restored = tx
+                .execute(
+                    "UPDATE columns SET deleted = 0 WHERE project = ?1",
+                    params![project],
+                )
+                .map_err(err)?;
+            if restored == 0 {
+                tx.execute(
+                    &format!("INSERT INTO columns (project, name, position, width) VALUES (?1, ?1, {NEXT_POSITION}, ?2)"),
+                    params![project, DEFAULT_COLUMN_WIDTH],
+                )
+                .map_err(err)?;
+            }
+        }
+        tx.commit().map_err(err)?;
+        self.columns()
+    }
+
+    pub fn add_column(&self, name: &str) -> Result<Vec<Column>, String> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("a new column needs a name".into());
+        }
+        self.conn
+            .execute(
+                &format!("INSERT INTO columns (project, name, position, width) VALUES (NULL, ?1, {NEXT_POSITION}, ?2)"),
+                params![name, DEFAULT_COLUMN_WIDTH],
             )
             .map_err(err)?;
+        self.columns()
+    }
+
+    pub fn delete_column(&mut self, id: i64, cards: &[Card]) -> Result<Vec<Column>, String> {
+        let columns = self.columns()?;
+        let Some(column) = columns.iter().find(|c| c.id == id) else {
+            return Ok(columns);
+        };
+        let placed = self.placed_columns()?;
+        let held = cards
+            .iter()
+            .filter(|card| shown_column(card, &placed, &columns) == Some(id))
+            .count();
+        if held > 0 {
+            return Err(format!(
+                "{} still holds {held} {}; move them to another column first",
+                column.name,
+                if held == 1 { "card" } else { "cards" }
+            ));
         }
+        let tx = self.conn.transaction().map_err(err)?;
+        tx.execute(
+            "UPDATE card_places SET column_id = NULL WHERE column_id = ?1",
+            params![id],
+        )
+        .map_err(err)?;
+        tx.execute(
+            "DELETE FROM columns WHERE id = ?1 AND project IS NULL",
+            params![id],
+        )
+        .map_err(err)?;
+        tx.execute("UPDATE columns SET deleted = 1 WHERE id = ?1", params![id])
+            .map_err(err)?;
         tx.commit().map_err(err)?;
         self.columns()
     }
 
     pub fn update_column(
         &self,
-        project: &str,
+        id: i64,
         width: Option<i64>,
         collapsed: Option<bool>,
     ) -> Result<(), String> {
         self.conn
             .execute(
-                "UPDATE columns SET width = COALESCE(?2, width), collapsed = COALESCE(?3, collapsed) WHERE project = ?1",
-                params![project, width, collapsed],
+                "UPDATE columns SET width = COALESCE(?2, width), collapsed = COALESCE(?3, collapsed) WHERE id = ?1",
+                params![id, width, collapsed],
             )
             .map_err(err)?;
         Ok(())
     }
 
-    pub fn set_column_name(&self, project: &str, name: &str) -> Result<(), String> {
-        let name = match name.trim() {
-            "" => project,
-            trimmed => trimmed,
-        };
+    pub fn set_column_name(&self, id: i64, name: &str) -> Result<(), String> {
         self.conn
             .execute(
-                "UPDATE columns SET name = ?2 WHERE project = ?1",
-                params![project, name],
+                "UPDATE columns SET name = COALESCE(NULLIF(?2, ''), project, name) WHERE id = ?1",
+                params![id, name.trim()],
             )
             .map_err(err)?;
         Ok(())
+    }
+
+    fn placed_columns(&self) -> Result<HashMap<String, i64>, String> {
+        Ok(self
+            .places()?
+            .into_iter()
+            .filter_map(|p| Some((p.card_id, p.column?)))
+            .collect())
     }
 
     pub fn row_names(&self) -> Result<Vec<RowName>, String> {
@@ -320,13 +394,13 @@ impl Db {
     pub fn places(&self) -> Result<Vec<CardPlace>, String> {
         let mut stmt = self
             .conn
-            .prepare("SELECT card_id, project, row_key, position FROM card_places ORDER BY row_key, position")
+            .prepare("SELECT card_id, column_id, row_key, position FROM card_places ORDER BY row_key, position")
             .map_err(err)?;
         let rows = stmt
             .query_map([], |r| {
                 Ok((
                     r.get::<_, String>(0)?,
-                    r.get::<_, Option<String>>(1)?,
+                    r.get::<_, Option<i64>>(1)?,
                     r.get::<_, String>(2)?,
                     r.get::<_, i64>(3)?,
                 ))
@@ -336,10 +410,10 @@ impl Db {
             .map_err(err)?;
         Ok(rows
             .into_iter()
-            .filter_map(|(card_id, project, row, position)| {
+            .filter_map(|(card_id, column, row, position)| {
                 Some(CardPlace {
                     card_id,
-                    project,
+                    column,
                     row: Row::from_key(&row)?,
                     position,
                 })
@@ -350,25 +424,25 @@ impl Db {
     pub fn place_cards(
         &mut self,
         moved: &str,
-        project: &str,
+        column: i64,
         row: Row,
         order: &[String],
     ) -> Result<(), String> {
         let tx = self.conn.transaction().map_err(err)?;
         for (position, card_id) in order.iter().enumerate() {
             tx.execute(
-                "INSERT INTO card_places (card_id, project, row_key, position) VALUES (?1, NULL, ?2, ?3)
+                "INSERT INTO card_places (card_id, column_id, row_key, position) VALUES (?1, NULL, ?2, ?3)
                  ON CONFLICT(card_id) DO UPDATE SET row_key = excluded.row_key, position = excluded.position",
                 params![card_id, row.key(), position as i64],
             )
             .map_err(err)?;
         }
         tx.execute(
-            "INSERT INTO card_places (card_id, project, row_key, position) VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT(card_id) DO UPDATE SET project = excluded.project",
+            "INSERT INTO card_places (card_id, column_id, row_key, position) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(card_id) DO UPDATE SET column_id = excluded.column_id",
             params![
                 moved,
-                project,
+                column,
                 row.key(),
                 order
                     .iter()
@@ -537,6 +611,19 @@ impl Db {
     }
 }
 
+fn shown_column(card: &Card, placed: &HashMap<String, i64>, columns: &[Column]) -> Option<i64> {
+    placed
+        .get(&card.id)
+        .filter(|id| columns.iter().any(|c| c.id == **id))
+        .copied()
+        .or_else(|| {
+            columns
+                .iter()
+                .find(|c| c.project.as_deref() == Some(card.project.as_str()))
+                .map(|c| c.id)
+        })
+}
+
 fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
@@ -573,28 +660,32 @@ mod tests {
         assert_eq!(db.schema_version().unwrap(), MIGRATIONS.len());
     }
 
+    fn projects(columns: &[Column]) -> Vec<Option<&str>> {
+        columns.iter().map(|c| c.project.as_deref()).collect()
+    }
+
+    fn names(columns: &[Column]) -> Vec<&str> {
+        columns.iter().map(|c| c.name.as_str()).collect()
+    }
+
     #[test]
     fn columns_are_seeded_then_appended_in_order() {
         let dir = tempfile::tempdir().unwrap();
         let mut db = Db::open(dir.path()).unwrap();
         let seeded = db
-            .ensure_columns(&["reef".into(), "harbor".into(), "reef".into()])
+            .ensure_columns(&[card("a", "reef"), card("b", "harbor"), card("c", "reef")])
             .unwrap();
-        assert_eq!(
-            seeded
-                .iter()
-                .map(|c| c.project.as_str())
-                .collect::<Vec<_>>(),
-            ["harbor", "reef"]
-        );
-        db.update_column("harbor", Some(320), Some(true)).unwrap();
+        assert_eq!(projects(&seeded), [Some("harbor"), Some("reef")]);
+        db.update_column(seeded[0].id, Some(320), Some(true))
+            .unwrap();
         let grown = db
-            .ensure_columns(&["lagoon".into(), "harbor".into()])
+            .ensure_columns(&[card("d", "lagoon"), card("b", "harbor")])
             .unwrap();
         assert_eq!(
-            grown.iter().map(|c| c.project.as_str()).collect::<Vec<_>>(),
-            ["harbor", "reef", "lagoon"]
+            projects(&grown),
+            [Some("harbor"), Some("reef"), Some("lagoon")]
         );
+        assert_eq!(grown[0].id, seeded[0].id);
         assert_eq!(grown[0].width, 320);
         assert!(grown[0].collapsed);
         assert_eq!(grown[2].width, DEFAULT_COLUMN_WIDTH);
@@ -604,19 +695,153 @@ mod tests {
     fn column_names_override_the_project_and_reset_when_empty() {
         let dir = tempfile::tempdir().unwrap();
         let mut db = Db::open(dir.path()).unwrap();
-        db.ensure_columns(&["harbor".into(), "reef".into()])
-            .unwrap();
-        db.update_column("harbor", Some(320), Some(false)).unwrap();
-        db.set_column_name("harbor", "  Harbor web  ").unwrap();
+        let harbor = db
+            .ensure_columns(&[card("a", "harbor"), card("b", "reef")])
+            .unwrap()[0]
+            .id;
+        db.update_column(harbor, Some(320), Some(false)).unwrap();
+        db.set_column_name(harbor, "  Harbor web  ").unwrap();
         let renamed = db
-            .ensure_columns(&["harbor".into(), "reef".into()])
+            .ensure_columns(&[card("a", "harbor"), card("b", "reef")])
             .unwrap();
-        assert_eq!(renamed[0].project, "harbor");
+        assert_eq!(renamed[0].project.as_deref(), Some("harbor"));
         assert_eq!(renamed[0].name, "Harbor web");
         assert_eq!(renamed[0].width, 320);
         assert_eq!(renamed[1].name, "reef");
-        db.set_column_name("harbor", " ").unwrap();
+        db.set_column_name(harbor, " ").unwrap();
         assert_eq!(db.columns().unwrap()[0].name, "harbor");
+    }
+
+    #[test]
+    fn added_columns_go_last_with_their_own_ids_and_keep_their_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Db::open(dir.path()).unwrap();
+        db.ensure_columns(&[card("a", "harbor")]).unwrap();
+        let added = db.add_column("  reef  ").unwrap();
+        assert_eq!(names(&added), ["harbor", "reef"]);
+        assert_eq!(added[1].project, None);
+        assert_eq!(added[1].width, DEFAULT_COLUMN_WIDTH);
+        assert!(db.add_column("   ").is_err());
+
+        let custom = added[1].id;
+        db.update_column(custom, Some(300), Some(true)).unwrap();
+        db.set_column_name(custom, "This week").unwrap();
+        db.set_column_name(custom, "  ").unwrap();
+        let grown = db
+            .ensure_columns(&[card("a", "harbor"), card("b", "reef")])
+            .unwrap();
+        assert_eq!(names(&grown), ["harbor", "This week", "reef"]);
+        assert_eq!(projects(&grown), [Some("harbor"), None, Some("reef")]);
+        assert_ne!(grown[2].id, custom);
+        assert_eq!((grown[1].width, grown[1].collapsed), (300, true));
+    }
+
+    #[test]
+    fn a_column_that_still_shows_cards_is_not_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Db::open(dir.path()).unwrap();
+        let cards = [card("a", "harbor"), card("b", "reef")];
+        db.ensure_columns(&cards).unwrap();
+        let custom = db.add_column("Now").unwrap()[2].id;
+        db.place_cards("b", custom, Row::Seabed, &["b".into()])
+            .unwrap();
+        let reef = db.columns().unwrap()[1].id;
+        db.delete_column(reef, &cards).unwrap();
+
+        let error = db.delete_column(custom, &cards).unwrap_err();
+        assert_eq!(
+            error,
+            "Now still holds 1 card; move them to another column first"
+        );
+        let harbor = db.columns().unwrap()[0].id;
+        assert!(db.delete_column(harbor, &cards).is_err());
+        assert_eq!(names(&db.columns().unwrap()), ["harbor", "Now"]);
+    }
+
+    #[test]
+    fn a_deleted_project_column_stays_gone_until_a_card_has_nowhere_else_to_show() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Db::open(dir.path()).unwrap();
+        let mut cards = vec![card("a", "harbor"), card("b", "reef")];
+        db.ensure_columns(&cards).unwrap();
+        let custom = db.add_column("Now").unwrap()[2].id;
+        db.place_cards("b", custom, Row::Seabed, &["b".into()])
+            .unwrap();
+        let reef = db.columns().unwrap()[1].clone();
+        db.set_column_name(reef.id, "Reef work").unwrap();
+        db.update_column(reef.id, Some(400), None).unwrap();
+
+        assert_eq!(
+            names(&db.delete_column(reef.id, &cards).unwrap()),
+            ["harbor", "Now"]
+        );
+        assert_eq!(
+            names(&db.ensure_columns(&cards).unwrap()),
+            ["harbor", "Now"]
+        );
+        assert_eq!(names(&db.deleted_columns().unwrap()), ["Reef work"]);
+
+        cards.push(card("c", "reef"));
+        let back = db.ensure_columns(&cards).unwrap();
+        assert_eq!(names(&back), ["harbor", "Reef work", "Now"]);
+        assert_eq!((back[1].id, back[1].width), (reef.id, 400));
+        assert!(db.deleted_columns().unwrap().is_empty());
+    }
+
+    #[test]
+    fn deleting_a_custom_column_removes_it_and_forgets_cards_placed_there() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Db::open(dir.path()).unwrap();
+        let cards = [card("a", "harbor")];
+        db.ensure_columns(&cards).unwrap();
+        let custom = db.add_column("Later").unwrap()[1].id;
+        db.place_cards("gone", custom, Row::Deep, &["gone".into(), "a".into()])
+            .unwrap();
+        db.delete_column(custom, &cards).unwrap();
+        assert!(db.deleted_columns().unwrap().is_empty());
+        let places: Vec<(String, Option<i64>)> = db
+            .places()
+            .unwrap()
+            .into_iter()
+            .map(|p| (p.card_id, p.column))
+            .collect();
+        assert_eq!(places, [("gone".into(), None), ("a".into(), None)]);
+        let next = db.add_column("Later").unwrap()[1].id;
+        assert!(next > custom);
+    }
+
+    #[test]
+    fn upgrading_keys_columns_and_card_places_by_column_id() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let conn = Connection::open(dir.path().join(FILE_NAME)).unwrap();
+            conn.execute_batch(&MIGRATIONS[..2].concat()).unwrap();
+            conn.pragma_update(None, "user_version", 2).unwrap();
+            conn.execute_batch(
+                "INSERT INTO columns VALUES ('reef', 'Reef work', 0, 300, 1), ('harbor', 'harbor', 1, 240, 0);
+                 INSERT INTO card_places VALUES ('a', 'harbor', 'deep', 0), ('b', NULL, 'deep', 1), ('c', 'lost', 'deep', 2);",
+            )
+            .unwrap();
+        }
+        let db = Db::open(dir.path()).unwrap();
+        let columns = db.columns().unwrap();
+        assert_eq!(names(&columns), ["Reef work", "harbor"]);
+        assert_eq!(projects(&columns), [Some("reef"), Some("harbor")]);
+        assert_eq!((columns[0].width, columns[0].collapsed), (300, true));
+        let places: Vec<(String, Option<i64>)> = db
+            .places()
+            .unwrap()
+            .into_iter()
+            .map(|p| (p.card_id, p.column))
+            .collect();
+        assert_eq!(
+            places,
+            [
+                ("a".into(), Some(columns[1].id)),
+                ("b".into(), None),
+                ("c".into(), None)
+            ]
+        );
     }
 
     #[test]
@@ -666,26 +891,21 @@ mod tests {
     fn placing_a_card_orders_its_cell_and_moves_only_that_card_across_columns() {
         let dir = tempfile::tempdir().unwrap();
         let mut db = Db::open(dir.path()).unwrap();
-        db.place_cards("b", "reef", Row::Seabed, &["a".into(), "b".into()])
+        db.place_cards("b", 2, Row::Seabed, &["a".into(), "b".into()])
             .unwrap();
-        db.place_cards(
-            "c",
-            "harbor",
-            Row::Shallows,
-            &["c".into(), "a".into(), "d".into()],
-        )
-        .unwrap();
-        let places: Vec<(String, Option<String>, Row, i64)> = db
+        db.place_cards("c", 1, Row::Shallows, &["c".into(), "a".into(), "d".into()])
+            .unwrap();
+        let places: Vec<(String, Option<i64>, Row, i64)> = db
             .places()
             .unwrap()
             .into_iter()
-            .map(|p| (p.card_id, p.project, p.row, p.position))
+            .map(|p| (p.card_id, p.column, p.row, p.position))
             .collect();
         assert_eq!(
             places,
             [
-                ("b".into(), Some("reef".into()), Row::Seabed, 1),
-                ("c".into(), Some("harbor".into()), Row::Shallows, 0),
+                ("b".into(), Some(2), Row::Seabed, 1),
+                ("c".into(), Some(1), Row::Shallows, 0),
                 ("a".into(), None, Row::Shallows, 1),
                 ("d".into(), None, Row::Shallows, 2),
             ]

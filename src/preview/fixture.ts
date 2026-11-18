@@ -79,7 +79,7 @@ export const FIXTURE_REQUESTS: MoveRequest[] = [
 
 export const FIXTURE_COLUMNS: Column[] = [...new Set(FIXTURE_CARDS.map((c) => c.project))]
   .sort()
-  .map((project, position) => ({ project, name: project, position, width: 240, collapsed: false }));
+  .map((project, position) => ({ id: position + 1, project, name: project, position, width: 240, collapsed: false }));
 
 export function fixtureDetail(card: Card): Detail {
   return {

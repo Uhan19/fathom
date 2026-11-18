@@ -22,6 +22,22 @@ export function Close() {
   );
 }
 
+export function Plus() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <path d="M6 1.5v9M1.5 6h9" />
+    </svg>
+  );
+}
+
+export function Trash() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <path d="M2.5 3.8h9M5.5 3.8V2.5h3v1.3M3.7 3.8l.6 7.7h5.4l.6-7.7M5.9 6v3.6M8.1 6v3.6" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function Wave() {
   return (
     <svg className="wave" width="100%" height="10" viewBox="0 0 120 10" preserveAspectRatio="none" aria-hidden="true">

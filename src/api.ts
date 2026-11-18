@@ -35,7 +35,8 @@ export interface Detail {
 }
 
 export interface Column {
-  project: string;
+  id: number;
+  project: string | null;
   name: string;
   position: number;
   width: number;
@@ -51,7 +52,7 @@ export type MoveStatus = "sending" | "asked" | "failed" | "answered" | "landed" 
 
 export interface CardPlace {
   cardId: string;
-  project: string | null;
+  column: number | null;
   row: RowKey;
   position: number;
 }
@@ -77,7 +78,7 @@ export interface Overlay {
 export interface Placement {
   cardId: string;
   title: string;
-  project: string;
+  column: number;
   fromRow: RowKey;
   toRow: RowKey;
   order: string[];
@@ -157,9 +158,11 @@ export const api = {
   readBoard: () => invoke<BoardView>("read_board"),
   logLaunch: (source: string, cards: number) => invoke<number | null>("log_launch", { source, cards }),
   cardDetail: (id: string) => invoke<Detail>("card_detail", { id }),
-  updateColumn: (project: string, change: { width?: number; collapsed?: boolean }) =>
-    invoke<void>("update_column", { project, width: change.width ?? null, collapsed: change.collapsed ?? null }),
-  setColumnName: (project: string, name: string) => invoke<void>("set_column_name", { project, name }),
+  updateColumn: (id: number, change: { width?: number; collapsed?: boolean }) =>
+    invoke<void>("update_column", { id, width: change.width ?? null, collapsed: change.collapsed ?? null }),
+  setColumnName: (id: number, name: string) => invoke<void>("set_column_name", { id, name }),
+  addColumn: (name: string) => invoke<Column[]>("add_column", { name }),
+  deleteColumn: (id: number) => invoke<Column[]>("delete_column", { id }),
   setRowName: (row: RowKey, name: string) => invoke<void>("set_row_name", { row, name }),
   placeCard: (placement: Placement) => invoke<Overlay>("place_card", { placement }),
   resendRequest: (requestId: string) => invoke<Overlay>("resend_request", { requestId }),

@@ -13,7 +13,7 @@ use crate::tasks::{Card, Row};
 pub struct Placement {
     pub card_id: String,
     pub title: String,
-    pub project: String,
+    pub column: i64,
     pub from_row: Row,
     pub to_row: Row,
     pub order: Vec<String>,
@@ -24,7 +24,7 @@ pub fn place(db: &Mutex<Db>, home: &Path, placement: Placement, now_ms: i64) -> 
         let mut db = db.lock().unwrap();
         db.place_cards(
             &placement.card_id,
-            &placement.project,
+            placement.column,
             placement.to_row,
             &placement.order,
         )?;
@@ -107,7 +107,7 @@ fn send(db: &Mutex<Db>, home: &Path, request: &MoveRequest) -> Result<(), String
         .finish_send(&request.request_id, &outcome)
 }
 
-fn cached_cards(db: &Mutex<Db>, home: &Path) -> Result<Vec<Card>, String> {
+pub fn cached_cards(db: &Mutex<Db>, home: &Path) -> Result<Vec<Card>, String> {
     let home = home.display().to_string();
     let snapshot = db.lock().unwrap().snapshot()?;
     Ok(snapshot
@@ -179,7 +179,7 @@ esac
         Placement {
             card_id: "atl-12".into(),
             title: "Fix the\n  reef map".into(),
-            project: "reef".into(),
+            column: 1,
             from_row,
             to_row,
             order: vec!["atl-12".into()],
