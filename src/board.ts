@@ -16,8 +16,9 @@ export const COLLAPSED_WIDTH = 44;
 export const COLUMN_GAP = 10;
 export const MIN_COLUMN_WIDTH = 180;
 export const MAX_COLUMN_WIDTH = 640;
+export const ADD_COLUMN_WIDTH = MIN_COLUMN_WIDTH;
 
-export type Cells = Map<string, Map<RowKey, Card[]>>;
+export type Cells = Map<number, Map<RowKey, Card[]>>;
 
 const UNSETTLED: MoveStatus[] = ["sending", "asked", "failed"];
 const SHOWN: MoveStatus[] = [...UNSETTLED, "answered"];
@@ -33,15 +34,17 @@ export function shownRow(card: Card, request: MoveRequest | null): RowKey {
 
 export function groupCards(cards: Card[], columns: Column[], overlay: Overlay = { places: [], requests: [] }): Cells {
   const cells: Cells = new Map();
+  const homes = new Map<string, number>();
   for (const column of columns) {
-    cells.set(column.project, new Map(ROW_ORDER.map((row) => [row, [] as Card[]])));
+    cells.set(column.id, new Map(ROW_ORDER.map((row) => [row, [] as Card[]])));
+    if (column.project !== null) homes.set(column.project, column.id);
   }
   const places = new Map(overlay.places.map((p) => [p.cardId, p]));
   for (const card of cards) {
     const row = shownRow(card, shownRequest(card.id, overlay.requests));
-    const moved = places.get(card.id)?.project;
-    const project = moved && cells.has(moved) ? moved : card.project;
-    cells.get(project)?.get(row)?.push(row === card.row && project === card.project ? card : { ...card, row, project });
+    const placed = places.get(card.id)?.column;
+    const column = placed != null && cells.has(placed) ? placed : homes.get(card.project);
+    if (column !== undefined) cells.get(column)?.get(row)?.push(row === card.row ? card : { ...card, row });
   }
   for (const rows of cells.values()) {
     rows.get("landed")?.sort((a, b) => b.closed.localeCompare(a.closed));
@@ -64,10 +67,10 @@ function orderCell(cards: Card[], row: RowKey, places: Map<string, CardPlace>): 
 export function placeLocally(overlay: Overlay, placement: Placement, now: number): Overlay {
   const { cardId, order, toRow } = placement;
   const kept = overlay.places.filter((p) => !order.includes(p.cardId));
-  const previous = new Map(overlay.places.map((p) => [p.cardId, p.project]));
+  const previous = new Map(overlay.places.map((p) => [p.cardId, p.column]));
   const placed = order.map((id, position) => ({
     cardId: id,
-    project: id === cardId ? placement.project : (previous.get(id) ?? null),
+    column: id === cardId ? placement.column : (previous.get(id) ?? null),
     row: toRow,
     position,
   }));
@@ -107,13 +110,24 @@ export function columnTemplate(columns: Column[]): string {
   return [`${ROW_LABEL_WIDTH}px`, ...tracks].join(" ");
 }
 
+export function headTemplate(columns: Column[]): string {
+  return `${columnTemplate(columns)} ${ADD_COLUMN_WIDTH}px`;
+}
+
 export function renamedColumn(column: Pick<Column, "project" | "name">, input: string): string | null {
   const name = input.trim() || column.project;
-  return name === column.name ? null : name;
+  return name === null || name === column.name ? null : name;
 }
 
 export function boardMinWidth(columns: Column[]): number {
-  return columns.reduce((sum, c) => sum + (c.collapsed ? COLLAPSED_WIDTH : c.width) + COLUMN_GAP, ROW_LABEL_WIDTH + 32);
+  return columns.reduce(
+    (sum, c) => sum + (c.collapsed ? COLLAPSED_WIDTH : c.width) + COLUMN_GAP,
+    ROW_LABEL_WIDTH + ADD_COLUMN_WIDTH + COLUMN_GAP + 32,
+  );
+}
+
+export function cellCount(cells: Cells, column: number): number {
+  return ROW_ORDER.reduce((n, row) => n + (cells.get(column)?.get(row)?.length ?? 0), 0);
 }
 
 export function clampWidth(width: number): number {

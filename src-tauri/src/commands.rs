@@ -5,11 +5,14 @@ use serde::Serialize;
 use tauri::State;
 use tauri::ipc::{Channel, InvokeResponseBody};
 
+use crate::db::{Column, MoveTo};
 use crate::export;
 use crate::fonts;
 use crate::herdr::{Terminal, View};
 use crate::moves::Placement;
-use crate::state::{AppState, AttachedSize, BoardView, HerdrStatus, Overlay, Settings, now_ms};
+use crate::state::{
+    AppState, AttachedSize, BoardView, HerdrStatus, Layout, Overlay, Settings, now_ms,
+};
 use crate::tasks::{self, Detail, Row};
 use crate::workers::Worker;
 
@@ -55,20 +58,30 @@ pub async fn card_detail(state: AppStateRef<'_>, id: String) -> Result<Detail, S
 #[tauri::command]
 pub fn update_column(
     state: AppStateRef,
-    project: String,
+    id: i64,
     width: Option<i64>,
     collapsed: Option<bool>,
 ) -> Result<(), String> {
-    state
-        .db
-        .lock()
-        .unwrap()
-        .update_column(&project, width, collapsed)
+    state.db.lock().unwrap().update_column(id, width, collapsed)
 }
 
 #[tauri::command]
-pub fn set_column_name(state: AppStateRef, project: String, name: String) -> Result<(), String> {
-    state.db.lock().unwrap().set_column_name(&project, &name)
+pub fn set_column_name(state: AppStateRef, id: i64, name: String) -> Result<(), String> {
+    state.db.lock().unwrap().set_column_name(id, &name)
+}
+
+#[tauri::command]
+pub fn add_column(state: AppStateRef, name: String) -> Result<Vec<Column>, String> {
+    state.add_column(&name)
+}
+
+#[tauri::command]
+pub fn delete_column(
+    state: AppStateRef,
+    id: i64,
+    move_to: Option<MoveTo>,
+) -> Result<Layout, String> {
+    state.delete_column(id, move_to)
 }
 
 #[tauri::command]

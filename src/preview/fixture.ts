@@ -34,7 +34,7 @@ const SEEDS: Seed[] = [
   ["son-09", "sonar-mobile", "landed", "Fix the crash on rotating the camera screen", { state: "done", closed: "2026-11-11" }],
 ];
 
-export const FIXTURE_CARDS: Card[] = SEEDS.map(([id, project, row, title, extra]) => ({
+const seeded = ([id, project, row, title, extra]: Seed): Card => ({
   id,
   title,
   project,
@@ -48,7 +48,11 @@ export const FIXTURE_CARDS: Card[] = SEEDS.map(([id, project, row, title, extra]
   links: [],
   closed: "",
   ...extra,
-}));
+});
+
+export const FIXTURE_CARDS: Card[] = SEEDS.map(seeded);
+
+export const FIXTURE_LATE_CARD: Card = seeded(["kel-09", "keel-cli", "shallows", "Add a --quiet flag for scripts", { state: "in_flight" }]);
 
 export const FIXTURE_WORKERS: Worker[] = [
   { taskId: "atl-09", terminal: "t3", status: "working" },
@@ -79,7 +83,7 @@ export const FIXTURE_REQUESTS: MoveRequest[] = [
 
 export const FIXTURE_COLUMNS: Column[] = [...new Set(FIXTURE_CARDS.map((c) => c.project))]
   .sort()
-  .map((project, position) => ({ project, name: project, position, width: 240, collapsed: false }));
+  .map((project, position) => ({ id: position + 1, project, name: project, position, width: 240, collapsed: false }));
 
 export function fixtureDetail(card: Card): Detail {
   return {

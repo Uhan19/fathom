@@ -10,6 +10,7 @@ struct Everything {
     schema_version: usize,
     exported_at_ms: i64,
     columns: Vec<Column>,
+    deleted_columns: Vec<Column>,
     row_names: Vec<RowName>,
     settings: Vec<(String, String)>,
     snapshot: Option<Snapshot>,
@@ -26,6 +27,7 @@ pub fn export(db: &Db, parent: &Path, now_ms: i64) -> Result<PathBuf, String> {
         schema_version: db.schema_version()?,
         exported_at_ms: now_ms,
         columns: db.columns()?,
+        deleted_columns: db.deleted_columns()?,
         row_names: db.row_names()?,
         settings,
         snapshot: db.snapshot()?,
@@ -37,15 +39,27 @@ pub fn export(db: &Db, parent: &Path, now_ms: i64) -> Result<PathBuf, String> {
 
     write_csv(
         &out.join("columns.csv"),
-        &["project", "name", "position", "width", "collapsed"],
+        &[
+            "id",
+            "project",
+            "name",
+            "position",
+            "width",
+            "collapsed",
+            "deleted",
+        ],
         |w| {
-            for c in &everything.columns {
+            let shown = everything.columns.iter().map(|c| (c, false));
+            let deleted = everything.deleted_columns.iter().map(|c| (c, true));
+            for (c, deleted) in shown.chain(deleted) {
                 w.write_record([
-                    &c.project,
+                    &c.id.to_string(),
+                    c.project.as_deref().unwrap_or_default(),
                     &c.name,
                     &c.position.to_string(),
                     &c.width.to_string(),
                     &c.collapsed.to_string(),
+                    &deleted.to_string(),
                 ])?;
             }
             Ok(())
@@ -104,12 +118,12 @@ pub fn export(db: &Db, parent: &Path, now_ms: i64) -> Result<PathBuf, String> {
     )?;
     write_csv(
         &out.join("card_places.csv"),
-        &["card_id", "project", "row", "position"],
+        &["card_id", "column", "row", "position"],
         |w| {
             for p in &everything.card_places {
                 w.write_record([
                     &p.card_id,
-                    p.project.as_deref().unwrap_or_default(),
+                    &p.column.map(|id| id.to_string()).unwrap_or_default(),
                     p.row.key(),
                     &p.position.to_string(),
                 ])?;
@@ -172,7 +186,7 @@ mod tests {
     fn writes_json_and_csv() {
         let data = tempfile::tempdir().unwrap();
         let mut db = Db::open(data.path()).unwrap();
-        db.ensure_columns(&["harbor".into()]).unwrap();
+        db.add_column("Later").unwrap();
         db.set_row_name(Row::Seabed, "Not started").unwrap();
         db.set_setting("terminalLabel", "role=lead").unwrap();
         let card = Card {
@@ -195,12 +209,18 @@ mod tests {
         db.save_snapshot(&Snapshot {
             taken_at_ms: 1,
             home: "/fm".into(),
-            cards: vec![card],
+            cards: vec![card.clone()],
         })
         .unwrap();
+        let later = db.columns().unwrap()[0].id;
+        let mut reef = card.clone();
+        reef.project = "reef".into();
+        let seeded = db.ensure_columns(&[card, reef]).unwrap();
+        let (harbor, reef) = (seeded[1].id, seeded[2].id);
+        db.delete_column(reef, None, &[]).unwrap();
         db.place_cards(
             "harbor-lights",
-            "harbor",
+            harbor,
             Row::Deep,
             &["harbor-lights".into()],
         )
@@ -224,7 +244,13 @@ mod tests {
         let json: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(out.join("fathom.json")).unwrap())
                 .unwrap();
-        assert_eq!(json["columns"][0]["project"], "harbor");
+        assert_eq!(json["columns"][1]["project"], "harbor");
+        assert_eq!(json["deletedColumns"][0]["project"], "reef");
+        assert_eq!(json["cardPlaces"][0]["column"], harbor);
+        let columns = std::fs::read_to_string(out.join("columns.csv")).unwrap();
+        assert!(columns.contains(&format!("\n{harbor},harbor,harbor,1,240,false,false\n")));
+        assert!(columns.contains(&format!("\n{later},,Later,0,240,false,false\n")));
+        assert!(columns.contains(&format!("\n{reef},reef,reef,2,240,false,true\n")));
         assert_eq!(json["rowNames"][3]["name"], "Not started");
         assert_eq!(json["snapshot"]["cards"][0]["id"], "harbor-lights");
         assert_eq!(json["cardPlaces"][0]["row"], "deep");
