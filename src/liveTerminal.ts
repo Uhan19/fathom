@@ -5,7 +5,8 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import "@xterm/xterm/css/xterm.css";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { api, type Size, type View } from "./api";
-import { TERMINAL_OPTIONS } from "./terminalOptions";
+import { TERMINAL_OPTIONS, TERMINAL_THEMES } from "./terminalOptions";
+import type { Theme } from "./theme";
 import { forwardClipboardWrites, isShiftEnter, shiftEnterSequence, trackKittyKeyboard } from "./terminalInput";
 
 const FALLBACK_SIZE = { cols: 80, rows: 24 };
@@ -13,35 +14,11 @@ const RESIZE_DEBOUNCE_MS = 80;
 const USER_INPUT_WINDOW_MS = 150;
 const USER_INPUT_EVENTS = ["keydown", "paste", "compositionend"] as const;
 
-const LIGHT_THEME = {
-  background: "#FFFFFF",
-  foreground: "#0F2533",
-  cursor: "#0F2533",
-  cursorAccent: "#FFFFFF",
-  selectionBackground: "#BBD3E3",
-  black: "#0F2533",
-  red: "#B42318",
-  green: "#166534",
-  yellow: "#92400E",
-  blue: "#1D4ED8",
-  magenta: "#86198F",
-  cyan: "#0E7490",
-  white: "#9DB0BD",
-  brightBlack: "#5B7A8E",
-  brightRed: "#D92D20",
-  brightGreen: "#15803D",
-  brightYellow: "#B45309",
-  brightBlue: "#2563EB",
-  brightMagenta: "#A21CAF",
-  brightCyan: "#0891B2",
-  brightWhite: "#C9D6DF",
-};
-
 function copyText(text: string) {
   void writeText(text).catch(() => undefined);
 }
 
-export function useLiveTerminal(view: View, fontFamily: string, fontSize: number) {
+export function useLiveTerminal(view: View, fontFamily: string, fontSize: number, theme: Theme) {
   const hostRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
@@ -52,6 +29,8 @@ export function useLiveTerminal(view: View, fontFamily: string, fontSize: number
   const selecting = useRef(false);
   const fontRef = useRef({ fontFamily, fontSize });
   fontRef.current = { fontFamily, fontSize };
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
 
   const measure = useCallback((): Size | null => {
     const dims = fitRef.current?.proposeDimensions();
@@ -119,7 +98,7 @@ export function useLiveTerminal(view: View, fontFamily: string, fontSize: number
       const term = new XTerm({
         ...fontRef.current,
         ...TERMINAL_OPTIONS,
-        theme: LIGHT_THEME,
+        theme: TERMINAL_THEMES[themeRef.current],
       });
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
@@ -224,6 +203,11 @@ export function useLiveTerminal(view: View, fontFamily: string, fontSize: number
     const frame = requestAnimationFrame(syncSize);
     return () => cancelAnimationFrame(frame);
   }, [fontFamily, fontSize, syncSize]);
+
+  useEffect(() => {
+    const term = xtermRef.current;
+    if (term) term.options.theme = TERMINAL_THEMES[theme];
+  }, [theme]);
 
   return { hostRef, scrollRef, attach, release, focus, paste };
 }

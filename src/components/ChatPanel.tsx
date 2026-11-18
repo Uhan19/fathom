@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, errorText, events, type Terminal } from "../api";
 import { droppedPathsText } from "../fileDrop";
 import { useLiveTerminal } from "../liveTerminal";
+import type { Theme } from "../theme";
 import { ChevronRight } from "./Icons";
 
 type Phase =
@@ -16,14 +17,15 @@ interface ChatPanelProps {
   label: string;
   fontFamily: string;
   fontSize: number;
+  theme: Theme;
   connectionKey: string;
   onTerminal: (terminal: Terminal | null) => void;
   onCollapse: () => void;
 }
 
-export function ChatPanel({ width, label, fontFamily, fontSize, connectionKey, onTerminal, onCollapse }: ChatPanelProps) {
+export function ChatPanel({ width, label, fontFamily, fontSize, theme, connectionKey, onTerminal, onCollapse }: ChatPanelProps) {
   const [phase, setPhase] = useState<Phase>({ kind: "finding" });
-  const { hostRef, scrollRef, attach: attachLive, release, focus, paste } = useLiveTerminal("chat", fontFamily, fontSize);
+  const { hostRef, scrollRef, attach: attachLive, release, focus, paste } = useLiveTerminal("chat", fontFamily, fontSize, theme);
   const panelRef = useRef<HTMLElement>(null);
 
   const pick = useCallback(async (reason: string) => {
