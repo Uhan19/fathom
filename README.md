@@ -202,6 +202,10 @@ Fathom asks your login shell for its PATH once at startup and uses it to find `h
   An added font joins that menu and is selected; the same list removes it again.
   Changes show at once while the dialog is open; Save keeps them across launches and Cancel puts them back.
 
+Fathom opens in light mode.
+The "Dark mode" button in the header switches the panels, cards and terminals to dark colors, and "Light mode" switches back.
+The board rows keep their light bands in both themes.
+
 ## Chat panel and herdr-core
 
 All herdr-core calls (`ls`, `get`, `events`, `attach`, `send`) live in `src-tauri/src/herdr.rs`.
