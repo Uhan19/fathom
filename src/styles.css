@@ -165,7 +165,9 @@ body.dragging * {
 }
 
 body.moving-card,
-body.moving-card * {
+body.moving-card *,
+body.moving-column,
+body.moving-column * {
   cursor: grabbing !important;
   user-select: none !important;
 }
@@ -600,6 +602,7 @@ code,
 }
 
 .board {
+  position: relative;
   min-height: 100%;
   display: flex;
   flex-direction: column;
@@ -957,6 +960,32 @@ button.column-name:focus-visible,
   border: 2px dashed var(--azure);
   border-radius: 6px;
   background: rgba(70, 175, 255, 0.1);
+}
+
+.column-lifted {
+  opacity: 0.35;
+}
+
+.column-ghost {
+  max-width: 320px;
+  padding: 0 8px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-line);
+  border-radius: 6px;
+}
+
+.column-ghost .column-name {
+  color: var(--card-ink);
+}
+
+.column-slot {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 4;
+  width: 6px;
+  margin-left: -3px;
+  border-radius: 3px;
 }
 
 .cell.drop-target {

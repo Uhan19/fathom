@@ -330,6 +330,25 @@ impl Db {
         Ok(())
     }
 
+    pub fn move_column(&mut self, id: i64, index: usize) -> Result<Vec<Column>, String> {
+        let mut ids: Vec<i64> = self.columns()?.iter().map(|c| c.id).collect();
+        let Some(from) = ids.iter().position(|c| *c == id) else {
+            return self.columns();
+        };
+        ids.remove(from);
+        ids.insert(index.min(ids.len()), id);
+        let tx = self.conn.transaction().map_err(err)?;
+        for (position, id) in ids.iter().enumerate() {
+            tx.execute(
+                "UPDATE columns SET position = ?2 WHERE id = ?1",
+                params![id, position as i64],
+            )
+            .map_err(err)?;
+        }
+        tx.commit().map_err(err)?;
+        self.columns()
+    }
+
     pub fn set_column_name(&self, id: i64, name: &str) -> Result<(), String> {
         self.conn
             .execute(
@@ -856,6 +875,88 @@ mod tests {
         assert_eq!(projects(&grown), [Some("harbor"), None, Some("reef")]);
         assert_ne!(grown[2].id, custom);
         assert_eq!((grown[1].width, grown[1].collapsed), (300, true));
+    }
+
+    fn four_columns(db: &mut Db) -> Vec<Card> {
+        let cards = vec![
+            card("a", "atlas"),
+            card("b", "harbor"),
+            card("c", "keel"),
+            card("d", "reef"),
+        ];
+        db.ensure_columns(&cards).unwrap();
+        cards
+    }
+
+    fn moved(db: &mut Db, name: &str, index: usize) -> Vec<String> {
+        let id = db
+            .columns()
+            .unwrap()
+            .iter()
+            .find(|c| c.name == name)
+            .unwrap()
+            .id;
+        names(&db.move_column(id, index).unwrap())
+            .into_iter()
+            .map(String::from)
+            .collect()
+    }
+
+    #[test]
+    fn moving_a_column_reorders_the_board() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Db::open(dir.path()).unwrap();
+        four_columns(&mut db);
+        assert_eq!(
+            moved(&mut db, "atlas", 3),
+            ["harbor", "keel", "reef", "atlas"]
+        );
+        assert_eq!(
+            moved(&mut db, "atlas", 0),
+            ["atlas", "harbor", "keel", "reef"]
+        );
+        assert_eq!(
+            moved(&mut db, "harbor", 2),
+            ["atlas", "keel", "harbor", "reef"]
+        );
+        assert_eq!(
+            moved(&mut db, "reef", 1),
+            ["atlas", "reef", "keel", "harbor"]
+        );
+        assert_eq!(
+            moved(&mut db, "keel", 99),
+            ["atlas", "reef", "harbor", "keel"]
+        );
+        assert_eq!(
+            names(&db.columns().unwrap()),
+            ["atlas", "reef", "harbor", "keel"]
+        );
+    }
+
+    #[test]
+    fn a_moved_column_keeps_its_place_and_new_columns_still_go_last() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Db::open(dir.path()).unwrap();
+        let mut cards = four_columns(&mut db);
+        moved(&mut db, "reef", 0);
+        assert_eq!(
+            names(&db.ensure_columns(&cards).unwrap()),
+            ["reef", "atlas", "harbor", "keel"]
+        );
+        cards.push(card("e", "lagoon"));
+        assert_eq!(
+            names(&db.ensure_columns(&cards).unwrap()),
+            ["reef", "atlas", "harbor", "keel", "lagoon"]
+        );
+        assert_eq!(
+            names(&db.add_column("Later").unwrap()),
+            ["reef", "atlas", "harbor", "keel", "lagoon", "Later"]
+        );
+        let unknown = db.columns().unwrap().iter().map(|c| c.id).max().unwrap() + 1;
+        assert_eq!(
+            names(&db.move_column(unknown, 0).unwrap()),
+            ["reef", "atlas", "harbor", "keel", "lagoon", "Later"]
+        );
     }
 
     fn place_rows(db: &Db) -> Vec<(String, Option<i64>, Row, i64)> {

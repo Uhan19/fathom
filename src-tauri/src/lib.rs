@@ -47,6 +47,7 @@ pub fn run() {
             commands::card_detail,
             commands::update_column,
             commands::set_column_name,
+            commands::move_column,
             commands::add_column,
             commands::delete_column,
             commands::set_row_name,

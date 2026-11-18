@@ -15,6 +15,7 @@ import {
 } from "../board";
 import { deletePlan, moveTargets, NEW_COLUMN, nextDraft, startDraft } from "../columnDelete";
 import { useCardDrag, type CardDrag } from "../cardDrag";
+import { useColumnDrag, type ColumnDrag } from "../columnDrag";
 import type { DropTarget } from "../dropTarget";
 import { startDrag } from "../drag";
 import { ChevronLeft, ChevronRight, Plus, Sailor, Trash, Wave } from "./Icons";
@@ -29,6 +30,7 @@ interface BoardProps {
   onSelect: (card: Card) => void;
   onColumnChange: (id: number, change: { width?: number; collapsed?: boolean }) => void;
   onColumnRename: (id: number, name: string) => void;
+  onColumnMove: (id: number, index: number) => void;
   onColumnAdd: (name: string) => void;
   onColumnDelete: (id: number, moveTo?: MoveTo) => Promise<void>;
   onPlace: (placement: Placement) => void;
@@ -59,6 +61,14 @@ export function Board(props: BoardProps) {
       order: insertAt(idsAt(target.column, target.row), card.id, target.index),
     });
   });
+  const columnDrag = useColumnDrag(scroller, (column, index) => props.onColumnMove(column.id, index));
+  const liftedColumn = columnDrag.drag?.column.id;
+  const headClass = (column: Column) => `column-head${column.collapsed ? " collapsed" : ""}${column.id === liftedColumn ? " column-lifted" : ""}`;
+  const headProps = (column: Column) => ({
+    "data-column": column.id,
+    onPointerDown: (e: React.PointerEvent<HTMLElement>) => columnDrag.begin(e, column),
+  });
+
   const slotFor = (column: number, row: RowKey) =>
     drag?.target && drag.target.column === column && drag.target.row === row && !isOrigin(drag.card, drag.target)
       ? drag.target.index
@@ -87,7 +97,7 @@ export function Board(props: BoardProps) {
           {shown.map((column) => {
             const total = cellCount(cells, column.id);
             return column.collapsed ? (
-              <div key={column.id} className="column-head collapsed">
+              <div key={column.id} className={headClass(column)} {...headProps(column)}>
                 <span className="count-badge" aria-label={`${total} cards in ${column.name}`}>
                   {total}
                 </span>
@@ -101,7 +111,7 @@ export function Board(props: BoardProps) {
                 </button>
               </div>
             ) : (
-              <div key={column.id} className="column-head">
+              <div key={column.id} className={headClass(column)} {...headProps(column)}>
                 <ColumnName column={column} onRename={(name) => onColumnRename(column.id, name)} />
                 <span className="column-total">{total}</span>
                 <button
@@ -146,10 +156,11 @@ export function Board(props: BoardProps) {
               return (
                 <div
                   key={column.id}
-                  className={`cell${column.collapsed ? " cell-collapsed" : ""}${targeted ? " drop-target" : ""}`}
+                  className={`cell${column.collapsed ? " cell-collapsed" : ""}${targeted ? " drop-target" : ""}${column.id === liftedColumn ? " column-lifted" : ""}`}
                   data-column={column.id}
                   data-row={row}
                   data-collapsed={column.collapsed}
+                  onPointerDown={column.collapsed ? (e) => columnDrag.begin(e, column) : undefined}
                 >
                   {column.collapsed
                     ? here.length > 0 && <span className="vname">{column.name}</span>
@@ -176,8 +187,12 @@ export function Board(props: BoardProps) {
             })}
           </section>
         ))}
+        {columnDrag.drag?.slotX != null && (
+          <div className="drop-slot column-slot" style={{ left: columnDrag.drag.slotX }} aria-hidden="true" />
+        )}
       </div>
       {drag && <Ghost drag={drag} request={shownRequest(drag.card.id, overlay.requests)} worker={workers[drag.card.id]} />}
+      {columnDrag.drag && <ColumnGhost drag={columnDrag.drag} />}
       {deleting && (
         <DeleteColumnDialog
           column={deleting}
@@ -356,6 +371,18 @@ function Ghost({ drag, request, worker }: { drag: CardDrag; request: MoveRequest
           <Sailor />
         </span>
       )}
+    </div>
+  );
+}
+
+function ColumnGhost({ drag }: { drag: ColumnDrag }) {
+  return (
+    <div
+      className="column-head column-ghost card-ghost"
+      style={{ left: drag.x - drag.offsetX, top: drag.y - drag.offsetY, minWidth: drag.width }}
+      aria-hidden="true"
+    >
+      <span className="column-name">{drag.column.name}</span>
     </div>
   );
 }

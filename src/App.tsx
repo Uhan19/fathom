@@ -18,6 +18,7 @@ import {
 } from "./api";
 import { appearanceOf, boardStyle, chatFontStack, type Appearance } from "./appearance";
 import { placeLocally, rowCounts, shownRequest } from "./board";
+import { moveTo } from "./columnOrder";
 import { startDrag } from "./drag";
 import { Board } from "./components/Board";
 import { CardDetail } from "./components/CardDetail";
@@ -133,6 +134,11 @@ export default function App() {
       })
       .catch((e) => setColumnError(errorText(e)));
 
+  const moveColumn = (id: number, index: number) => {
+    setView((v) => v && { ...v, columns: moveTo(v.columns, id, index) });
+    void replaceColumns(api.moveColumn(id, index));
+  };
+
   const deleteColumn = (id: number, moveTo?: MoveTo) =>
     api
       .deleteColumn(id, moveTo)
@@ -239,6 +245,7 @@ export default function App() {
               onSelect={selectCard}
               onColumnChange={changeColumn}
               onColumnRename={renameColumn}
+              onColumnMove={moveColumn}
               onColumnAdd={(name) => void replaceColumns(api.addColumn(name))}
               onColumnDelete={deleteColumn}
               onPlace={placeCard}

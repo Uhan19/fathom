@@ -168,6 +168,7 @@ export const api = {
   updateColumn: (id: number, change: { width?: number; collapsed?: boolean }) =>
     invoke<void>("update_column", { id, width: change.width ?? null, collapsed: change.collapsed ?? null }),
   setColumnName: (id: number, name: string) => invoke<void>("set_column_name", { id, name }),
+  moveColumn: (id: number, index: number) => invoke<Column[]>("move_column", { id, index }),
   addColumn: (name: string) => invoke<Column[]>("add_column", { name }),
   deleteColumn: (id: number, moveTo?: MoveTo) => invoke<Layout>("delete_column", { id, moveTo: moveTo ?? null }),
   setRowName: (row: RowKey, name: string) => invoke<void>("set_row_name", { row, name }),
