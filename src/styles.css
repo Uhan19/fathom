@@ -1457,6 +1457,62 @@ button.sailor:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.opener {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-bg);
+}
+
+.agent-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agent-choice {
+  font-size: calc(12px * var(--board-scale));
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--ctrl-line);
+  background: var(--ctrl-bg);
+  color: var(--ctrl-ink);
+  cursor: pointer;
+}
+
+.agent-choice:hover {
+  border-color: var(--azure);
+}
+
+.agent-choice.on {
+  background: var(--chip-bg);
+  border-color: var(--azure);
+  color: var(--panel-ink);
+}
+
+.agent-choice:disabled {
+  cursor: default;
+}
+
+.opener-folder {
+  margin: 0;
+  font-size: calc(12px * var(--board-scale));
+  line-height: 1.45;
+  color: var(--panel-ink-2);
+  overflow-wrap: anywhere;
+}
+
+.opener-folder code {
+  font-family: var(--mono);
+  font-size: calc(11px * var(--board-scale));
+}
+
 .chat-rail {
   flex: none;
   width: 44px;

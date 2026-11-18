@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, errorText, events, type Terminal } from "../api";
+import { chatTitle, findingText, launchErrorText, type AgentKey } from "../agents";
+import { api, errorText, events, type SourceKind, type Terminal } from "../api";
 import { droppedPathsText } from "../fileDrop";
 import { useLiveTerminal } from "../liveTerminal";
 import type { Theme } from "../theme";
 import { ChevronRight } from "./Icons";
+import { OpenTerminal } from "./OpenTerminal";
 
 type Phase =
   | { kind: "finding" }
-  | { kind: "picking"; terminals: Terminal[] | null; error: string | null; reason: string }
+  | { kind: "picking"; terminals: Terminal[] | null; error: string | null; reason: string; offerOpen: boolean }
   | { kind: "attached"; terminal: Terminal }
   | { kind: "ended"; terminal: Terminal }
   | { kind: "failed"; error: string };
@@ -15,6 +17,10 @@ type Phase =
 interface ChatPanelProps {
   width: number;
   label: string;
+  source: SourceKind;
+  agent: AgentKey;
+  agentFolder: string;
+  onAgent: (agent: AgentKey) => void;
   fontFamily: string;
   fontSize: number;
   theme: Theme;
@@ -23,18 +29,22 @@ interface ChatPanelProps {
   onCollapse: () => void;
 }
 
-export function ChatPanel({ width, label, fontFamily, fontSize, theme, connectionKey, onTerminal, onCollapse }: ChatPanelProps) {
+export function ChatPanel({ width, label, source, agent, agentFolder, onAgent, fontFamily, fontSize, theme, connectionKey, onTerminal, onCollapse }: ChatPanelProps) {
   const [phase, setPhase] = useState<Phase>({ kind: "finding" });
+  const [opening, setOpening] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const picks = useRef(0);
   const { hostRef, scrollRef, attach: attachLive, release, focus, paste } = useLiveTerminal("chat", fontFamily, fontSize, theme);
   const panelRef = useRef<HTMLElement>(null);
 
-  const pick = useCallback(async (reason: string) => {
-    setPhase({ kind: "picking", terminals: null, error: null, reason });
+  const pick = useCallback(async (reason: string, offerOpen = false) => {
+    const current = ++picks.current;
+    setPhase({ kind: "picking", terminals: null, error: null, reason, offerOpen });
     try {
       const terminals = await api.listTerminals();
-      setPhase({ kind: "picking", terminals, error: null, reason });
+      if (current === picks.current) setPhase({ kind: "picking", terminals, error: null, reason, offerOpen });
     } catch (e) {
-      setPhase({ kind: "picking", terminals: [], error: errorText(e), reason });
+      if (current === picks.current) setPhase({ kind: "picking", terminals: [], error: errorText(e), reason, offerOpen });
     }
   }, []);
 
@@ -42,6 +52,7 @@ export function ChatPanel({ width, label, fontFamily, fontSize, theme, connectio
     async (terminal: Terminal) => {
       try {
         if (!(await attachLive(terminal.address))) return;
+        picks.current++;
         setPhase({ kind: "attached", terminal });
         onTerminal(terminal);
       } catch (e) {
@@ -58,11 +69,23 @@ export function ChatPanel({ width, label, fontFamily, fontSize, theme, connectio
     try {
       const found = await api.findChatTerminal();
       if (found) await attach(found);
-      else await pick(`No terminal carries the label ${label}.`);
+      else await pick(`No terminal carries the label ${label}.`, true);
     } catch (e) {
       setPhase({ kind: "failed", error: errorText(e) });
     }
   }, [attach, label, onTerminal, pick]);
+
+  const open = useCallback(async () => {
+    setOpening(true);
+    setOpenError(null);
+    try {
+      await attach(await api.openChatTerminal(agent));
+    } catch (e) {
+      setOpenError(launchErrorText(e));
+    } finally {
+      setOpening(false);
+    }
+  }, [agent, attach]);
 
   useEffect(() => {
     void find();
@@ -78,11 +101,11 @@ export function ChatPanel({ width, label, fontFamily, fontSize, theme, connectio
         }
       }),
       events.terminals(() => {
-        if (phase.kind === "picking") void pick(phase.reason);
+        if (phase.kind === "picking" && !opening) void pick(phase.reason, phase.offerOpen);
       }),
     ];
     return () => unlisten.forEach((p) => void p.then((fn) => fn()));
-  }, [phase, pick, onTerminal]);
+  }, [phase, pick, onTerminal, opening]);
 
   useEffect(() => {
     if (phase.kind === "attached") focus();
@@ -98,12 +121,14 @@ export function ChatPanel({ width, label, fontFamily, fontSize, theme, connectio
     return () => void unlisten.then((fn) => fn());
   }, [attached, paste]);
 
-  const attachedName = phase.kind === "attached" || phase.kind === "ended" ? phase.terminal.name || phase.terminal.address : null;
+  const shown = phase.kind === "attached" || phase.kind === "ended" ? phase.terminal : null;
+  const attachedName = shown ? shown.name || shown.address : null;
+  const title = chatTitle(source, shown, agent);
 
   return (
-    <aside ref={panelRef} className="chat" style={{ width }} aria-label="Firstmate chat">
+    <aside ref={panelRef} className="chat" style={{ width }} aria-label={`${title} chat`}>
       <div className="chat-head">
-        <span className="chat-title">Firstmate</span>
+        <span className="chat-title">{title}</span>
         {attachedName && <span className="terminal-chip">{attachedName}</span>}
         <span className="spacer" />
         {(phase.kind === "attached" || phase.kind === "ended") && (
@@ -123,7 +148,7 @@ export function ChatPanel({ width, label, fontFamily, fontSize, theme, connectio
         >
           <div ref={hostRef} className="terminal-host" />
         </div>
-        {phase.kind === "finding" && <p className="chat-status">Looking for Firstmate's terminal ({label})…</p>}
+        {phase.kind === "finding" && <p className="chat-status">{findingText(source, label)}</p>}
         {phase.kind === "failed" && (
           <div className="chat-status">
             <p className="error-text">{phase.error}</p>
@@ -143,7 +168,21 @@ export function ChatPanel({ width, label, fontFamily, fontSize, theme, connectio
         {phase.kind === "picking" && (
           <div className="picker">
             <p className="picker-reason">{phase.reason}</p>
-            <span className="sech">Pick a herdr-core terminal</span>
+            {phase.offerOpen && (
+              <OpenTerminal
+                source={source}
+                agent={agent}
+                folder={agentFolder}
+                opening={opening}
+                error={openError}
+                onAgent={(next) => {
+                  setOpenError(null);
+                  onAgent(next);
+                }}
+                onOpen={() => void open()}
+              />
+            )}
+            <span className="sech">{phase.offerOpen ? "Or pick a running terminal" : "Pick a herdr-core terminal"}</span>
             {phase.error && <p className="error-text">{phase.error}</p>}
             {phase.terminals === null && <p className="muted">Listing terminals…</p>}
             {phase.terminals?.length === 0 && !phase.error && <p className="muted">No terminals are running.</p>}
