@@ -982,7 +982,7 @@ done
         assert_eq!((terminal.cols, terminal.rows), (200, 120));
     }
 
-    fn wait_for(what: &str, mut check: impl FnMut() -> bool) {
+    pub(crate) fn wait_for(what: &str, mut check: impl FnMut() -> bool) {
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
         while !check() {
             assert!(
@@ -1003,12 +1003,12 @@ done
     }
 
     #[derive(Default)]
-    struct Screen {
-        bytes: Vec<u8>,
+    pub(crate) struct Screen {
+        pub(crate) bytes: Vec<u8>,
         sizes: Vec<Size>,
     }
 
-    fn screen_sink() -> (Arc<Mutex<Screen>>, Output) {
+    pub(crate) fn screen_sink() -> (Arc<Mutex<Screen>>, Output) {
         let screen = Arc::new(Mutex::new(Screen::default()));
         let sink = Arc::clone(&screen);
         (

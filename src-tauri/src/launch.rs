@@ -368,6 +368,176 @@ esac
         assert!(!lab.bin.path().join("hc.args").exists());
     }
 
+    const STUB_AGENT: &str = r#"#!/bin/sh
+for arg in "$@"; do printf '%s\n' "$arg"; done > "$0.$$.args"
+printf 'stub %s in %s\n' "$(basename "$0")" "$PWD"
+while IFS= read -r line; do printf 'GOT:%s\n' "$line"; done
+"#;
+
+    fn stub_bin() -> tempfile::TempDir {
+        let bin = tempfile::tempdir().unwrap();
+        for tool in [CLAUDE, CODEX] {
+            let script = bin.path().join(tool);
+            std::fs::write(&script, STUB_AGENT).unwrap();
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        bin
+    }
+
+    fn stub_logs(bin: &Path, program: &str) -> Vec<PathBuf> {
+        let mut logs: Vec<PathBuf> = std::fs::read_dir(bin)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| {
+                let name = path.file_name().unwrap().to_string_lossy();
+                name.starts_with(&format!("{program}.")) && name.ends_with(".args")
+            })
+            .collect();
+        logs.sort_by_key(|path| std::fs::metadata(path).unwrap().modified().unwrap());
+        logs
+    }
+
+    fn received_args(bin: &Path, program: &str, before: usize) -> Vec<String> {
+        crate::herdr::tests::wait_for("the stub to log its arguments", || {
+            stub_logs(bin, program).len() > before
+        });
+        let text = std::fs::read_to_string(stub_logs(bin, program).last().unwrap()).unwrap();
+        text.lines().map(String::from).collect()
+    }
+
+    #[test]
+    #[ignore = "needs FATHOM_LAB_SESSION and FATHOM_LAB_SOCKET pointing at a throwaway herdr-core session"]
+    fn opens_each_agent_in_a_lab() {
+        use crate::herdr::View;
+        use crate::herdr::tests::{screen_sink, wait_for};
+
+        let connection = Connection {
+            session: std::env::var("FATHOM_LAB_SESSION").expect("FATHOM_LAB_SESSION"),
+            socket: std::env::var("FATHOM_LAB_SOCKET").expect("FATHOM_LAB_SOCKET"),
+        };
+        let herdr = Herdr::new(connection, Arc::new(|_| {}));
+        let bin = stub_bin();
+        let data = tempfile::tempdir().unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let server = FathomServer {
+            program: PathBuf::from("/Applications/Fathom.app/Contents/MacOS/fathom"),
+            db: data.path().join("fathom.db"),
+        };
+        let config = data.path().join(MCP_CONFIG_FILE).display().to_string();
+        let db = server.db.display().to_string();
+        let cases = [
+            (
+                Agent::Claude,
+                folder.path(),
+                vec!["--mcp-config".to_string(), config.clone()],
+            ),
+            (
+                Agent::Codex,
+                folder.path(),
+                vec![
+                    "-c".to_string(),
+                    format!(
+                        r#"mcp_servers.fathom.command="{}""#,
+                        server.program.display()
+                    ),
+                    "-c".to_string(),
+                    format!(r#"mcp_servers.fathom.args=["--mcp","--db","{db}"]"#),
+                ],
+            ),
+            (Agent::Firstmate, home.path(), vec![]),
+        ];
+
+        for (agent, cwd, expected_args) in cases {
+            let launch = Launch {
+                agent,
+                role: CHAT_ROLE,
+                cwd,
+                server: &server,
+            };
+            let program = bin.path().join(agent.program());
+            let logged_before = stub_logs(bin.path(), agent.program()).len();
+            let terminal = open(&herdr, &launch, |name| {
+                Some(bin.path().join(name)).filter(|path| path.is_file())
+            })
+            .unwrap();
+
+            assert_eq!(
+                terminal.labels.get(ROLE_KEY).map(String::as_str),
+                Some(CHAT_ROLE)
+            );
+            assert_eq!(
+                terminal.labels.get(AGENT_KEY).map(String::as_str),
+                Some(agent.key())
+            );
+            assert_eq!(
+                Path::new(&terminal.cwd).canonicalize().unwrap(),
+                cwd.canonicalize().unwrap()
+            );
+            let got: serde_json::Value =
+                serde_json::from_str(&herdr.run(&["get", &terminal.address, "--json"]).unwrap())
+                    .unwrap();
+            let mut argv = vec![program.display().to_string()];
+            argv.extend(expected_args.iter().cloned());
+            assert_eq!(got["argv"], json!(argv), "{got}");
+            assert_eq!(
+                received_args(bin.path(), agent.program(), logged_before),
+                expected_args
+            );
+            assert_eq!(
+                Path::new(&config).exists(),
+                agent == Agent::Claude,
+                "only Claude Code gets an MCP config file"
+            );
+            if agent == Agent::Claude {
+                let written: serde_json::Value =
+                    serde_json::from_str(&std::fs::read_to_string(&config).unwrap()).unwrap();
+                assert_eq!(
+                    written["mcpServers"]["fathom"]["args"],
+                    json!(["--mcp", "--db", db])
+                );
+                std::fs::remove_file(&config).unwrap();
+            }
+
+            let found = herdr
+                .find_by_label(&chat_label())
+                .unwrap()
+                .expect("the chat terminal");
+            assert_eq!(found.address, terminal.address);
+            assert_eq!(
+                found.labels.get(AGENT_KEY).map(String::as_str),
+                Some(agent.key())
+            );
+
+            let (screen, sink) = screen_sink();
+            herdr
+                .attach(View::Chat, &terminal.address, 100, 30, sink)
+                .unwrap();
+            let seen =
+                |text: &str| String::from_utf8_lossy(&screen.lock().unwrap().bytes).contains(text);
+            wait_for("the stub's greeting", || seen("stub "));
+            herdr.write_input(View::Chat, b"typed-in-fathom\r").unwrap();
+            wait_for("the typed line", || seen("GOT:typed-in-fathom"));
+            herdr
+                .send(&terminal.address, "1 board request waiting")
+                .unwrap();
+            wait_for("the board-request nudge", || {
+                seen("GOT:1 board request waiting")
+            });
+            let read = herdr.run(&["read", &terminal.address]).unwrap();
+            assert!(read.contains("GOT:1 board request waiting"), "{read}");
+
+            herdr.detach_all();
+            herdr.run(&["kill", &terminal.address]).unwrap();
+            wait_for("the terminal to finish", || {
+                herdr
+                    .find_by_label(&chat_label())
+                    .unwrap()
+                    .is_none_or(|t| t.address != terminal.address)
+            });
+        }
+    }
+
     #[test]
     fn errors_reach_the_ui_tagged_by_kind() {
         let missing = serde_json::to_value(LaunchError::Missing {
