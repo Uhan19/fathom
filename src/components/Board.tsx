@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import { ROW_ORDER, type Card, type Column, type MoveRequest, type Overlay, type Placement, type RowKey, type Worker } from "../api";
-import { boardMinWidth, cardNote, clampWidth, columnTemplate, groupCards, insertAt, renamedColumn, shownRequest } from "../board";
+import { boardMinWidth, cardNote, clampWidth, columnTemplate, groupCards, insertAt, outcomeTag, renamedColumn, shownRequest } from "../board";
 import { useCardDrag, type CardDrag } from "../cardDrag";
 import type { DropTarget } from "../dropTarget";
 import { startDrag } from "../drag";
@@ -272,12 +272,14 @@ const WORKER_LABEL: Record<Worker["status"], string> = {
 
 function CardFace({ card, request }: { card: Card; request: MoveRequest | null }) {
   const note = cardNote(card);
+  const tag = outcomeTag(card);
   return (
     <>
       <span className="bar" aria-hidden="true" />
       <span className="card-body">
         <span className="phrase">{card.title}</span>
         {note && <span className="card-note">{note}</span>}
+        {tag && <span className="mark mark-reported">{tag}</span>}
         {request && <RequestMark request={request} />}
       </span>
     </>

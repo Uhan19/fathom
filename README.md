@@ -4,7 +4,7 @@ Fathom is a macOS desktop board for Firstmate's tasks.
 Each task is a card, each project is a column, and each row shows how deep the work sits.
 It shows the board, opens card details, and embeds Firstmate's live terminal as a chat panel.
 Cards can be dragged to arrange them, and a drag to another row asks Firstmate to move the task.
-A small sailor on a card shows that a crewmate is on the task: blinking while it works, steady while idle.
+A small sailor on a card shows that a crewmate is on the task: its red visor glows and blinks while it works and dims while idle.
 Clicking the sailor opens that crewmate's live terminal.
 
 ## Requirements
@@ -125,6 +125,7 @@ The goal is under 0.5 s on a warm start.
 | in flight | Shallows |
 | anything else (queued) | Seabed |
 
+- A finished scout (a task of kind `scout`) also lands, and its card carries a "Reported" tag.
 - Columns are seeded one per project the first time a project appears; collapse and width are saved per column.
 - Clicking a column's name in its header renames the column in Fathom.
   Enter or a click elsewhere saves, Escape cancels, and an empty name returns to the project's name.
@@ -158,7 +159,8 @@ Fathom asks your login shell for its PATH once at startup and uses it to find `h
 - Fathom reads `<firstmate home>/state/<task id>.meta` to find the herdr-core terminal of a task's crewmate.
   Only records with `backend=hc` and exactly one `hc_session` and `hc_terminal` count.
 - The sailor shows when that session is the one set in Settings and herdr-core lists the terminal as live.
-- It blinks while herdr-core reports the terminal as `working` and stays steady for any other status.
+- Its visor glows and blinks while herdr-core reports the terminal as `working` and stays dimmed for any other status.
+  With reduced motion turned on in macOS, the working visor glows without blinking.
 - Changes come from herdr-core events and from changes to the `.meta` files; there is no polling loop.
 - Clicking the sailor opens the crewmate's terminal in a large view, attached the same way as the chat panel, so you can watch and type.
   The chat panel stays attached to Firstmate's terminal meanwhile.

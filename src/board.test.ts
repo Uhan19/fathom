@@ -9,6 +9,7 @@ import {
   holdHeading,
   insertAt,
   linkLabel,
+  outcomeTag,
   renamedColumn,
   placeLocally,
   rowCounts,
@@ -86,6 +87,30 @@ describe("board helpers", () => {
     expect(cardNote(card({ blockedBy: ["tide-gauge"] }))).toBe("Waits for tide-gauge");
     expect(cardNote(card({ row: "deep", holdKind: "captain", holdUntil: "2026-12-01" }))).toBe("Until 2026-12-01");
     expect(cardNote(card({ row: "shallows" }))).toBeNull();
+  });
+
+  it("tags finished scouts as reported, not finished ships or open scouts", () => {
+    expect(outcomeTag(card({ row: "landed", kind: "scout" }))).toBe("Reported");
+    expect(outcomeTag(card({ row: "landed", kind: "ship" }))).toBeNull();
+    expect(outcomeTag(card({ row: "shallows", kind: "scout" }))).toBeNull();
+  });
+
+  it("drops the reported tag while a finished scout is shown moving out of landed", () => {
+    const scout = card({ id: "tide-survey", row: "landed", kind: "scout" });
+    const request: MoveRequest = {
+      requestId: "fathom-move-tide-survey-1",
+      cardId: "tide-survey",
+      title: scout.title,
+      fromRow: "landed",
+      toRow: "shallows",
+      createdMs: 1,
+      status: "asked",
+      noteId: null,
+      answer: null,
+      error: null,
+    };
+    const shown = groupCards([scout], [column("harbor")], { places: [], requests: [request] }).get("harbor")?.get("shallows")?.[0];
+    expect(shown && outcomeTag(shown)).toBeNull();
   });
 
   it("names holds", () => {

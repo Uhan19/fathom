@@ -126,6 +126,10 @@ export function cardNote(card: Card): string | null {
   return null;
 }
 
+export function outcomeTag(card: Pick<Card, "row" | "kind">): string | null {
+  return card.row === "landed" && card.kind === "scout" ? "Reported" : null;
+}
+
 export function holdHeading(card: Card): string | null {
   switch (card.holdKind) {
     case "":

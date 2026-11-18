@@ -734,13 +734,43 @@ button.sailor:focus-visible {
   outline-offset: 0;
 }
 
-.sailor.working svg {
-  animation: sailor-blink 1.1s ease-in-out infinite;
+.sailor-visor {
+  opacity: 0.3;
 }
 
-@keyframes sailor-blink {
-  50% {
-    opacity: 0.2;
+.sailor.working .sailor-visor {
+  opacity: 1;
+  animation: sailor-visor-blink 12s ease-in-out infinite;
+}
+
+@keyframes sailor-visor-blink {
+  0%,
+  25%,
+  26.5%,
+  56.5%,
+  58%,
+  86%,
+  87%,
+  87.4%,
+  88.4%,
+  100% {
+    opacity: 1;
+  }
+  25.6%,
+  26%,
+  57.1%,
+  57.5% {
+    opacity: 0.08;
+  }
+  86.5%,
+  87.9% {
+    opacity: 0.12;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sailor.working .sailor-visor {
+    animation: none;
   }
 }
 
@@ -766,6 +796,11 @@ button.sailor:focus-visible {
 .mark-answered {
   background: #fdf0dc;
   color: #8a4f06;
+}
+
+.mark-reported {
+  background: #e2eef1;
+  color: #2b5b6e;
 }
 
 .answer {
