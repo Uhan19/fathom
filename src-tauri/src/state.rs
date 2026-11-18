@@ -425,10 +425,13 @@ impl AppState {
         placement: Placement,
         chat_terminal: Option<&str>,
     ) -> Result<Overlay, String> {
-        self.source()
-            .place(&self.db, placement, now_ms(), chat_terminal, |terminal, line| {
-                self.herdr.send(terminal, line)
-            })?;
+        self.source().place(
+            &self.db,
+            placement,
+            now_ms(),
+            chat_terminal,
+            |terminal, line| self.herdr.send(terminal, line),
+        )?;
         self.overlay()
     }
 

@@ -323,7 +323,11 @@ mod tests {
         assert_eq!(harbor.len(), 1);
         assert_eq!(harbor[0].detail, "Two buoys are missing.");
         assert_eq!(db.tasks(None, Some(Row::Shallows)).unwrap(), harbor);
-        assert!(db.tasks(Some("reef-map"), Some(Row::Shallows)).unwrap().is_empty());
+        assert!(
+            db.tasks(Some("reef-map"), Some(Row::Shallows))
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -342,7 +346,9 @@ mod tests {
     #[test]
     fn updates_only_the_given_fields() {
         let (_dir, db) = store();
-        let task = db.add_task(&new_task("Chart the reef", "reef-map"), 1).unwrap();
+        let task = db
+            .add_task(&new_task("Chart the reef", "reef-map"), 1)
+            .unwrap();
         let changed = db
             .update_task(
                 task.id,
@@ -377,7 +383,9 @@ mod tests {
     #[test]
     fn a_landed_task_becomes_a_done_card_closed_on_its_move_day() {
         let (_dir, mut db) = store();
-        let task = db.add_task(&new_task("Chart the reef", "reef-map"), 1).unwrap();
+        let task = db
+            .add_task(&new_task("Chart the reef", "reef-map"), 1)
+            .unwrap();
         assert_eq!(task.card().state, "open");
         assert_eq!(task.card().closed, "");
         let landed = db
@@ -393,7 +401,9 @@ mod tests {
     #[test]
     fn moving_to_the_requested_row_lands_the_request() {
         let (_dir, mut db) = store();
-        let task = db.add_task(&new_task("Chart the reef", "reef-map"), 1).unwrap();
+        let task = db
+            .add_task(&new_task("Chart the reef", "reef-map"), 1)
+            .unwrap();
         let request = ask(&mut db, &task, Row::Shallows, 10);
         assert_eq!(db.task_requests().unwrap(), vec![request.clone()]);
 
@@ -409,8 +419,12 @@ mod tests {
     #[test]
     fn accepting_moves_the_task_and_declining_keeps_it_with_a_reason() {
         let (_dir, mut db) = store();
-        let reef = db.add_task(&new_task("Chart the reef", "reef-map"), 1).unwrap();
-        let buoys = db.add_task(&new_task("Count the buoys", "reef-map"), 2).unwrap();
+        let reef = db
+            .add_task(&new_task("Chart the reef", "reef-map"), 1)
+            .unwrap();
+        let buoys = db
+            .add_task(&new_task("Count the buoys", "reef-map"), 2)
+            .unwrap();
         let first = ask(&mut db, &reef, Row::Surface, 10);
         let second = ask(&mut db, &buoys, Row::Landed, 11);
 
@@ -425,7 +439,10 @@ mod tests {
             .decline_request(&second.request_id, "Two buoys still need a count.")
             .unwrap();
         assert_eq!(declined.status, MoveStatus::Answered);
-        assert_eq!(declined.answer.as_deref(), Some("Two buoys still need a count."));
+        assert_eq!(
+            declined.answer.as_deref(),
+            Some("Two buoys still need a count.")
+        );
         assert_eq!(db.task(buoys.id).unwrap().row, DEFAULT_ROW);
         assert!(db.task_requests().unwrap().is_empty());
         assert_eq!(
@@ -437,7 +454,9 @@ mod tests {
     #[test]
     fn a_new_request_supersedes_the_open_one_for_the_same_task() {
         let (_dir, mut db) = store();
-        let task = db.add_task(&new_task("Chart the reef", "reef-map"), 1).unwrap();
+        let task = db
+            .add_task(&new_task("Chart the reef", "reef-map"), 1)
+            .unwrap();
         let first = ask(&mut db, &task, Row::Surface, 10);
         let second = ask(&mut db, &task, Row::Deep, 11);
         assert_eq!(db.task_requests().unwrap(), vec![second]);

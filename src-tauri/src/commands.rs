@@ -10,10 +10,10 @@ use crate::export;
 use crate::fonts;
 use crate::herdr::{Terminal, View};
 use crate::moves::Placement;
+use crate::source::Source;
 use crate::state::{
     AppState, AttachedSize, BoardView, HerdrStatus, Layout, Overlay, Settings, now_ms,
 };
-use crate::source::Source;
 use crate::tasks::{Detail, Row};
 use crate::workers::Worker;
 

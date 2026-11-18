@@ -73,7 +73,11 @@ impl Source {
     pub fn detail(&self, db: &Mutex<Db>, id: &str) -> Result<Detail, String> {
         match self {
             Source::Firstmate { home } => tasks::read_detail(home, id),
-            Source::Backlog => Ok(db.lock().unwrap().task(backlog::task_id(id)?)?.detail_view()),
+            Source::Backlog => Ok(db
+                .lock()
+                .unwrap()
+                .task(backlog::task_id(id)?)?
+                .detail_view()),
         }
     }
 
@@ -163,11 +167,17 @@ mod tests {
         }
     }
 
-    fn place(db: &Mutex<Db>, placement: Placement, now_ms: i64, chat: Option<&str>) -> Vec<(String, String)> {
+    fn place(
+        db: &Mutex<Db>,
+        placement: Placement,
+        now_ms: i64,
+        chat: Option<&str>,
+    ) -> Vec<(String, String)> {
         let sent = RefCell::new(vec![]);
         Source::Backlog
             .place(db, placement, now_ms, chat, |terminal, line| {
-                sent.borrow_mut().push((terminal.to_string(), line.to_string()));
+                sent.borrow_mut()
+                    .push((terminal.to_string(), line.to_string()));
                 Ok(())
             })
             .unwrap();
@@ -197,13 +207,19 @@ mod tests {
     fn a_row_drag_stores_a_request_keeps_the_task_and_nudges_the_chat() {
         let (_dir, db, task) = backlog();
         let sent = place(&db, drag(&task, Row::Shallows), 1_000, Some("w1:t1"));
-        assert_eq!(sent, [("w1:t1".to_string(), "1 board request waiting".to_string())]);
+        assert_eq!(
+            sent,
+            [("w1:t1".to_string(), "1 board request waiting".to_string())]
+        );
 
         let db = db.lock().unwrap();
         assert_eq!(db.task(task.id).unwrap().row, Row::Seabed);
         let requests = db.task_requests().unwrap();
         assert_eq!(requests.len(), 1);
-        assert_eq!(requests[0].request_id, format!("fathom-move-{}-1000", task.id));
+        assert_eq!(
+            requests[0].request_id,
+            format!("fathom-move-{}-1000", task.id)
+        );
         assert_eq!(requests[0].status, MoveStatus::Asked);
         assert_eq!(db.open_requests().unwrap(), requests);
         assert_eq!(db.places().unwrap()[0].row, Row::Shallows);
