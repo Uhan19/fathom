@@ -36,29 +36,29 @@ export function Wave() {
   );
 }
 
-const SAILOR_SIZE = 36;
+const SAILOR_SIZE = 32;
 
 export function Sailor({ size = SAILOR_SIZE }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 30 30" overflow="visible" aria-hidden="true">
-      <path d="M2 30c0-3.2 2.2-5.4 5.4-6h15.2c3.2.6 5.4 2.8 5.4 6z" fill="#2b4b5e" />
-      <path d="M7 25.2c2.4 1.6 5 2.3 8 2.3s5.6-.7 8-2.3" fill="none" stroke="#1f3847" strokeWidth="1" />
-      <rect x="3.5" y="13" width="3" height="7" rx="1" fill="#5a6069" />
-      <rect x="23.5" y="13" width="3" height="7" rx="1" fill="#5a6069" />
-      <path d="M6 11h18v10l-3.5 4h-11L6 21z" fill="#27334d" />
+      <path d="M2 30c0-3.2 2.2-5.4 5.4-6h15.2c3.2.6 5.4 2.8 5.4 6z" fill="#3f6b84" />
+      <path d="M7 25.2c2.4 1.6 5 2.3 8 2.3s5.6-.7 8-2.3" fill="none" stroke="#2e5268" strokeWidth="1" />
+      <rect x="3.5" y="13" width="3" height="7" rx="1" fill="#7d8591" />
+      <rect x="23.5" y="13" width="3" height="7" rx="1" fill="#7d8591" />
+      <path d="M6 11h18v10l-3.5 4h-11L6 21z" fill="#3c4d72" />
       <path d="M8 12h14v8l-2.5 3h-9L8 20z" fill="#eceeea" />
       <rect x="12" y="20.5" width="6" height="4.5" rx="1" fill="#1b2438" />
       <path d="M13.6 21.8v2M15 21.8v2M16.4 21.8v2" stroke="#8a9099" strokeWidth="0.8" />
       <rect x="5.5" y="13" width="19" height="6.5" rx="2" fill="#1b2438" />
-      <path d="M5 10h20v2H5z" fill="#1b2438" />
-      <path d="M8 2h14l6 6v2H2V8z" fill="#3b4a68" />
-      <path d="M9 2h12l4 4H5z" fill="#4f6189" />
-      <circle cx="15" cy="6" r="3.3" fill="#1b2438" />
+      <path d="M5 10h20v2H5z" fill="#2f3d5e" />
+      <path d="M8 2h14l6 6v2H2V8z" fill="#55699a" />
+      <path d="M9 2h12l4 4H5z" fill="#6d82b5" />
+      <circle cx="15" cy="6" r="3.9" fill="#1f2a44" />
       <path
-        d="M15 3.91v4.29M13.68 4.79h2.64M12.91 6.55q.44 1.76 2.09 1.76t2.09-1.76"
+        d="M15 3.59v4.94M13.48 4.61h3.04M12.59 6.63q.51 2.03 2.41 2.03t2.41-2.03"
         fill="none"
-        stroke="#e0b13a"
-        strokeWidth="0.935"
+        stroke="#f0c22c"
+        strokeWidth="1.08"
         strokeLinecap="round"
       />
       <g className="sailor-visor">
