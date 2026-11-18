@@ -11,7 +11,7 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter};
 
 use crate::db::{CardPlace, Column, Db, MoveRequest, MoveStatus, RowName, Snapshot};
-use crate::herdr::{self, Frame, Herdr, Notice};
+use crate::herdr::{self, Frame, Herdr, Notice, View};
 use crate::moves::{self, Placement};
 use crate::tasks::{self, Card};
 use crate::watch::{self, StateChange};
@@ -26,7 +26,7 @@ const LAUNCH_LOG: &str = "launch.log";
 pub const EVENT_BOARD: &str = "board://updated";
 pub const EVENT_HERDR: &str = "herdr://status";
 pub const EVENT_TERMINALS: &str = "herdr://terminals";
-pub const EVENT_CHAT_ENDED: &str = "chat://ended";
+pub const EVENT_VIEW_ENDED: &str = "terminal://ended";
 pub const EVENT_WORKERS: &str = "workers://updated";
 
 const KEY_HOME: &str = "home";
@@ -90,7 +90,7 @@ pub struct HerdrStatus {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ChatSize {
+pub struct AttachedSize {
     pub terminal: String,
     pub cols: u16,
     pub rows: u16,
@@ -396,14 +396,16 @@ impl AppState {
         Some(elapsed)
     }
 
-    pub fn attach_chat(
+    pub fn attach_view(
         &self,
+        view: View,
         terminal: &str,
         cols: u16,
         rows: u16,
         channel: Channel<InvokeResponseBody>,
-    ) -> Result<ChatSize, String> {
+    ) -> Result<AttachedSize, String> {
         self.herdr.attach(
+            view,
             terminal,
             cols,
             rows,
@@ -417,7 +419,7 @@ impl AppState {
                 let _ = channel.send(body);
             }),
         )?;
-        Ok(ChatSize {
+        Ok(AttachedSize {
             terminal: terminal.to_string(),
             cols,
             rows,
@@ -506,8 +508,11 @@ fn on_herdr_notice(
         Notice::TerminalsChanged => {
             let _ = app.emit(EVENT_TERMINALS, ());
         }
-        Notice::AttachEnded { terminal } => {
-            let _ = app.emit(EVENT_CHAT_ENDED, terminal);
+        Notice::AttachEnded { view, terminal } => {
+            let _ = app.emit(
+                EVENT_VIEW_ENDED,
+                json!({ "view": view, "terminal": terminal }),
+            );
         }
     }
 }

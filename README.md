@@ -5,6 +5,7 @@ Each task is a card, each project is a column, and each row shows how deep the w
 It shows the board, opens card details, and embeds Firstmate's live terminal as a chat panel.
 Cards can be dragged to arrange them, and a drag to another row asks Firstmate to move the task.
 A small sailor on a card shows that a crewmate is on the task: blinking while it works, steady while idle.
+Clicking the sailor opens that crewmate's live terminal.
 
 ## Requirements
 
@@ -156,6 +157,10 @@ Fathom asks your login shell for its PATH once at startup and uses it to find `h
 - The sailor shows when that session is the one set in Settings and herdr-core lists the terminal as live.
 - It blinks while herdr-core reports the terminal as `working` and stays steady for any other status.
 - Changes come from herdr-core events and from changes to the `.meta` files; there is no polling loop.
+- Clicking the sailor opens the crewmate's terminal in a large view, attached the same way as the chat panel, so you can watch and type.
+  The chat panel stays attached to Firstmate's terminal meanwhile.
+- Escape goes to the terminal; only the close button closes the view.
+  Closing only detaches Fathom; the crewmate and its terminal keep running.
 
 ## Settings
 

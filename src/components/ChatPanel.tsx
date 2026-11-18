@@ -1,21 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Terminal as XTerm } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
-import { Unicode11Addon } from "@xterm/addon-unicode11";
-import "@xterm/xterm/css/xterm.css";
-import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { api, errorText, events, type Size, type Terminal } from "../api";
-import { forwardClipboardWrites, isShiftEnter, shiftEnterSequence, trackKittyKeyboard } from "../terminalInput";
+import { useCallback, useEffect, useState } from "react";
+import { api, errorText, events, type Terminal } from "../api";
+import { useLiveTerminal } from "../liveTerminal";
 import { ChevronRight } from "./Icons";
-
-const FALLBACK_SIZE = { cols: 80, rows: 24 };
-const RESIZE_DEBOUNCE_MS = 80;
-const USER_INPUT_WINDOW_MS = 150;
-const USER_INPUT_EVENTS = ["keydown", "paste", "compositionend"] as const;
-
-function copyText(text: string) {
-  void writeText(text).catch(() => undefined);
-}
 
 type Phase =
   | { kind: "finding" }
@@ -34,100 +20,9 @@ interface ChatPanelProps {
   onCollapse: () => void;
 }
 
-const LIGHT_THEME = {
-  background: "#FFFFFF",
-  foreground: "#0F2533",
-  cursor: "#0F2533",
-  cursorAccent: "#FFFFFF",
-  selectionBackground: "#BBD3E3",
-  black: "#0F2533",
-  red: "#B42318",
-  green: "#166534",
-  yellow: "#92400E",
-  blue: "#1D4ED8",
-  magenta: "#86198F",
-  cyan: "#0E7490",
-  white: "#9DB0BD",
-  brightBlack: "#5B7A8E",
-  brightRed: "#D92D20",
-  brightGreen: "#15803D",
-  brightYellow: "#B45309",
-  brightBlue: "#2563EB",
-  brightMagenta: "#A21CAF",
-  brightCyan: "#0891B2",
-  brightWhite: "#C9D6DF",
-};
-
 export function ChatPanel({ width, label, fontFamily, fontSize, connectionKey, onTerminal, onCollapse }: ChatPanelProps) {
   const [phase, setPhase] = useState<Phase>({ kind: "finding" });
-  const hostRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const xtermRef = useRef<XTerm | null>(null);
-  const fitRef = useRef<FitAddon | null>(null);
-  const wantedRef = useRef<Size>(FALLBACK_SIZE);
-  const resizeTimer = useRef<number | undefined>(undefined);
-  const lastUserInput = useRef(0);
-  const selecting = useRef(false);
-  const fontRef = useRef({ fontFamily, fontSize });
-  fontRef.current = { fontFamily, fontSize };
-
-  const measure = useCallback((): Size | null => {
-    const dims = fitRef.current?.proposeDimensions();
-    return dims && Number.isFinite(dims.cols) && Number.isFinite(dims.rows) ? dims : null;
-  }, []);
-
-  const syncSize = useCallback(() => {
-    const term = xtermRef.current;
-    const size = measure();
-    if (!term || !size) return;
-    const wanted = wantedRef.current;
-    if (size.cols === wanted.cols && size.rows === wanted.rows) return;
-    wantedRef.current = size;
-    term.resize(size.cols, size.rows);
-    window.clearTimeout(resizeTimer.current);
-    resizeTimer.current = window.setTimeout(() => void api.resizeChat(size).catch(() => undefined), RESIZE_DEBOUNCE_MS);
-  }, [measure]);
-
-  const takeSize = useCallback(() => {
-    const term = xtermRef.current;
-    const wanted = wantedRef.current;
-    if (!term || (term.cols === wanted.cols && term.rows === wanted.rows)) return;
-    window.clearTimeout(resizeTimer.current);
-    term.resize(wanted.cols, wanted.rows);
-    void api.resizeChat(wanted).catch(() => undefined);
-  }, []);
-
-  const sendInput = useCallback(
-    (data: string) => {
-      if (performance.now() - lastUserInput.current < USER_INPUT_WINDOW_MS) takeSize();
-      void api.chatInput(data).catch(() => undefined);
-    },
-    [takeSize],
-  );
-
-  const followCursor = useCallback(() => {
-    const term = xtermRef.current;
-    const scroll = scrollRef.current;
-    const screen = hostRef.current?.querySelector<HTMLElement>(".xterm-screen");
-    if (!term || !scroll || !screen || (scroll.scrollWidth <= scroll.clientWidth && scroll.scrollHeight <= scroll.clientHeight)) return;
-    const rowHeight = screen.offsetHeight / term.rows;
-    const cursorTop = screen.offsetTop + term.buffer.active.cursorY * rowHeight;
-    if (cursorTop < scroll.scrollTop || cursorTop + rowHeight > scroll.scrollTop + scroll.clientHeight) {
-      scroll.scrollTop = Math.max(0, cursorTop - scroll.clientHeight + rowHeight * 3);
-    }
-    const colWidth = screen.offsetWidth / term.cols;
-    const cursorLeft = screen.offsetLeft + term.buffer.active.cursorX * colWidth;
-    if (cursorLeft < scroll.scrollLeft || cursorLeft + colWidth > scroll.scrollLeft + scroll.clientWidth) {
-      scroll.scrollLeft = Math.max(0, cursorLeft - scroll.clientWidth + colWidth * 8);
-    }
-  }, []);
-
-  const disposeTerminal = useCallback(() => {
-    window.clearTimeout(resizeTimer.current);
-    xtermRef.current?.dispose();
-    xtermRef.current = null;
-    fitRef.current = null;
-  }, []);
+  const { hostRef, scrollRef, attach: attachLive, release, focus } = useLiveTerminal("chat", fontFamily, fontSize);
 
   const pick = useCallback(async (reason: string) => {
     setPhase({ kind: "picking", terminals: null, error: null, reason });
@@ -141,62 +36,16 @@ export function ChatPanel({ width, label, fontFamily, fontSize, connectionKey, o
 
   const attach = useCallback(
     async (terminal: Terminal) => {
-      disposeTerminal();
-      const host = hostRef.current;
-      if (!host) return;
-      const term = new XTerm({
-        ...fontRef.current,
-        lineHeight: 1.15,
-        scrollback: 0,
-        cursorBlink: true,
-        allowProposedApi: true,
-        macOptionClickForcesSelection: true,
-        theme: LIGHT_THEME,
-      });
-      const fitAddon = new FitAddon();
-      term.loadAddon(fitAddon);
-      term.loadAddon(new Unicode11Addon());
-      term.unicode.activeVersion = "11";
-      xtermRef.current = term;
-      fitRef.current = fitAddon;
-      host.replaceChildren();
-      term.open(host);
-      term.attachCustomWheelEventHandler(() => false);
-      const kitty = trackKittyKeyboard(term);
-      forwardClipboardWrites(term, copyText);
-      term.attachCustomKeyEventHandler((e) => {
-        if (!isShiftEnter(e)) return true;
-        if (e.type === "keydown") {
-          e.preventDefault();
-          sendInput(shiftEnterSequence(kitty.flags()));
-        }
-        return false;
-      });
-      term.onData(sendInput);
-      const size = measure() ?? FALLBACK_SIZE;
-      wantedRef.current = size;
-      term.resize(size.cols, size.rows);
       try {
-        await api.attachChat(
-          terminal.address,
-          size,
-          (bytes) => term.write(bytes, followCursor),
-          (next) => {
-            term.resize(next.cols, next.rows);
-            followCursor();
-          },
-        );
-        if (xtermRef.current !== term) return;
-        term.focus();
+        if (!(await attachLive(terminal.address))) return;
         setPhase({ kind: "attached", terminal });
         onTerminal(terminal);
       } catch (e) {
-        disposeTerminal();
         setPhase({ kind: "failed", error: errorText(e) });
         onTerminal(null);
       }
     },
-    [disposeTerminal, measure, sendInput, followCursor, onTerminal],
+    [attachLive, onTerminal],
   );
 
   const find = useCallback(async () => {
@@ -213,16 +62,13 @@ export function ChatPanel({ width, label, fontFamily, fontSize, connectionKey, o
 
   useEffect(() => {
     void find();
-    return () => {
-      void api.detachChat();
-      disposeTerminal();
-    };
-  }, [find, connectionKey, disposeTerminal]);
+    return release;
+  }, [find, connectionKey, release]);
 
   useEffect(() => {
     const unlisten = [
-      events.chatEnded((terminal) => {
-        if (phase.kind === "attached" && terminal === phase.terminal.address) {
+      events.terminalEnded((ended) => {
+        if (ended.view === "chat" && phase.kind === "attached" && ended.terminal === phase.terminal.address) {
           setPhase({ kind: "ended", terminal: phase.terminal });
           onTerminal(null);
         }
@@ -235,51 +81,8 @@ export function ChatPanel({ width, label, fontFamily, fontSize, connectionKey, o
   }, [phase, pick, onTerminal]);
 
   useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    const mark = () => {
-      lastUserInput.current = performance.now();
-    };
-    USER_INPUT_EVENTS.forEach((type) => host.addEventListener(type, mark, true));
-    return () => USER_INPUT_EVENTS.forEach((type) => host.removeEventListener(type, mark, true));
-  }, []);
-
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    const start = () => {
-      selecting.current = true;
-    };
-    const finish = () => {
-      if (!selecting.current) return;
-      selecting.current = false;
-      const term = xtermRef.current;
-      if (term?.hasSelection()) copyText(term.getSelection());
-    };
-    host.addEventListener("mousedown", start, true);
-    window.addEventListener("mouseup", finish);
-    return () => {
-      host.removeEventListener("mousedown", start, true);
-      window.removeEventListener("mouseup", finish);
-    };
-  }, []);
-
-  useLayoutEffect(() => {
-    const scroll = scrollRef.current;
-    if (!scroll) return;
-    const observer = new ResizeObserver(() => syncSize());
-    observer.observe(scroll);
-    return () => observer.disconnect();
-  }, [syncSize]);
-
-  useEffect(() => {
-    const term = xtermRef.current;
-    if (!term) return;
-    term.options.fontFamily = fontFamily;
-    term.options.fontSize = fontSize;
-    const frame = requestAnimationFrame(syncSize);
-    return () => cancelAnimationFrame(frame);
-  }, [fontFamily, fontSize, syncSize]);
+    if (phase.kind === "attached") focus();
+  }, [phase.kind, focus]);
 
   const attachedName = phase.kind === "attached" || phase.kind === "ended" ? phase.terminal.name || phase.terminal.address : null;
 
@@ -302,7 +105,7 @@ export function ChatPanel({ width, label, fontFamily, fontSize, connectionKey, o
         <div
           ref={scrollRef}
           className={`terminal-scroll${phase.kind === "attached" || phase.kind === "ended" ? "" : " hidden"}`}
-          onClick={() => xtermRef.current?.focus()}
+          onClick={focus}
         >
           <div ref={hostRef} className="terminal-host" />
         </div>

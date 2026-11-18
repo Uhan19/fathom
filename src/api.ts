@@ -130,7 +130,14 @@ export interface Size {
   rows: number;
 }
 
-export interface ChatSize extends Size {
+export type View = "chat" | "worker";
+
+export interface AttachedSize extends Size {
+  terminal: string;
+}
+
+export interface EndedView {
+  view: View;
   terminal: string;
 }
 
@@ -165,17 +172,17 @@ export const api = {
   herdrStatus: () => invoke<HerdrStatus>("herdr_status"),
   findChatTerminal: () => invoke<Terminal | null>("find_chat_terminal"),
   listTerminals: () => invoke<Terminal[]>("list_terminals"),
-  attachChat: (terminal: string, size: Size, onOutput: (bytes: Uint8Array) => void, onSize: (size: Size) => void) => {
+  attachTerminal: (view: View, terminal: string, size: Size, onOutput: (bytes: Uint8Array) => void, onSize: (size: Size) => void) => {
     const output = new Channel<ArrayBuffer | number[] | Size>((message) => {
       if (message instanceof ArrayBuffer) onOutput(new Uint8Array(message));
       else if (Array.isArray(message)) onOutput(Uint8Array.from(message));
       else onSize(message);
     });
-    return invoke<ChatSize>("attach_chat", { terminal, cols: size.cols, rows: size.rows, output });
+    return invoke<AttachedSize>("attach_terminal", { view, terminal, cols: size.cols, rows: size.rows, output });
   },
-  resizeChat: (size: Size) => invoke<void>("resize_chat", { cols: size.cols, rows: size.rows }),
-  chatInput: (data: string) => invoke<void>("chat_input", { data }),
-  detachChat: () => invoke<void>("detach_chat"),
+  resizeTerminal: (view: View, size: Size) => invoke<void>("resize_terminal", { view, cols: size.cols, rows: size.rows }),
+  terminalInput: (view: View, data: string) => invoke<void>("terminal_input", { view, data }),
+  detachTerminal: (view: View) => invoke<void>("detach_terminal", { view }),
   sendToTerminal: (terminal: string, text: string) => invoke<void>("send_to_terminal", { terminal, text }),
 };
 
@@ -187,8 +194,8 @@ export const events = {
   terminals: (handler: () => void): Promise<UnlistenFn> => listen("herdr://terminals", () => handler()),
   workers: (handler: (workers: Worker[]) => void): Promise<UnlistenFn> =>
     listen<Worker[]>("workers://updated", (e) => handler(e.payload)),
-  chatEnded: (handler: (terminal: string) => void): Promise<UnlistenFn> =>
-    listen<string>("chat://ended", (e) => handler(e.payload)),
+  terminalEnded: (handler: (ended: EndedView) => void): Promise<UnlistenFn> =>
+    listen<EndedView>("terminal://ended", (e) => handler(e.payload)),
 };
 
 export function errorText(error: unknown): string {

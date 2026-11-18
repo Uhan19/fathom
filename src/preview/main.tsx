@@ -1,7 +1,7 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import type { BoardView, Card, CardPlace, MoveRequest, Overlay, Placement, Settings } from "../api";
-import { FIXTURE_CARDS, FIXTURE_COLUMNS, FIXTURE_REQUESTS, FIXTURE_SCREEN, FIXTURE_TERMINALS, FIXTURE_WORKERS, fixtureDetail } from "./fixture";
+import { FIXTURE_CARDS, FIXTURE_COLUMNS, FIXTURE_REQUESTS, FIXTURE_SCREEN, FIXTURE_TERMINALS, FIXTURE_WORKERS, fixtureDetail, workerScreen } from "./fixture";
 
 const params = new URLSearchParams(location.search);
 const noLabel = params.has("nolabel");
@@ -79,6 +79,8 @@ const view = (fromCache: boolean): BoardView => ({
 });
 
 type Output = { onmessage: (message: number[] | { cols: number; rows: number }) => void };
+const outputs = new Map<unknown, Output>();
+const bytes = (text: string) => [...new TextEncoder().encode(text)];
 
 mockIPC(
   (cmd, payload) => {
@@ -129,14 +131,18 @@ mockIPC(
         return null;
       case "export_data":
         return `${args.directory}/fathom-export-1763400000000`;
-      case "chat_input":
-        console.info("chat_input", JSON.stringify(args.data));
+      case "terminal_input":
+        console.info("terminal_input", args.view, JSON.stringify(args.data));
+        outputs.get(args.view)?.onmessage(bytes((args.data as string).replace(/\r/g, "\r\n")));
         return null;
-      case "resize_chat":
-        console.info("resize_chat", args.cols, args.rows);
+      case "resize_terminal":
+        console.info("resize_terminal", args.view, args.cols, args.rows);
+        return null;
+      case "detach_terminal":
+        console.info("detach_terminal", args.view);
+        outputs.delete(args.view);
         return null;
       case "open_link":
-      case "detach_chat":
         return null;
       case "send_to_terminal":
         console.info("send_to_terminal", args.terminal, args.text);
@@ -147,10 +153,13 @@ mockIPC(
         return noLabel ? null : FIXTURE_TERMINALS[0];
       case "list_terminals":
         return FIXTURE_TERMINALS;
-      case "attach_chat": {
+      case "attach_terminal": {
         const output = args.output as Output;
-        setTimeout(() => output.onmessage([...new TextEncoder().encode(KITTY_PUSH + FIXTURE_SCREEN)]), 50);
-        if (otherClient) {
+        outputs.set(args.view, output);
+        const screen = args.view === "worker" ? workerScreen(args.terminal as string) : KITTY_PUSH + FIXTURE_SCREEN;
+        console.info("attach_terminal", args.view, args.terminal, args.cols, args.rows);
+        setTimeout(() => output.onmessage(bytes(screen)), 50);
+        if (otherClient && args.view === "chat") {
           const [cols, rows] = [Number(otherClient[1]), Number(otherClient[2])];
           setTimeout(() => output.onmessage({ cols, rows }), 300);
         }

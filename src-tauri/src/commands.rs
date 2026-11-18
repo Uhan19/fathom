@@ -7,9 +7,9 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 
 use crate::export;
 use crate::fonts;
-use crate::herdr::Terminal;
+use crate::herdr::{Terminal, View};
 use crate::moves::Placement;
-use crate::state::{AppState, BoardView, ChatSize, HerdrStatus, Overlay, Settings, now_ms};
+use crate::state::{AppState, AttachedSize, BoardView, HerdrStatus, Overlay, Settings, now_ms};
 use crate::tasks::{self, Detail, Row};
 use crate::workers::Worker;
 
@@ -166,29 +166,30 @@ pub async fn list_terminals(state: AppStateRef<'_>) -> Result<Vec<Terminal>, Str
 }
 
 #[tauri::command]
-pub fn attach_chat(
+pub fn attach_terminal(
     state: AppStateRef,
+    view: View,
     terminal: String,
     cols: u16,
     rows: u16,
     output: Channel<InvokeResponseBody>,
-) -> Result<ChatSize, String> {
-    state.attach_chat(&terminal, cols, rows, output)
+) -> Result<AttachedSize, String> {
+    state.attach_view(view, &terminal, cols, rows, output)
 }
 
 #[tauri::command]
-pub fn resize_chat(state: AppStateRef, cols: u16, rows: u16) -> Result<(), String> {
-    state.herdr.resize(cols, rows)
+pub fn resize_terminal(state: AppStateRef, view: View, cols: u16, rows: u16) -> Result<(), String> {
+    state.herdr.resize(view, cols, rows)
 }
 
 #[tauri::command]
-pub fn chat_input(state: AppStateRef, data: String) -> Result<(), String> {
-    state.herdr.write_input(data.as_bytes())
+pub fn terminal_input(state: AppStateRef, view: View, data: String) -> Result<(), String> {
+    state.herdr.write_input(view, data.as_bytes())
 }
 
 #[tauri::command]
-pub fn detach_chat(state: AppStateRef) {
-    state.herdr.detach();
+pub fn detach_terminal(state: AppStateRef, view: View) {
+    state.herdr.detach(view);
 }
 
 #[tauri::command]

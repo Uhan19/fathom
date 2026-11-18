@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from "react";
-import { ROW_ORDER, type Card, type Column, type MoveRequest, type Overlay, type Placement, type RowKey, type WorkerStatus } from "../api";
+import { ROW_ORDER, type Card, type Column, type MoveRequest, type Overlay, type Placement, type RowKey, type Worker } from "../api";
 import { boardMinWidth, cardNote, clampWidth, columnTemplate, groupCards, insertAt, shownRequest } from "../board";
 import { useCardDrag, type CardDrag, type DropTarget } from "../cardDrag";
 import { startDrag } from "../drag";
@@ -9,15 +9,16 @@ interface BoardProps {
   cards: Card[];
   columns: Column[];
   overlay: Overlay;
-  workers: Record<string, WorkerStatus>;
+  workers: Record<string, Worker>;
   rowNames: Record<RowKey, string>;
   selectedId: string | null;
   onSelect: (card: Card) => void;
   onColumnChange: (project: string, change: { width?: number; collapsed?: boolean }) => void;
   onPlace: (placement: Placement) => void;
+  onWatch: (card: Card, worker: Worker) => void;
 }
 
-export function Board({ cards, columns, overlay, workers, rowNames, selectedId, onSelect, onColumnChange, onPlace }: BoardProps) {
+export function Board({ cards, columns, overlay, workers, rowNames, selectedId, onSelect, onColumnChange, onPlace, onWatch }: BoardProps) {
   const [liveWidths, setLiveWidths] = useState<Record<string, number>>({});
   const shown = columns.map((c) => (liveWidths[c.project] ? { ...c, width: liveWidths[c.project] } : c));
   const cells = groupCards(cards, shown, overlay);
@@ -131,6 +132,7 @@ export function Board({ cards, columns, overlay, workers, rowNames, selectedId, 
                             lifted={drag?.card.id === card.id}
                             onPointerDown={(e) => begin(e, card)}
                             onSelect={(c) => !justDragged.current && onSelect(c)}
+                            onWatch={onWatch}
                           />
                         )),
                         here,
@@ -164,14 +166,21 @@ function withSlot(views: ReactNode[], cards: Card[], drag: CardDrag | null, slot
   return out;
 }
 
-function Ghost({ drag, request, worker }: { drag: CardDrag; request: MoveRequest | null; worker?: WorkerStatus }) {
+function Ghost({ drag, request, worker }: { drag: CardDrag; request: MoveRequest | null; worker?: Worker }) {
   return (
     <div
       className={`card card-${drag.card.row} card-ghost`}
       style={{ left: drag.x - drag.offsetX, top: drag.y - drag.offsetY, width: drag.width }}
       aria-hidden="true"
     >
-      <CardFace card={drag.card} request={request} worker={worker} />
+      <span className="card-open">
+        <CardFace card={drag.card} request={request} />
+      </span>
+      {worker && (
+        <span className={`sailor ${worker.status}`}>
+          <Sailor />
+        </span>
+      )}
     </div>
   );
 }
@@ -179,32 +188,45 @@ function Ghost({ drag, request, worker }: { drag: CardDrag; request: MoveRequest
 interface CardViewProps {
   card: Card;
   request: MoveRequest | null;
-  worker?: WorkerStatus;
+  worker?: Worker;
   selected: boolean;
   lifted: boolean;
-  onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  onPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
   onSelect: (card: Card) => void;
+  onWatch: (card: Card, worker: Worker) => void;
 }
 
-function CardView({ card, request, worker, selected, lifted, onPointerDown, onSelect }: CardViewProps) {
+function CardView({ card, request, worker, selected, lifted, onPointerDown, onSelect, onWatch }: CardViewProps) {
   return (
-    <button
+    <div
       className={`card card-${card.row}${selected ? " selected" : ""}${lifted ? " lifted" : ""}`}
       data-id={card.id}
       onPointerDown={onPointerDown}
-      onClick={() => onSelect(card)}
     >
-      <CardFace card={card} request={request} worker={worker} />
-    </button>
+      <button className="card-open" onClick={() => onSelect(card)}>
+        <CardFace card={card} request={request} />
+      </button>
+      {worker && (
+        <button
+          className={`sailor ${worker.status}`}
+          aria-label={WORKER_LABEL[worker.status]}
+          title={WORKER_LABEL[worker.status]}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => onWatch(card, worker)}
+        >
+          <Sailor />
+        </button>
+      )}
+    </div>
   );
 }
 
-const WORKER_LABEL: Record<WorkerStatus, string> = {
-  working: "A crewmate is working on this",
-  idle: "A crewmate is on this, idle",
+const WORKER_LABEL: Record<Worker["status"], string> = {
+  working: "A crewmate is working on this. Open its terminal",
+  idle: "A crewmate is on this, idle. Open its terminal",
 };
 
-function CardFace({ card, request, worker }: { card: Card; request: MoveRequest | null; worker?: WorkerStatus }) {
+function CardFace({ card, request }: { card: Card; request: MoveRequest | null }) {
   const note = cardNote(card);
   return (
     <>
@@ -214,11 +236,6 @@ function CardFace({ card, request, worker }: { card: Card; request: MoveRequest 
         {note && <span className="card-note">{note}</span>}
         {request && <RequestMark request={request} />}
       </span>
-      {worker && (
-        <span className={`sailor ${worker}`} role="img" aria-label={WORKER_LABEL[worker]} title={WORKER_LABEL[worker]}>
-          <Sailor />
-        </span>
-      )}
     </>
   );
 }

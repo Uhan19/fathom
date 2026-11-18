@@ -13,7 +13,6 @@ import {
   type Settings,
   type Terminal,
   type Worker,
-  type WorkerStatus,
 } from "./api";
 import { appearanceOf, boardStyle, chatFontStack, type Appearance } from "./appearance";
 import { placeLocally, rowCounts, shownRequest } from "./board";
@@ -21,6 +20,7 @@ import { startDrag } from "./drag";
 import { Board } from "./components/Board";
 import { CardDetail } from "./components/CardDetail";
 import { ChatPanel } from "./components/ChatPanel";
+import { WorkerTerminal, type Watched } from "./components/WorkerTerminal";
 import { ChevronLeft } from "./components/Icons";
 import { SettingsDialog } from "./components/SettingsDialog";
 
@@ -43,6 +43,7 @@ export default function App() {
   const [chatWidth, setChatWidth] = useState(CHAT_WIDTH.initial);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [moveError, setMoveError] = useState<string | null>(null);
+  const [watched, setWatched] = useState<Watched | null>(null);
   const launchLogged = useRef(false);
 
   const logLaunch = useCallback((board: BoardView) => {
@@ -111,10 +112,8 @@ export default function App() {
   };
 
   const overlay: Overlay = { places: view?.places ?? [], requests: view?.requests ?? [] };
-  const workerStatus = useMemo(
-    () => Object.fromEntries(workers.map((w) => [w.taskId, w.status])) as Record<string, WorkerStatus>,
-    [workers],
-  );
+  const workerByTask = useMemo(() => Object.fromEntries(workers.map((w) => [w.taskId, w])) as Record<string, Worker>, [workers]);
+  const watchedWorker = watched ? workers.find((w) => w.terminal === watched.terminal) : undefined;
   const applyOverlay = (next: Overlay) => setView((v) => v && { ...v, ...next });
   const changeOverlay = (change: Promise<Overlay>) =>
     change
@@ -186,12 +185,13 @@ export default function App() {
               cards={cards}
               columns={view.columns}
               overlay={overlay}
-              workers={workerStatus}
+              workers={workerByTask}
               rowNames={rowNames}
               selectedId={selectedId}
               onSelect={selectCard}
               onColumnChange={changeColumn}
               onPlace={placeCard}
+              onWatch={(card, worker) => setWatched({ taskId: card.id, title: card.title, terminal: worker.terminal })}
             />
           ) : (
             <div className="board-empty">No tasks yet in {view.home}.</div>
@@ -256,6 +256,16 @@ export default function App() {
           </button>
         )}
       </main>
+      {watched && settings && (
+        <WorkerTerminal
+          key={watched.terminal}
+          watched={watched}
+          status={watchedWorker?.status ?? null}
+          fontFamily={chatFontStack(appearance ?? appearanceOf(settings))}
+          fontSize={(appearance ?? settings).chatFontSize}
+          onClose={() => setWatched(null)}
+        />
+      )}
       {settingsOpen && settings && (
         <SettingsDialog
           settings={settings}
