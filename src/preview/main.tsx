@@ -1,7 +1,8 @@
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
-import type { BoardView, Card, CardPlace, MoveRequest, Overlay, Placement, Settings } from "../api";
-import { FIXTURE_CARDS, FIXTURE_COLUMNS, FIXTURE_REQUESTS, FIXTURE_SCREEN, FIXTURE_TERMINALS, FIXTURE_WORKERS, fixtureDetail, workerScreen } from "./fixture";
+import { ROW_ORDER, type BoardView, type Card, type CardPlace, type Column, type Layout, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type Settings } from "../api";
+import { cellCount, groupCards, type Cells } from "../board";
+import { FIXTURE_CARDS, FIXTURE_COLUMNS, FIXTURE_LATE_CARD, FIXTURE_REQUESTS, FIXTURE_SCREEN, FIXTURE_TERMINALS, FIXTURE_WORKERS, fixtureDetail, workerScreen } from "./fixture";
 
 const params = new URLSearchParams(location.search);
 const noLabel = params.has("nolabel");
@@ -9,6 +10,8 @@ const failing = params.has("error");
 const empty = params.has("empty");
 const otherClient = params.get("other")?.match(/^(\d+)x(\d+)$/);
 const sendFails = params.has("sendfail");
+const lateCard = params.has("late");
+const deleteFails = params.has("deletefail");
 const KITTY_PUSH = params.has("kitty") ? "\x1b[>1u" : "";
 
 let settings: Settings = {
@@ -24,9 +27,10 @@ let settings: Settings = {
   boardAddedFonts: [],
 };
 const INSTALLED_FONTS = ["American Typewriter", "Andale Mono", "Avenir Next", "Courier New", "Georgia", "Helvetica Neue", "Menlo", "PT Mono", "Times New Roman", "Trebuchet MS"];
-let columns = FIXTURE_COLUMNS.map((c) => ({ ...c }));
+let columns: Column[] = FIXTURE_COLUMNS.map((c) => ({ ...c }));
+let nextColumnId = columns.length + 1;
 const rowNames = new Map<string, string>();
-const cards: Card[] = empty ? [] : FIXTURE_CARDS;
+let cards: Card[] = empty ? [] : FIXTURE_CARDS;
 let places: CardPlace[] = [];
 let requests: MoveRequest[] = empty ? [] : FIXTURE_REQUESTS.map((r) => ({ ...r }));
 const OPEN = ["sending", "asked", "failed", "answered"];
@@ -40,10 +44,10 @@ const sendRequest = (request: MoveRequest) => {
 };
 
 const placeCard = (p: Placement) => {
-  const previous = new Map(places.map((place) => [place.cardId, place.project]));
+  const previous = new Map(places.map((place) => [place.cardId, place.column]));
   places = [
     ...places.filter((place) => !p.order.includes(place.cardId)),
-    ...p.order.map((id, position) => ({ cardId: id, project: id === p.cardId ? p.project : (previous.get(id) ?? null), row: p.toRow, position })),
+    ...p.order.map((id, position) => ({ cardId: id, column: id === p.cardId ? p.column : (previous.get(id) ?? null), row: p.toRow, position })),
   ];
   if (p.fromRow === p.toRow) return;
   requests.filter((r) => r.cardId === p.cardId && OPEN.includes(r.status)).forEach((r) => (r.status = "superseded"));
@@ -62,6 +66,63 @@ const placeCard = (p: Placement) => {
   requests.push(request);
   sendRequest(request);
   if (cards.find((c) => c.id === p.cardId)?.row === p.toRow) request.status = "landed";
+};
+
+const addColumn = (name: string): Column[] => {
+  const trimmed = name.trim();
+  if (!trimmed) throw "a new column needs a name";
+  const position = Math.max(-1, ...columns.map((c) => c.position)) + 1;
+  columns = [...columns, { id: nextColumnId++, project: null, name: trimmed, position, width: 240, collapsed: false }];
+  return columns;
+};
+
+const arriveLate = (column: Column) => {
+  if (!lateCard || cards.some((c) => c.id === FIXTURE_LATE_CARD.id)) return;
+  cards = [...cards, { ...FIXTURE_LATE_CARD, project: column.project ?? FIXTURE_LATE_CARD.project }];
+  if (column.project === null) places = [...places, { cardId: FIXTURE_LATE_CARD.id, column: column.id, row: FIXTURE_LATE_CARD.row, position: 0 }];
+  setTimeout(() => void emit("board://updated", view(false)), 0);
+};
+
+const cardCount = (n: number) => (n === 1 ? "1 card" : `${n} cards`);
+
+const moveTarget = (column: Column, held: number, moveTo: MoveTo | null): number | string => {
+  if (!moveTo) throw `${column.name} now holds ${cardCount(held)}; choose a column to move to`;
+  if (moveTo.kind === "newColumn") {
+    if (!moveTo.name.trim()) throw "a new column needs a name";
+    return moveTo.name.trim();
+  }
+  if (moveTo.id === column.id) throw `${column.name} cannot take its own cards`;
+  if (!columns.some((c) => c.id === moveTo.id)) throw "the column to move the cards to is gone";
+  return moveTo.id;
+};
+
+const newColumnId = (name: string) => {
+  addColumn(name);
+  return nextColumnId - 1;
+};
+
+const nextPosition = (cells: Cells, column: number, row: RowKey) =>
+  Math.max(-1, ...(cells.get(column)?.get(row) ?? []).map((card) => places.find((p) => p.cardId === card.id && p.row === row)?.position ?? -1)) + 1;
+
+const deleteColumn = (id: number, moveTo: MoveTo | null): Layout => {
+  const column = columns.find((c) => c.id === id);
+  if (!column) return { columns, overlay: overlay() };
+  arriveLate(column);
+  const cells = groupCards(cards, columns, overlay());
+  const held = cellCount(cells, id);
+  const target = held > 0 ? moveTarget(column, held, moveTo) : null;
+  if (deleteFails) throw "disk is full";
+  const into = typeof target === "string" ? newColumnId(target) : target;
+  if (into !== null) {
+    const moved = ROW_ORDER.flatMap((row) => {
+      const start = nextPosition(cells, into, row);
+      return (cells.get(id)?.get(row) ?? []).map((card, i) => ({ cardId: card.id, column: into, row, position: start + i }));
+    });
+    places = [...places.filter((p) => !moved.some((m) => m.cardId === p.cardId)), ...moved];
+  }
+  places = places.map((place) => (place.column === id ? { ...place, column: null } : place));
+  columns = columns.filter((c) => c.id !== id);
+  return { columns, overlay: overlay() };
 };
 
 const view = (fromCache: boolean): BoardView => ({
@@ -98,15 +159,19 @@ mockIPC(
         return fixtureDetail(cards.find((c) => c.id === args.id) ?? FIXTURE_CARDS[0]);
       case "update_column":
         columns = columns.map((c) =>
-          c.project === args.project
+          c.id === args.id
             ? { ...c, width: (args.width as number | null) ?? c.width, collapsed: (args.collapsed as boolean | null) ?? c.collapsed }
             : c,
         );
         return null;
       case "set_column_name":
-        console.info("set_column_name", args.project, JSON.stringify(args.name));
-        columns = columns.map((c) => (c.project === args.project ? { ...c, name: (args.name as string).trim() || c.project } : c));
+        console.info("set_column_name", args.id, JSON.stringify(args.name));
+        columns = columns.map((c) => (c.id === args.id ? { ...c, name: (args.name as string).trim() || c.project || c.name } : c));
         return null;
+      case "add_column":
+        return addColumn(args.name as string);
+      case "delete_column":
+        return deleteColumn(args.id as number, (args.moveTo as MoveTo | null) ?? null);
       case "set_row_name":
         rowNames.set(args.row as string, args.name as string);
         return null;

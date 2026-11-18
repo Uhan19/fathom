@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { Card, Column, MoveRequest, Overlay } from "./api";
 import {
+  boardMinWidth,
   cardMessage,
   cardNote,
+  cellCount,
   columnTemplate,
   formatBytes,
   groupCards,
+  headTemplate,
   holdHeading,
   insertAt,
   linkLabel,
@@ -46,12 +49,15 @@ const request = (over: Partial<MoveRequest>): MoveRequest => ({
   ...over,
 });
 
-const ids = (cells: ReturnType<typeof groupCards>, project: string, row: Card["row"]) =>
-  cells.get(project)?.get(row)?.map((c) => c.id);
+const ids = (cells: ReturnType<typeof groupCards>, column: number, row: Card["row"]) =>
+  cells.get(column)?.get(row)?.map((c) => c.id);
 
-const column = (project: string, over: Partial<Column> = {}): Column => ({
+const [HARBOR, REEF, LATER] = [1, 2, 3];
+
+const column = (id: number, project: string | null, over: Partial<Column> = {}): Column => ({
+  id,
   project,
-  name: project,
+  name: project ?? "Later",
   position: 0,
   width: 280,
   collapsed: false,
@@ -67,11 +73,11 @@ describe("board helpers", () => {
         card({ id: "c", project: "reef", row: "surface" }),
         card({ id: "d", project: "unknown" }),
       ],
-      [column("harbor"), column("reef")],
+      [column(HARBOR, "harbor"), column(REEF, "reef")],
     );
-    expect(cells.get("harbor")?.get("landed")?.map((c) => c.id)).toEqual(["b", "a"]);
-    expect(cells.get("reef")?.get("surface")?.map((c) => c.id)).toEqual(["c"]);
-    expect(cells.has("unknown")).toBe(false);
+    expect(ids(cells, HARBOR, "landed")).toEqual(["b", "a"]);
+    expect(ids(cells, REEF, "surface")).toEqual(["c"]);
+    expect(cellCount(cells, HARBOR) + cellCount(cells, REEF)).toBe(3);
   });
 
   it("counts cards per row", () => {
@@ -80,7 +86,10 @@ describe("board helpers", () => {
   });
 
   it("builds the grid template with collapsed columns", () => {
-    expect(columnTemplate([column("a"), column("b", { collapsed: true })])).toBe("150px 280px 44px");
+    const columns = [column(1, "a"), column(2, "b", { collapsed: true })];
+    expect(columnTemplate(columns)).toBe("150px 280px 44px");
+    expect(headTemplate(columns)).toBe("150px 280px 44px 180px");
+    expect(boardMinWidth(columns)).toBe(150 + 180 + 10 + 32 + 290 + 54);
   });
 
   it("notes what a queued card waits for and a deferred date", () => {
@@ -109,7 +118,7 @@ describe("board helpers", () => {
       answer: null,
       error: null,
     };
-    const shown = groupCards([scout], [column("harbor")], { places: [], requests: [request] }).get("harbor")?.get("shallows")?.[0];
+    const shown = groupCards([scout], [column(HARBOR, "harbor")], { places: [], requests: [request] }).get(HARBOR)?.get("shallows")?.[0];
     expect(shown && outcomeTag(shown)).toBeNull();
   });
 
@@ -136,43 +145,66 @@ describe("board helpers", () => {
 });
 
 describe("card places and move requests", () => {
-  const columns = [column("harbor"), column("reef")];
+  const columns = [column(HARBOR, "harbor"), column(REEF, "reef")];
   const cards = [card({ id: "a" }), card({ id: "b" }), card({ id: "c" }), card({ id: "d", project: "reef" })];
 
   it("orders placed cards after unplaced ones in their saved order", () => {
     const overlay: Overlay = {
       places: [
-        { cardId: "a", project: null, row: "seabed", position: 1 },
-        { cardId: "b", project: null, row: "seabed", position: 0 },
+        { cardId: "a", column: null, row: "seabed", position: 1 },
+        { cardId: "b", column: null, row: "seabed", position: 0 },
       ],
       requests: [],
     };
-    expect(ids(groupCards(cards, columns, overlay), "harbor", "seabed")).toEqual(["c", "b", "a"]);
+    expect(ids(groupCards(cards, columns, overlay), HARBOR, "seabed")).toEqual(["c", "b", "a"]);
   });
 
   it("moves a card to its chosen column and ignores unknown columns", () => {
     const overlay: Overlay = {
       places: [
-        { cardId: "a", project: "reef", row: "seabed", position: 0 },
-        { cardId: "b", project: "gone", row: "seabed", position: 0 },
+        { cardId: "a", column: REEF, row: "seabed", position: 0 },
+        { cardId: "b", column: 99, row: "seabed", position: 0 },
       ],
       requests: [],
     };
     const cells = groupCards(cards, columns, overlay);
-    expect(ids(cells, "reef", "seabed")).toEqual(["d", "a"]);
-    expect(ids(cells, "harbor", "seabed")).toEqual(["c", "b"]);
-    expect(cells.get("reef")?.get("seabed")?.[1].project).toBe("reef");
+    expect(ids(cells, REEF, "seabed")).toEqual(["d", "a"]);
+    expect(ids(cells, HARBOR, "seabed")).toEqual(["c", "b"]);
+    expect(cells.get(REEF)?.get("seabed")?.[1].project).toBe("harbor");
+  });
+
+  it("shows cards in an added column and sends them home once it is gone", () => {
+    const overlay: Overlay = {
+      places: [
+        { cardId: "a", column: LATER, row: "seabed", position: 0 },
+        { cardId: "d", column: LATER, row: "seabed", position: 1 },
+      ],
+      requests: [],
+    };
+    const withLater = groupCards(cards, [...columns, column(LATER, null)], overlay);
+    expect(ids(withLater, LATER, "seabed")).toEqual(["a", "d"]);
+    expect(cellCount(withLater, LATER)).toBe(2);
+    expect(cellCount(withLater, REEF)).toBe(0);
+    const without = groupCards(cards, columns, overlay);
+    expect(ids(without, HARBOR, "seabed")).toEqual(["b", "c", "a"]);
+    expect(ids(without, REEF, "seabed")).toEqual(["d"]);
+  });
+
+  it("leaves out a card whose project column was deleted until it comes back", () => {
+    const cells = groupCards(cards, [column(HARBOR, "harbor"), column(LATER, null)]);
+    expect(cellCount(cells, HARBOR)).toBe(3);
+    expect(cellCount(cells, LATER)).toBe(0);
   });
 
   it("shows a card in the asked row until the request settles", () => {
     for (const status of ["sending", "asked", "failed"] as const) {
       const cells = groupCards(cards, columns, { places: [], requests: [request({ status })] });
-      expect(ids(cells, "harbor", "shallows")).toEqual(["a"]);
-      expect(cells.get("harbor")?.get("shallows")?.[0].row).toBe("shallows");
+      expect(ids(cells, HARBOR, "shallows")).toEqual(["a"]);
+      expect(cells.get(HARBOR)?.get("shallows")?.[0].row).toBe("shallows");
     }
     for (const status of ["answered", "landed", "dismissed"] as const) {
       const cells = groupCards(cards, columns, { places: [], requests: [request({ status })] });
-      expect(ids(cells, "harbor", "shallows")).toEqual([]);
+      expect(ids(cells, HARBOR, "shallows")).toEqual([]);
     }
   });
 
@@ -184,12 +216,12 @@ describe("card places and move requests", () => {
   });
 
   it("places a card locally and adds a sending request when the row changes", () => {
-    const start: Overlay = { places: [{ cardId: "b", project: "reef", row: "seabed", position: 3 }], requests: [request({})] };
-    const placement = { cardId: "a", title: "A", project: "harbor", fromRow: "seabed" as const, toRow: "deep" as const, order: ["b", "a"] };
+    const start: Overlay = { places: [{ cardId: "b", column: REEF, row: "seabed", position: 3 }], requests: [request({})] };
+    const placement = { cardId: "a", title: "A", column: HARBOR, fromRow: "seabed" as const, toRow: "deep" as const, order: ["b", "a"] };
     const next = placeLocally(start, placement, 9);
     expect(next.places).toEqual([
-      { cardId: "b", project: "reef", row: "deep", position: 0 },
-      { cardId: "a", project: "harbor", row: "deep", position: 1 },
+      { cardId: "b", column: REEF, row: "deep", position: 0 },
+      { cardId: "a", column: HARBOR, row: "deep", position: 1 },
     ]);
     expect(next.requests.map((r) => [r.cardId, r.toRow, r.status])).toEqual([["a", "deep", "sending"]]);
     const same = placeLocally(start, { ...placement, toRow: "seabed" }, 9);
@@ -217,5 +249,11 @@ describe("renaming a column", () => {
   it("saves nothing when the name is unchanged", () => {
     expect(renamedColumn(column, "harbor-web ")).toBeNull();
     expect(renamedColumn(column, "")).toBeNull();
+  });
+
+  it("keeps an added column's name when the input is emptied", () => {
+    const added = { project: null, name: "This week" };
+    expect(renamedColumn(added, "  ")).toBeNull();
+    expect(renamedColumn(added, " Next week ")).toBe("Next week");
   });
 });

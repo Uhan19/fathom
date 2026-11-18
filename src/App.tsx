@@ -6,7 +6,9 @@ import {
   ROW_ORDER,
   type BoardView,
   type Card,
+  type Column,
   type HerdrStatus,
+  type MoveTo,
   type Overlay,
   type Placement,
   type RowKey,
@@ -43,6 +45,7 @@ export default function App() {
   const [chatWidth, setChatWidth] = useState(CHAT_WIDTH.initial);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [moveError, setMoveError] = useState<string | null>(null);
+  const [columnError, setColumnError] = useState<string | null>(null);
   const [watched, setWatched] = useState<Watched | null>(null);
   const launchLogged = useRef(false);
 
@@ -106,15 +109,34 @@ export default function App() {
   const counts = rowCounts(cards);
   const selected = cards.find((c) => c.id === selectedId) ?? null;
 
-  const changeColumn = (project: string, change: { width?: number; collapsed?: boolean }) => {
-    setView((v) => v && { ...v, columns: v.columns.map((c) => (c.project === project ? { ...c, ...change } : c)) });
-    void api.updateColumn(project, change);
+  const changeColumn = (id: number, change: { width?: number; collapsed?: boolean }) => {
+    setView((v) => v && { ...v, columns: v.columns.map((c) => (c.id === id ? { ...c, ...change } : c)) });
+    void api.updateColumn(id, change);
   };
 
-  const renameColumn = (project: string, name: string) => {
-    setView((v) => v && { ...v, columns: v.columns.map((c) => (c.project === project ? { ...c, name } : c)) });
-    void api.setColumnName(project, name);
+  const renameColumn = (id: number, name: string) => {
+    setView((v) => v && { ...v, columns: v.columns.map((c) => (c.id === id ? { ...c, name } : c)) });
+    void api.setColumnName(id, name);
   };
+
+  const replaceColumns = (change: Promise<Column[]>) =>
+    change
+      .then((columns) => {
+        setColumnError(null);
+        setView((v) => v && { ...v, columns });
+      })
+      .catch((e) => setColumnError(errorText(e)));
+
+  const deleteColumn = (id: number, moveTo?: MoveTo) =>
+    api
+      .deleteColumn(id, moveTo)
+      .then(({ columns, overlay }) => {
+        setColumnError(null);
+        setView((v) => v && { ...v, columns, ...overlay });
+      })
+      .catch((e) => {
+        throw errorText(e);
+      });
 
   const overlay: Overlay = { places: view?.places ?? [], requests: view?.requests ?? [] };
   const workerByTask = useMemo(() => Object.fromEntries(workers.map((w) => [w.taskId, w])) as Record<string, Worker>, [workers]);
@@ -137,7 +159,7 @@ export default function App() {
   };
 
   const anyCollapsed = view?.columns.some((c) => c.collapsed) ?? false;
-  const expandAll = () => view?.columns.filter((c) => c.collapsed).forEach((c) => changeColumn(c.project, { collapsed: false }));
+  const expandAll = () => view?.columns.filter((c) => c.collapsed).forEach((c) => changeColumn(c.id, { collapsed: false }));
 
   const onSettingsSaved = (saved: Settings) => {
     setSettings(saved);
@@ -183,6 +205,11 @@ export default function App() {
           Could not save the move: {moveError}
         </div>
       )}
+      {columnError && (
+        <div className="banner" role="status">
+          Could not change the columns: {columnError}
+        </div>
+      )}
       <main className="main">
         {view ? (
           view.columns.length > 0 ? (
@@ -196,6 +223,8 @@ export default function App() {
               onSelect={selectCard}
               onColumnChange={changeColumn}
               onColumnRename={renameColumn}
+              onColumnAdd={(name) => void replaceColumns(api.addColumn(name))}
+              onColumnDelete={deleteColumn}
               onPlace={placeCard}
               onWatch={(card, worker) => setWatched({ taskId: card.id, title: card.title, terminal: worker.terminal })}
             />

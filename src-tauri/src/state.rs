@@ -10,7 +10,7 @@ use serde_json::json;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter};
 
-use crate::db::{CardPlace, Column, Db, MoveRequest, MoveStatus, RowName, Snapshot};
+use crate::db::{CardPlace, Column, Db, MoveRequest, MoveStatus, MoveTo, RowName, Snapshot};
 use crate::herdr::{self, Frame, Herdr, Notice, View};
 use crate::moves::{self, Placement};
 use crate::tasks::{self, Card};
@@ -79,6 +79,13 @@ pub struct BoardView {
 pub struct Overlay {
     pub places: Vec<CardPlace>,
     pub requests: Vec<MoveRequest>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Layout {
+    pub columns: Vec<Column>,
+    pub overlay: Overlay,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -266,8 +273,7 @@ impl AppState {
             Ok(cards) => {
                 moves::reconcile(&self.db, &home, &cards)?;
                 let mut db = self.db.lock().unwrap();
-                let projects: Vec<String> = cards.iter().map(|c| c.project.clone()).collect();
-                let columns = db.ensure_columns(&projects)?;
+                let columns = db.ensure_columns(&cards)?;
                 let snapshot = Snapshot {
                     taken_at_ms: now_ms(),
                     home: home.display().to_string(),
@@ -362,6 +368,20 @@ impl AppState {
             &session,
             &self.herdr.terminals(),
         )
+    }
+
+    pub fn add_column(&self, name: &str) -> Result<Vec<Column>, String> {
+        self.db.lock().unwrap().add_column(name)
+    }
+
+    pub fn delete_column(&self, id: i64, move_to: Option<MoveTo>) -> Result<Layout, String> {
+        let cards = moves::cached_cards(&self.db, &self.home())?;
+        let mut db = self.db.lock().unwrap();
+        let columns = db.delete_column(id, move_to.as_ref(), &cards)?;
+        Ok(Layout {
+            columns,
+            overlay: overlay_of(&db)?,
+        })
     }
 
     pub fn place_card(&self, placement: Placement) -> Result<Overlay, String> {

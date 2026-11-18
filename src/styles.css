@@ -137,6 +137,20 @@ code,
   background: var(--ink);
 }
 
+.btn-danger {
+  background: #b23a32;
+  color: #fff;
+  border-color: #b23a32;
+}
+
+.btn-danger:hover {
+  background: #962f28;
+}
+
+.btn-danger:disabled:hover {
+  background: #b23a32;
+}
+
 .mini {
   font-size: calc(11px * var(--board-scale));
   font-weight: 600;
@@ -513,6 +527,38 @@ button.column-name:focus-visible,
 
 .col-handle:hover {
   background: var(--accent);
+}
+
+.column-delete {
+  opacity: 0;
+}
+
+.column-head:hover .column-delete,
+.column-delete:focus-visible {
+  opacity: 1;
+}
+
+.column-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 2px 8px;
+  font-family: var(--heading);
+  font-size: calc(13px * var(--board-scale));
+  font-weight: 600;
+  color: var(--ink-3);
+  border: 1px dashed var(--control);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.column-add:hover {
+  color: var(--ink);
+  border-style: solid;
+  background: #fff;
 }
 
 .row {
@@ -1365,6 +1411,56 @@ button.sailor:focus-visible {
   gap: 8px;
   padding: 12px 18px 14px;
   border-top: 1px solid var(--line-faint);
+}
+
+/* Confirm */
+
+.confirm {
+  width: min(420px, calc(100vw - 48px));
+  padding: 18px 18px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(15, 37, 51, 0.22);
+  color: var(--ink);
+}
+
+.confirm::backdrop {
+  background: rgba(15, 37, 51, 0.32);
+}
+
+.confirm form {
+  display: grid;
+  gap: 10px;
+}
+.confirm h2 {
+  margin: 0;
+  font-family: var(--heading);
+  font-size: calc(17px * var(--board-scale));
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.confirm p {
+  margin: 0;
+  font-size: calc(13px * var(--board-scale));
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.confirm-name {
+  white-space: nowrap;
+}
+
+.confirm-move {
+  display: grid;
+  gap: 8px;
+  margin: 2px 0 4px;
+}
+.confirm-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 /* Crewmate terminal */
