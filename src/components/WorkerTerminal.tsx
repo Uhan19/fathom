@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { errorText, events, type WorkerStatus } from "../api";
 import { useLiveTerminal } from "../liveTerminal";
+import { isPlainEscape } from "../terminalInput";
 import { Close, Sailor } from "./Icons";
 
 export interface Watched {
@@ -48,10 +49,32 @@ export function WorkerTerminal({ watched, status, fontFamily, fontSize, onClose 
     if (phase.kind === "attached") focus();
   }, [phase.kind, focus]);
 
+  useEffect(() => {
+    const escape = (e: KeyboardEvent) => {
+      if (!isPlainEscape(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    };
+    window.addEventListener("keydown", escape, true);
+    return () => window.removeEventListener("keydown", escape, true);
+  }, [onClose]);
+
+  const pressedOnBackdrop = useRef(false);
+
   const shown = phase.kind === "attached" || phase.kind === "ended";
 
   return (
-    <div className="watch-backdrop">
+    <div
+      className="watch-backdrop"
+      onMouseDown={(e) => {
+        pressedOnBackdrop.current = e.target === e.currentTarget;
+      }}
+      onMouseUp={(e) => {
+        if (pressedOnBackdrop.current && e.target === e.currentTarget) onClose();
+        pressedOnBackdrop.current = false;
+      }}
+    >
       <section className="watch" role="dialog" aria-modal="true" aria-label={`Crewmate terminal for ${watched.title}`}>
         <header className="watch-head">
           <span className={`sailor${status ? ` ${status}` : ""}`} aria-hidden="true">

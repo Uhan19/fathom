@@ -159,7 +159,8 @@ Fathom asks your login shell for its PATH once at startup and uses it to find `h
 - Changes come from herdr-core events and from changes to the `.meta` files; there is no polling loop.
 - Clicking the sailor opens the crewmate's terminal in a large view, attached the same way as the chat panel, so you can watch and type.
   The chat panel stays attached to Firstmate's terminal meanwhile.
-- Escape goes to the terminal; only the close button closes the view.
+- Escape, a click on the dimmed board around the view, or the close button closes the view.
+  Escape closes the view rather than reaching the crewmate's terminal.
   Closing only detaches Fathom; the crewmate and its terminal keep running.
 
 ## Settings

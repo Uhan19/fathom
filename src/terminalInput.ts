@@ -85,6 +85,10 @@ export function isShiftEnter(e: KeyboardEvent): boolean {
   return e.key === "Enter" && e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !e.isComposing;
 }
 
+export function isPlainEscape(e: KeyboardEvent): boolean {
+  return e.key === "Escape" && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !e.isComposing;
+}
+
 export function clipboardWrite(data: string): string | null {
   const separator = data.indexOf(";");
   if (separator < 0) return null;
