@@ -14,6 +14,13 @@ const SERVER_NAME: &str = "fathom";
 const MCP_CONFIG_FILE: &str = "fathom-mcp.json";
 const CLAUDE: &str = "claude";
 const CODEX: &str = "codex";
+const POSIX_SHELLS: &[&str] = &[
+    "sh", "bash", "zsh", "dash", "ksh", "mksh", "oksh", "yash", "ash",
+];
+const FISH: &str = "fish";
+const FALLBACK_SHELL: &str = "/bin/sh";
+const POSIX_EXEC: &str = r#"exec "$0" "$@""#;
+const FISH_EXEC: &str = "exec $argv";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -72,6 +79,7 @@ pub struct Launch<'a> {
     pub role: &'a str,
     pub cwd: &'a Path,
     pub server: &'a FathomServer,
+    pub shell: Option<&'a Path>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -120,12 +128,36 @@ pub fn open(
         "--label".into(),
         label(AGENT_KEY, launch.agent.key()),
         "--".into(),
-        program.display().to_string(),
     ];
-    args.extend(agent_args(launch.agent, launch.server)?);
+    let mut command = vec![program.display().to_string()];
+    command.extend(agent_args(launch.agent, launch.server)?);
+    args.extend(through_login_shell(launch.shell, command));
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     let started = herdr::parse_terminal(&herdr.run(&args).map_err(failed)?).map_err(failed)?;
     Ok(herdr.get(&started.address).unwrap_or(started))
+}
+
+fn through_login_shell(shell: Option<&Path>, command: Vec<String>) -> Vec<String> {
+    let shell = shell.filter(|shell| shell.is_file());
+    let name = shell
+        .and_then(Path::file_name)
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+    let (shell, script) = match shell {
+        Some(shell) if name == FISH => (shell, FISH_EXEC),
+        Some(shell) if POSIX_SHELLS.contains(&name) => (shell, POSIX_EXEC),
+        _ => (Path::new(FALLBACK_SHELL), POSIX_EXEC),
+    };
+    [
+        shell.display().to_string(),
+        "-l".into(),
+        "-i".into(),
+        "-c".into(),
+        script.into(),
+    ]
+    .into_iter()
+    .chain(command)
+    .collect()
 }
 
 fn agent_args(agent: Agent, server: &FathomServer) -> Result<Vec<String>, LaunchError> {
@@ -179,6 +211,9 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::sync::Arc;
 
+    const SHELL_STUB: &str = "zsh";
+    const SPACED_FOLDER: &str = "Application Support";
+
     const FAKE_HC_SCRIPT: &str = r#"#!/bin/sh
 for arg in "$@"; do printf '%s\n' "$arg"; done >> "$0.args"
 printf '%s\n' '<end>' >> "$0.args"
@@ -197,12 +232,13 @@ esac
 
     impl Lab {
         fn new(tools: &[&str]) -> Lab {
+            let tools = [tools, &[SHELL_STUB]].concat();
             let lab = Lab {
                 bin: tempfile::tempdir().unwrap(),
                 data: tempfile::tempdir().unwrap(),
                 folder: tempfile::tempdir().unwrap(),
             };
-            for tool in tools {
+            for tool in &tools {
                 let script = lab.bin.path().join(tool);
                 let body = if *tool == "hc" {
                     FAKE_HC_SCRIPT
@@ -212,15 +248,24 @@ esac
                 std::fs::write(&script, body).unwrap();
                 std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
             }
+            std::fs::create_dir_all(lab.data_dir()).unwrap();
             let hc = tools.contains(&"hc").then(|| lab.bin.path().join("hc"));
             FAKE_HC.with(|fake| *fake.borrow_mut() = hc);
             lab
         }
 
+        fn data_dir(&self) -> PathBuf {
+            self.data.path().join(SPACED_FOLDER)
+        }
+
+        fn shell(&self) -> PathBuf {
+            self.bin.path().join(SHELL_STUB)
+        }
+
         fn server(&self) -> FathomServer {
             FathomServer {
                 program: PathBuf::from("/Applications/Fathom.app/Contents/MacOS/fathom"),
-                db: self.data.path().join("fathom.db"),
+                db: self.data_dir().join("fathom.db"),
             }
         }
 
@@ -231,6 +276,7 @@ esac
                 role: CHAT_ROLE,
                 cwd: self.folder.path(),
                 server: &self.server(),
+                shell: Some(&self.shell()),
             };
             let bin = self.bin.path().to_path_buf();
             open(&herdr, &launch, |program| {
@@ -258,6 +304,11 @@ esac
                 "--label",
                 &format!("fathom.agent={}", agent.key()),
                 "--",
+                &self.shell().display().to_string(),
+                "-l",
+                "-i",
+                "-c",
+                POSIX_EXEC,
                 &self.bin.path().join(program).display().to_string(),
             ]
             .iter()
@@ -275,7 +326,7 @@ esac
         assert_eq!(terminal.address, "t9");
         assert_eq!(terminal.labels["fathom.role"], "chat");
 
-        let config = lab.data.path().join("fathom-mcp.json");
+        let config = lab.data_dir().join("fathom-mcp.json");
         let config_arg = config.display().to_string();
         assert_eq!(
             lab.calls(),
@@ -286,7 +337,7 @@ esac
         );
         let written: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(config).unwrap()).unwrap();
-        let db = lab.data.path().join("fathom.db").display().to_string();
+        let db = lab.data_dir().join("fathom.db").display().to_string();
         assert_eq!(
             written,
             json!({"mcpServers": {"fathom": {
@@ -300,7 +351,7 @@ esac
     fn codex_gets_the_fathom_server_as_per_run_config_overrides() {
         let lab = Lab::new(&["hc", "codex"]);
         lab.open(Agent::Codex).unwrap();
-        let db = lab.data.path().join("fathom.db").display().to_string();
+        let db = lab.data_dir().join("fathom.db").display().to_string();
         let command =
             r#"mcp_servers.fathom.command="/Applications/Fathom.app/Contents/MacOS/fathom""#;
         let args = format!(r#"mcp_servers.fathom.args=["--mcp","--db","{db}"]"#);
@@ -308,7 +359,7 @@ esac
             lab.calls()[0],
             lab.run_call(Agent::Codex, "codex", &["-c", command, "-c", &args])
         );
-        assert!(!lab.data.path().join("fathom-mcp.json").exists());
+        assert!(!lab.data_dir().join("fathom-mcp.json").exists());
     }
 
     #[test]
@@ -319,7 +370,58 @@ esac
             lab.calls()[0],
             lab.run_call(Agent::Firstmate, "claude", &[])
         );
-        assert!(!lab.data.path().join("fathom-mcp.json").exists());
+        assert!(!lab.data_dir().join("fathom-mcp.json").exists());
+    }
+
+    #[test]
+    fn agents_start_through_the_login_shell_or_a_posix_fallback() {
+        let lab = Lab::new(&[FISH, "nu"]);
+        let command = vec![
+            "/bin/claude".to_string(),
+            "a b".into(),
+            r#"it's "q""#.into(),
+        ];
+        let wrapped = |shell: Option<&Path>| through_login_shell(shell, command.clone());
+        let expect = |shell: &Path, script: &str| -> Vec<String> {
+            [
+                shell.display().to_string(),
+                "-l".into(),
+                "-i".into(),
+                "-c".into(),
+                script.into(),
+            ]
+            .into_iter()
+            .chain(command.clone())
+            .collect()
+        };
+        let fallback = expect(Path::new(FALLBACK_SHELL), POSIX_EXEC);
+        let fish = lab.bin.path().join(FISH);
+        assert_eq!(
+            wrapped(Some(&lab.shell())),
+            expect(&lab.shell(), POSIX_EXEC)
+        );
+        assert_eq!(wrapped(Some(&fish)), expect(&fish, FISH_EXEC));
+        assert_eq!(wrapped(Some(&lab.bin.path().join("nu"))), fallback);
+        assert_eq!(wrapped(Some(&lab.bin.path().join("bash"))), fallback);
+        assert_eq!(wrapped(None), fallback);
+    }
+
+    #[test]
+    fn the_posix_wrapper_passes_arguments_unchanged() {
+        let args = [
+            "a b",
+            r#"it's "q""#,
+            "$HOME",
+            "/x/Application Support/fathom-mcp.json",
+        ];
+        let output = std::process::Command::new(FALLBACK_SHELL)
+            .args(["-c", POSIX_EXEC, "printf"])
+            .arg("[%s]")
+            .args(args)
+            .output()
+            .unwrap();
+        let expected: String = args.iter().map(|arg| format!("[{arg}]")).collect();
+        assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
     }
 
     #[test]
@@ -348,17 +450,18 @@ esac
     fn a_missing_working_folder_is_reported_before_anything_starts() {
         let lab = Lab::new(&["hc", "claude"]);
         let folder = lab.folder.path().to_path_buf();
-        drop(lab.folder);
-        let herdr = Herdr::new(Connection::default(), Arc::new(|_| {}));
         let server = FathomServer {
             program: PathBuf::from("/fathom"),
-            db: lab.data.path().join("fathom.db"),
+            db: lab.data_dir().join("fathom.db"),
         };
+        drop(lab.folder);
+        let herdr = Herdr::new(Connection::default(), Arc::new(|_| {}));
         let launch = Launch {
             agent: Agent::Claude,
             role: CHAT_ROLE,
             cwd: &folder,
             server: &server,
+            shell: None,
         };
         let bin = lab.bin.path().to_path_buf();
         let result = open(&herdr, &launch, |program| Some(bin.join(program)));
@@ -371,6 +474,7 @@ esac
     const STUB_AGENT: &str = r#"#!/bin/sh
 for arg in "$@"; do printf '%s\n' "$arg"; done > "$0.$$.args"
 printf 'stub %s in %s\n' "$(basename "$0")" "$PWD"
+printf 'RC:%s\n' "${FATHOM_RC_MARKER:-missing}"
 while IFS= read -r line; do printf 'GOT:%s\n' "$line"; done
 "#;
 
@@ -397,6 +501,22 @@ while IFS= read -r line; do printf 'GOT:%s\n' "$line"; done
         logs
     }
 
+    const RC_MARKER: &str = "export FATHOM_RC_MARKER=from-rc\n";
+
+    fn zsh_with_scratch_rc(dir: &Path) -> PathBuf {
+        let zdotdir = dir.join("zdotdir");
+        std::fs::create_dir_all(&zdotdir).unwrap();
+        std::fs::write(zdotdir.join(".zshrc"), RC_MARKER).unwrap();
+        let shell = dir.join(SHELL_STUB);
+        let script = format!(
+            "#!/bin/sh\nZDOTDIR='{}' exec /bin/zsh \"$@\"\n",
+            zdotdir.display()
+        );
+        std::fs::write(&shell, script).unwrap();
+        std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o755)).unwrap();
+        shell
+    }
+
     fn received_args(bin: &Path, program: &str, before: usize) -> Vec<String> {
         crate::herdr::tests::wait_for("the stub to log its arguments", || {
             stub_logs(bin, program).len() > before
@@ -418,13 +538,17 @@ while IFS= read -r line; do printf 'GOT:%s\n' "$line"; done
         let herdr = Herdr::new(connection, Arc::new(|_| {}));
         let bin = stub_bin();
         let data = tempfile::tempdir().unwrap();
+        let data_dir = data.path().join(SPACED_FOLDER);
+        std::fs::create_dir_all(&data_dir).unwrap();
         let folder = tempfile::tempdir().unwrap();
         let home = tempfile::tempdir().unwrap();
+        let rc = tempfile::tempdir().unwrap();
+        let shell = zsh_with_scratch_rc(rc.path());
         let server = FathomServer {
             program: PathBuf::from("/Applications/Fathom.app/Contents/MacOS/fathom"),
-            db: data.path().join("fathom.db"),
+            db: data_dir.join("fathom.db"),
         };
-        let config = data.path().join(MCP_CONFIG_FILE).display().to_string();
+        let config = data_dir.join(MCP_CONFIG_FILE).display().to_string();
         let db = server.db.display().to_string();
         let cases = [
             (
@@ -454,6 +578,7 @@ while IFS= read -r line; do printf 'GOT:%s\n' "$line"; done
                 role: CHAT_ROLE,
                 cwd,
                 server: &server,
+                shell: Some(&shell),
             };
             let program = bin.path().join(agent.program());
             let logged_before = stub_logs(bin.path(), agent.program()).len();
@@ -477,7 +602,9 @@ while IFS= read -r line; do printf 'GOT:%s\n' "$line"; done
             let got: serde_json::Value =
                 serde_json::from_str(&herdr.run(&["get", &terminal.address, "--json"]).unwrap())
                     .unwrap();
-            let mut argv = vec![program.display().to_string()];
+            let wrapper = [&shell.display().to_string(), "-l", "-i", "-c", POSIX_EXEC];
+            let mut argv: Vec<String> = wrapper.iter().map(|arg| arg.to_string()).collect();
+            argv.push(program.display().to_string());
             argv.extend(expected_args.iter().cloned());
             assert_eq!(got["argv"], json!(argv), "{got}");
             assert_eq!(
@@ -516,6 +643,7 @@ while IFS= read -r line; do printf 'GOT:%s\n' "$line"; done
             let seen =
                 |text: &str| String::from_utf8_lossy(&screen.lock().unwrap().bytes).contains(text);
             wait_for("the stub's greeting", || seen("stub "));
+            wait_for("the marker from the scratch rc file", || seen("RC:from-rc"));
             herdr.write_input(View::Chat, b"typed-in-fathom\r").unwrap();
             wait_for("the typed line", || seen("GOT:typed-in-fathom"));
             herdr

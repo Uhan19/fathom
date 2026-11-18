@@ -364,6 +364,10 @@ The panel's title names the agent; on the backlog it never says Firstmate.
 Fathom starts the agent with herdr-core's `run --bg` on its own herdr-core session and labels the terminal `fathom.role=chat` and `fathom.agent=<claude|codex|firstmate>`.
 The label makes it the chat terminal, so the panel finds it again after Fathom restarts.
 herdr-core runs the program in its own environment, so Fathom looks the command up on your login shell's PATH and starts it by its full path.
+It starts the agent through your login shell, as `<shell> -l -i -c 'exec "$0" "$@"' <program> <args>`, so the agent and its hooks get the same environment as a terminal you open yourself, including what your rc files add to PATH (for example `node` from nvm or fnm).
+The shell is `SHELL`, or your account's shell when `SHELL` is unset.
+fish gets `exec $argv` instead, and any other shell falls back to `/bin/sh`.
+Because the shell starts the agent, `hc ls` lists the terminal under the shell's name.
 
 - Claude Code starts in the agent folder with `--mcp-config <file>`.
   The file is `fathom-mcp.json` beside Fathom's database and points at Fathom's own binary with `--mcp --db <database>`, so Claude Code gets the [MCP server](#the-mcp-server) for this session only.

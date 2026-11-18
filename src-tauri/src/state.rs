@@ -406,6 +406,7 @@ impl AppState {
             })?,
             db: self.db.lock().unwrap().path().to_path_buf(),
         };
+        let shell = shell_path::login_shell().map(PathBuf::from);
         launch::open(
             &self.herdr,
             &Launch {
@@ -413,6 +414,7 @@ impl AppState {
                 role: launch::CHAT_ROLE,
                 cwd: &cwd,
                 server: &server,
+                shell: shell.as_deref(),
             },
             |program| shell_path::find_first(&[program]),
         )

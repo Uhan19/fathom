@@ -45,11 +45,15 @@ fn merge(first: &str, second: &str) -> String {
     seen.join(":")
 }
 
-fn login_shell_path() -> Option<String> {
-    let shell = std::env::var("SHELL")
+pub fn login_shell() -> Option<String> {
+    std::env::var("SHELL")
         .ok()
         .filter(|s| !s.is_empty())
-        .or_else(passwd_shell)?;
+        .or_else(passwd_shell)
+}
+
+fn login_shell_path() -> Option<String> {
+    let shell = login_shell()?;
     let script = format!("printf '%s%s%s' {MARKER} \"$PATH\" {MARKER}");
     let output = Command::new(shell)
         .args(["-l", "-i", "-c", &script])
