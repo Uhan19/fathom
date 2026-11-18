@@ -8,10 +8,12 @@ const SEEDS: Seed[] = [
   ["atl-09", "atlas-api", "shallows", "Split the invoice service into read and write paths", { state: "in_flight" }],
   ["atl-04", "atlas-api", "deep", "Move the nightly export to the new queue", { holdKind: "captain", holdUntil: "2026-12-02", holdReason: "Waiting until the queue migration finishes." }],
   ["atl-02", "atlas-api", "landed", "Fix duplicate receipts after a timeout", { state: "done", closed: "2026-11-14", links: [{ kind: "pr", target: "https://github.com/example/atlas-api/pull/402" }] }],
+  ["atl-03", "atlas-api", "landed", "Find why webhook retries spike on Mondays", { state: "done", kind: "scout", closed: "2026-11-13", links: [{ kind: "report", target: "data/atl-03/report.md" }] }],
   ["atl-01", "atlas-api", "landed", "Add request ids to every log line", { state: "done", closed: "2026-11-09" }],
   ["hrb-21", "harbor-web", "surface", "Choose the empty-state copy for the dashboard", { holdKind: "captain", holdReason: "Three drafts are in the report. Pick one or edit." , links: [{ kind: "report", target: "data/harbor-web/empty-state-drafts.md" }] }],
   ["hrb-18", "harbor-web", "shallows", "Rebuild the settings page with the new form kit", { state: "in_flight", links: [{ kind: "pr", target: "https://github.com/example/harbor-web/pull/233" }] }],
   ["hrb-17", "harbor-web", "shallows", "Make the sidebar keyboard friendly", { state: "in_flight" }],
+  ["hrb-16", "harbor-web", "shallows", "Compare three charting libraries", { state: "in_flight", kind: "scout" }],
   ["hrb-14", "harbor-web", "deep", "Try a denser table layout", { holdKind: "parked", holdReason: "Parked until the design review." }],
   ["hrb-11", "harbor-web", "seabed", "Ship dark mode", { blockedBy: ["hrb-18"] }],
   ["hrb-10", "harbor-web", "landed", "Lazy-load the charts bundle", { state: "done", closed: "2026-11-12" }],
@@ -24,6 +26,7 @@ const SEEDS: Seed[] = [
   ["led-44", "ledger-sync", "surface", "Decide what to do with orphaned ledger rows", { holdKind: "captain", holdReason: "There are 212 rows with no account. Delete, archive, or keep?" }],
   ["led-40", "ledger-sync", "deep", "Backfill currency codes for 2023", { holdKind: "parked" }],
   ["led-38", "ledger-sync", "deep", "Rewrite the reconciliation job in batches", { holdKind: "parked", holdReason: "Waiting for a quieter week." }],
+  ["led-37", "ledger-sync", "landed", "Survey the flaky tests in the sync job", { state: "done", kind: "scout", closed: "2026-11-17" }],
   ["led-35", "ledger-sync", "landed", "Stop double-counting refunds", { state: "done", closed: "2026-11-16", links: [{ kind: "pr", target: "https://github.com/example/ledger-sync/pull/97" }] }],
   ["pil-08", "pilot-infra", "shallows", "Rotate the staging certificates", { state: "in_flight" }],
   ["pil-06", "pilot-infra", "deep", "Move backups to the cheaper storage tier", { holdKind: "captain", holdUntil: "2026-12-10" }],
@@ -40,7 +43,7 @@ const seeded = ([id, project, row, title, extra]: Seed): Card => ({
   project,
   row,
   state: "open",
-  kind: "task",
+  kind: "ship",
   holdKind: "",
   holdUntil: "",
   holdReason: "",
@@ -57,6 +60,8 @@ export const FIXTURE_LATE_CARD: Card = seeded(["kel-09", "keel-cli", "shallows",
 export const FIXTURE_WORKERS: Worker[] = [
   { taskId: "atl-09", terminal: "t3", status: "working" },
   { taskId: "hrb-18", terminal: "t4", status: "idle" },
+  { taskId: "hrb-16", terminal: "t5", status: "working" },
+  { taskId: "pil-08", terminal: "t6", status: "idle" },
 ];
 
 const fixtureRequest = (over: Partial<MoveRequest> & Pick<MoveRequest, "cardId" | "fromRow" | "toRow">): MoveRequest => ({

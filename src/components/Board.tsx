@@ -9,6 +9,7 @@ import {
   groupCards,
   headTemplate,
   insertAt,
+  outcomeTag,
   renamedColumn,
   shownRequest,
 } from "../board";
@@ -440,12 +441,14 @@ const WORKER_LABEL: Record<Worker["status"], string> = {
 
 function CardFace({ card, request }: { card: Card; request: MoveRequest | null }) {
   const note = cardNote(card);
+  const tag = outcomeTag(card);
   return (
     <>
       <span className="bar" aria-hidden="true" />
       <span className="card-body">
         <span className="phrase">{card.title}</span>
         {note && <span className="card-note">{note}</span>}
+        {tag && <span className="mark mark-reported">{tag}</span>}
         {request && <RequestMark request={request} />}
       </span>
     </>
