@@ -107,6 +107,11 @@ export function columnTemplate(columns: Column[]): string {
   return [`${ROW_LABEL_WIDTH}px`, ...tracks].join(" ");
 }
 
+export function renamedColumn(column: Pick<Column, "project" | "name">, input: string): string | null {
+  const name = input.trim() || column.project;
+  return name === column.name ? null : name;
+}
+
 export function boardMinWidth(columns: Column[]): number {
   return columns.reduce((sum, c) => sum + (c.collapsed ? COLLAPSED_WIDTH : c.width) + COLUMN_GAP, ROW_LABEL_WIDTH + 32);
 }

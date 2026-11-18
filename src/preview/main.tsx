@@ -1,4 +1,4 @@
-import { mockIPC } from "@tauri-apps/api/mocks";
+import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import type { BoardView, Card, CardPlace, MoveRequest, Overlay, Placement, Settings } from "../api";
 import { FIXTURE_CARDS, FIXTURE_COLUMNS, FIXTURE_REQUESTS, FIXTURE_SCREEN, FIXTURE_TERMINALS, FIXTURE_WORKERS, fixtureDetail, workerScreen } from "./fixture";
@@ -82,6 +82,8 @@ type Output = { onmessage: (message: number[] | { cols: number; rows: number }) 
 const outputs = new Map<unknown, Output>();
 const bytes = (text: string) => [...new TextEncoder().encode(text)];
 
+mockWindows("main");
+
 mockIPC(
   (cmd, payload) => {
     const args = (payload ?? {}) as Record<string, unknown>;
@@ -100,6 +102,10 @@ mockIPC(
             ? { ...c, width: (args.width as number | null) ?? c.width, collapsed: (args.collapsed as boolean | null) ?? c.collapsed }
             : c,
         );
+        return null;
+      case "set_column_name":
+        console.info("set_column_name", args.project, JSON.stringify(args.name));
+        columns = columns.map((c) => (c.project === args.project ? { ...c, name: (args.name as string).trim() || c.project } : c));
         return null;
       case "set_row_name":
         rowNames.set(args.row as string, args.name as string);
@@ -133,7 +139,7 @@ mockIPC(
         return `${args.directory}/fathom-export-1763400000000`;
       case "terminal_input":
         console.info("terminal_input", args.view, JSON.stringify(args.data));
-        outputs.get(args.view)?.onmessage(bytes((args.data as string).replace(/\r/g, "\r\n")));
+        if (!(args.data as string).includes("\x1b")) outputs.get(args.view)?.onmessage(bytes((args.data as string).replace(/\r/g, "\r\n")));
         return null;
       case "resize_terminal":
         console.info("resize_terminal", args.view, args.cols, args.rows);
@@ -174,6 +180,8 @@ mockIPC(
   { shouldMockEvents: true },
 );
 
-Object.assign(window, { previewEmit: emit });
+const previewFeed = (view: string, text: string) => outputs.get(view)?.onmessage(bytes(text));
+
+Object.assign(window, { previewEmit: emit, previewFeed });
 
 await import("../main");

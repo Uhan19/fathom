@@ -209,6 +209,20 @@ impl Db {
         Ok(())
     }
 
+    pub fn set_column_name(&self, project: &str, name: &str) -> Result<(), String> {
+        let name = match name.trim() {
+            "" => project,
+            trimmed => trimmed,
+        };
+        self.conn
+            .execute(
+                "UPDATE columns SET name = ?2 WHERE project = ?1",
+                params![project, name],
+            )
+            .map_err(err)?;
+        Ok(())
+    }
+
     pub fn row_names(&self) -> Result<Vec<RowName>, String> {
         let mut stmt = self
             .conn
@@ -584,6 +598,25 @@ mod tests {
         assert_eq!(grown[0].width, 320);
         assert!(grown[0].collapsed);
         assert_eq!(grown[2].width, DEFAULT_COLUMN_WIDTH);
+    }
+
+    #[test]
+    fn column_names_override_the_project_and_reset_when_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Db::open(dir.path()).unwrap();
+        db.ensure_columns(&["harbor".into(), "reef".into()])
+            .unwrap();
+        db.update_column("harbor", Some(320), Some(false)).unwrap();
+        db.set_column_name("harbor", "  Harbor web  ").unwrap();
+        let renamed = db
+            .ensure_columns(&["harbor".into(), "reef".into()])
+            .unwrap();
+        assert_eq!(renamed[0].project, "harbor");
+        assert_eq!(renamed[0].name, "Harbor web");
+        assert_eq!(renamed[0].width, 320);
+        assert_eq!(renamed[1].name, "reef");
+        db.set_column_name("harbor", " ").unwrap();
+        assert_eq!(db.columns().unwrap()[0].name, "harbor");
     }
 
     #[test]

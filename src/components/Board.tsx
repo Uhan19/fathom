@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import { ROW_ORDER, type Card, type Column, type MoveRequest, type Overlay, type Placement, type RowKey, type Worker } from "../api";
-import { boardMinWidth, cardNote, clampWidth, columnTemplate, groupCards, insertAt, shownRequest } from "../board";
+import { boardMinWidth, cardNote, clampWidth, columnTemplate, groupCards, insertAt, renamedColumn, shownRequest } from "../board";
 import { useCardDrag, type CardDrag } from "../cardDrag";
 import type { DropTarget } from "../dropTarget";
 import { startDrag } from "../drag";
@@ -15,11 +15,12 @@ interface BoardProps {
   selectedId: string | null;
   onSelect: (card: Card) => void;
   onColumnChange: (project: string, change: { width?: number; collapsed?: boolean }) => void;
+  onColumnRename: (project: string, name: string) => void;
   onPlace: (placement: Placement) => void;
   onWatch: (card: Card, worker: Worker) => void;
 }
 
-export function Board({ cards, columns, overlay, workers, rowNames, selectedId, onSelect, onColumnChange, onPlace, onWatch }: BoardProps) {
+export function Board({ cards, columns, overlay, workers, rowNames, selectedId, onSelect, onColumnChange, onColumnRename, onPlace, onWatch }: BoardProps) {
   const [liveWidths, setLiveWidths] = useState<Record<string, number>>({});
   const shown = columns.map((c) => (liveWidths[c.project] ? { ...c, width: liveWidths[c.project] } : c));
   const cells = groupCards(cards, shown, overlay);
@@ -84,9 +85,7 @@ export function Board({ cards, columns, overlay, workers, rowNames, selectedId, 
               </div>
             ) : (
               <div key={column.project} className="column-head">
-                <span className="column-name" title={column.name}>
-                  {column.name}
-                </span>
+                <ColumnName column={column} onRename={(name) => onColumnRename(column.project, name)} />
                 <span className="column-total">{total}</span>
                 <button
                   className="ico"
@@ -189,6 +188,44 @@ function Ghost({ drag, request, worker }: { drag: CardDrag; request: MoveRequest
         </span>
       )}
     </div>
+  );
+}
+
+function ColumnName({ column, onRename }: { column: Column; onRename: (name: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const cancelled = useRef(false);
+
+  if (!editing) {
+    return (
+      <button className="column-name" title={`Rename ${column.name}`} onClick={() => setEditing(true)}>
+        {column.name}
+      </button>
+    );
+  }
+
+  return (
+    <input
+      className="column-name column-name-input"
+      aria-label={`Name of ${column.name}`}
+      defaultValue={column.name}
+      autoFocus
+      spellCheck={false}
+      onFocus={(e) => e.currentTarget.select()}
+      onKeyDown={(e) => {
+        if (e.nativeEvent.isComposing) return;
+        if (e.key === "Escape") cancelled.current = true;
+        else if (e.key !== "Enter") return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.currentTarget.blur();
+      }}
+      onBlur={(e) => {
+        const name = cancelled.current ? null : renamedColumn(column, e.currentTarget.value);
+        cancelled.current = false;
+        setEditing(false);
+        if (name !== null) onRename(name);
+      }}
+    />
   );
 }
 

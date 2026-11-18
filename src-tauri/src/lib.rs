@@ -46,6 +46,7 @@ pub fn run() {
             commands::log_launch,
             commands::card_detail,
             commands::update_column,
+            commands::set_column_name,
             commands::set_row_name,
             commands::place_card,
             commands::resend_request,

@@ -1,5 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 export type RowKey = "surface" | "shallows" | "deep" | "seabed" | "landed";
 
@@ -158,6 +159,7 @@ export const api = {
   cardDetail: (id: string) => invoke<Detail>("card_detail", { id }),
   updateColumn: (project: string, change: { width?: number; collapsed?: boolean }) =>
     invoke<void>("update_column", { project, width: change.width ?? null, collapsed: change.collapsed ?? null }),
+  setColumnName: (project: string, name: string) => invoke<void>("set_column_name", { project, name }),
   setRowName: (row: RowKey, name: string) => invoke<void>("set_row_name", { row, name }),
   placeCard: (placement: Placement) => invoke<Overlay>("place_card", { placement }),
   resendRequest: (requestId: string) => invoke<Overlay>("resend_request", { requestId }),
@@ -196,6 +198,11 @@ export const events = {
     listen<Worker[]>("workers://updated", (e) => handler(e.payload)),
   terminalEnded: (handler: (ended: EndedView) => void): Promise<UnlistenFn> =>
     listen<EndedView>("terminal://ended", (e) => handler(e.payload)),
+  // wry reports macOS drop positions in points, which are CSS pixels here.
+  fileDrop: (handler: (paths: string[], at: { x: number; y: number }) => void): Promise<UnlistenFn> =>
+    getCurrentWebview().onDragDropEvent((e) => {
+      if (e.payload.type === "drop") handler(e.payload.paths, { x: e.payload.position.x, y: e.payload.position.y });
+    }),
 };
 
 export function errorText(error: unknown): string {

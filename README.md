@@ -126,6 +126,9 @@ The goal is under 0.5 s on a warm start.
 | anything else (queued) | Seabed |
 
 - Columns are seeded one per project the first time a project appears; collapse and width are saved per column.
+- Clicking a column's name in its header renames the column in Fathom.
+  Enter or a click elsewhere saves, Escape cancels, and an empty name returns to the project's name.
+  The project itself and Firstmate's task list keep their names.
 
 A release build opened from Finder does not inherit your shell's PATH.
 Fathom asks your login shell for its PATH once at startup and uses it to find `hc` and `tasks-axi`.
@@ -159,7 +162,8 @@ Fathom asks your login shell for its PATH once at startup and uses it to find `h
 - Changes come from herdr-core events and from changes to the `.meta` files; there is no polling loop.
 - Clicking the sailor opens the crewmate's terminal in a large view, attached the same way as the chat panel, so you can watch and type.
   The chat panel stays attached to Firstmate's terminal meanwhile.
-- Escape goes to the terminal; only the close button closes the view.
+- Escape, a click on the dimmed board around the view, or the close button closes the view.
+  Escape closes the view rather than reaching the crewmate's terminal.
   Closing only detaches Fathom; the crewmate and its terminal keep running.
 
 ## Settings
@@ -182,6 +186,14 @@ The chat panel attaches to the terminal that carries the configured label.
 If none carries it, the panel lists the terminals herdr-core knows and lets you pick one.
 Keystrokes in the panel go into that terminal.
 
+### Scrolling
+
+- The mouse wheel or trackpad scrolls back through the last 10,000 lines the panel received, in the chat and in a crewmate's view.
+  New output does not move a view that is scrolled back; scrolling down or typing returns to the live bottom.
+- An attach starts from herdr-core's repaint of the current screen, so lines from before the attach are not in the scrollback.
+- When the program asks for mouse input, the wheel goes to the program instead.
+  In a full-screen program without mouse input, the wheel presses the up and down arrow keys.
+
 ### Keys and the clipboard
 
 - Shift+Enter sends a new line instead of submitting, encoded the way herdr-core's own key encoder does it.
@@ -191,6 +203,9 @@ Keystrokes in the panel go into that terminal.
   Option-drag selects text even when the program takes the mouse.
 - A program can copy to the clipboard with OSC 52, for example when it handles mouse selection itself.
   Fathom never answers a program's request to read the clipboard.
+- Dropping files from Finder onto the chat panel types their full paths, as a paste, without pressing Enter.
+  Each path is escaped with backslashes the way macOS terminal apps do it, and the paths are separated and followed by a space.
+  A file dropped anywhere else in the window does nothing.
 
 The message box on a card sends `<card title> (<task id>): <text>` to the same terminal with `hc send`.
 

@@ -3,6 +3,7 @@ import { Terminal } from "@xterm/headless";
 import {
   clipboardWrite,
   forwardClipboardWrites,
+  isPlainEscape,
   shiftEnterSequence,
   SHIFT_ENTER_KITTY,
   SHIFT_ENTER_LEGACY,
@@ -83,5 +84,20 @@ describe("clipboard writes from the program", () => {
     forwardClipboardWrites(term, (text) => copied.push(text));
     await feed(term, `\x1b]52;c;${base64("line one\nline two")}\x07\x1b]52;c;?\x07`);
     expect(copied).toEqual(["line one\nline two"]);
+  });
+});
+
+describe("Escape that closes the crewmate view", () => {
+  const key = (init: Partial<KeyboardEvent>) => ({ key: "Escape", shiftKey: false, altKey: false, ctrlKey: false, metaKey: false, isComposing: false, ...init }) as KeyboardEvent;
+
+  it("closes on a plain Escape", () => {
+    expect(isPlainEscape(key({}))).toBe(true);
+  });
+
+  it("leaves modified Escape, IME composition and other keys alone", () => {
+    expect(isPlainEscape(key({ shiftKey: true }))).toBe(false);
+    expect(isPlainEscape(key({ metaKey: true }))).toBe(false);
+    expect(isPlainEscape(key({ isComposing: true }))).toBe(false);
+    expect(isPlainEscape(key({ key: "Enter" }))).toBe(false);
   });
 });

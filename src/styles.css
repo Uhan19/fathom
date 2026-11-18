@@ -444,7 +444,33 @@ code,
   font-family: var(--heading);
   font-size: calc(13px * var(--board-scale));
   font-weight: 700;
-  padding-left: 4px;
+  line-height: 1.4;
+  color: var(--ink);
+  padding: 2px 5px 2px 3px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  text-align: left;
+  cursor: text;
+}
+
+button.column-name:hover {
+  border-color: var(--line);
+  background: #fff;
+}
+
+button.column-name:focus-visible,
+.column-name-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-color: var(--accent);
+}
+
+.column-name-input {
+  flex: 1 1 auto;
+  width: 0;
+  background: #fff;
+  cursor: text;
 }
 
 .column-total {

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, errorText, events, type Terminal } from "../api";
+import { droppedPathsText } from "../fileDrop";
 import { useLiveTerminal } from "../liveTerminal";
 import { ChevronRight } from "./Icons";
 
@@ -22,7 +23,8 @@ interface ChatPanelProps {
 
 export function ChatPanel({ width, label, fontFamily, fontSize, connectionKey, onTerminal, onCollapse }: ChatPanelProps) {
   const [phase, setPhase] = useState<Phase>({ kind: "finding" });
-  const { hostRef, scrollRef, attach: attachLive, release, focus } = useLiveTerminal("chat", fontFamily, fontSize);
+  const { hostRef, scrollRef, attach: attachLive, release, focus, paste } = useLiveTerminal("chat", fontFamily, fontSize);
+  const panelRef = useRef<HTMLElement>(null);
 
   const pick = useCallback(async (reason: string) => {
     setPhase({ kind: "picking", terminals: null, error: null, reason });
@@ -84,10 +86,20 @@ export function ChatPanel({ width, label, fontFamily, fontSize, connectionKey, o
     if (phase.kind === "attached") focus();
   }, [phase.kind, focus]);
 
+  const attached = phase.kind === "attached";
+  useEffect(() => {
+    if (!attached) return;
+    const unlisten = events.fileDrop((paths, at) => {
+      const hit = document.elementFromPoint(at.x, at.y);
+      if (hit && panelRef.current?.contains(hit)) paste(droppedPathsText(paths));
+    });
+    return () => void unlisten.then((fn) => fn());
+  }, [attached, paste]);
+
   const attachedName = phase.kind === "attached" || phase.kind === "ended" ? phase.terminal.name || phase.terminal.address : null;
 
   return (
-    <aside className="chat" style={{ width }} aria-label="Firstmate chat">
+    <aside ref={panelRef} className="chat" style={{ width }} aria-label="Firstmate chat">
       <div className="chat-head">
         <span className="chat-title">Firstmate</span>
         {attachedName && <span className="terminal-chip">{attachedName}</span>}
