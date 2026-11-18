@@ -1,3 +1,4 @@
+import { AGENTS, type AgentKey } from "../agents";
 import type { Card, Column, Detail, MoveRequest, RowKey, Terminal, Worker } from "../api";
 
 type Seed = [id: string, project: string, row: RowKey, title: string, extra?: Partial<Card>];
@@ -190,6 +191,29 @@ export const workerScreen = (terminal: string) =>
     ` ${ESC}36m●${ESC}0m Reading the invoice service handlers.`,
     ` ${ESC}36m●${ESC}0m Split GET routes into a read module; 14 of 22 tests pass.`,
     ` ${ESC}33m…${ESC}0m Running the remaining tests.`,
+    "",
+    ` > `,
+  ].join("\r\n");
+
+export const FIXTURE_AGENT_ADDRESS = "t7";
+
+export const agentTerminal = (agent: AgentKey, cwd: string): Terminal => ({
+  address: FIXTURE_AGENT_ADDRESS,
+  name: "",
+  title: "",
+  state: "live",
+  cwd,
+  agent: AGENTS[agent].program,
+  labels: { "fathom.role": "chat", "fathom.agent": agent },
+  cols: 120,
+  rows: 40,
+});
+
+export const agentScreen = (agent: AgentKey) =>
+  [
+    `${ESC}1m ${AGENTS[agent].name}${ESC}0m ${ESC}2m- preview screen with invented text${ESC}0m`,
+    "",
+    ` ${ESC}36m●${ESC}0m Ready for your first message.`,
     "",
     ` > `,
   ].join("\r\n");

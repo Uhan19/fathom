@@ -3,6 +3,7 @@ mod db;
 mod export;
 mod fonts;
 mod herdr;
+mod launch;
 mod mcp;
 mod moves;
 mod requests;
@@ -68,6 +69,7 @@ pub fn run() {
             commands::open_link,
             commands::herdr_status,
             commands::find_chat_terminal,
+            commands::open_chat_terminal,
             commands::list_terminals,
             commands::attach_terminal,
             commands::resize_terminal,

@@ -1,6 +1,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import type { AgentKey } from "./agents";
 
 export type RowKey = "surface" | "shallows" | "deep" | "seabed" | "landed";
 
@@ -123,6 +124,8 @@ export interface Settings {
   boardFontSize: number;
   chatAddedFonts: string[];
   boardAddedFonts: string[];
+  agentFolder: string;
+  chatAgent: AgentKey | null;
 }
 
 export interface Terminal {
@@ -189,6 +192,7 @@ export const api = {
   herdrStatus: () => invoke<HerdrStatus>("herdr_status"),
   findChatTerminal: () => invoke<Terminal | null>("find_chat_terminal"),
   listTerminals: () => invoke<Terminal[]>("list_terminals"),
+  openChatTerminal: (agent: AgentKey) => invoke<Terminal>("open_chat_terminal", { agent }),
   attachTerminal: (view: View, terminal: string, size: Size, onOutput: (bytes: Uint8Array) => void, onSize: (size: Size) => void) => {
     const output = new Channel<ArrayBuffer | number[] | Size>((message) => {
       if (message instanceof ArrayBuffer) onOutput(new Uint8Array(message));

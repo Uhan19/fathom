@@ -4,7 +4,8 @@ Fathom is a desktop board for an agent's tasks, for macOS and Linux.
 It reads Firstmate's task list when a Firstmate home is set, and otherwise keeps its own backlog that any agent fills through Fathom's MCP server.
 Each task is a card, each project starts as a column, and each row shows how deep the work sits.
 You can add your own columns, drag columns into the order you like, and delete ones you no longer need.
-It shows the board, opens card details, and embeds Firstmate's live terminal as a chat panel.
+It shows the board, opens card details, and embeds an agent's live terminal as a chat panel.
+When no terminal is there yet, the chat panel opens Claude Code, Codex or Firstmate for you through herdr-core.
 Cards can be dragged to arrange them, and a drag to another row asks the agent to move the task.
 A small sailor on a card shows that a crewmate is on the task: its red visor glows and blinks while it works and dims while idle.
 Clicking the sailor opens that crewmate's live terminal.
@@ -16,6 +17,7 @@ Clicking the sailor opens that crewmate's live terminal.
 - For Firstmate's tasks: Firstmate installed, with `bin/fm-tasks-axi.sh` and `bin/fm-inbox.sh` in its home.
 - herdr-core and `tasks-axi` on your login shell's PATH.
   Fathom looks for `herdr-core` first and then for `hc`, so it still works where another program owns the name `hc`.
+- To open an agent from the chat panel: `claude` or `codex` on your login shell's PATH.
 
 On Linux, also install Tauri's system packages.
 On Debian or Ubuntu:
@@ -46,6 +48,7 @@ It keeps its own database, so dev runs never touch the release build's data.
 `pnpm preview:ui` opens the UI in a browser with an invented fixture and mocked backend calls.
 It is handy for layout work without herdr-core or Firstmate.
 Add `?nolabel`, `?error` or `?empty` to the URL to see the terminal picker, a read error, or an empty board.
+Add `?agent=claude`, `?agent=codex` or `?agent=firstmate` to see the chat attached to a terminal Fathom opened for that agent, and `?missing=codex` (or another tool name) with `?nolabel` to see opening fail because the tool is missing.
 Add `?other=120x45` to see the chat while another client owns a 120 by 45 terminal; a key press in the panel takes the size back.
 Add `?kitty` to have the mocked terminal turn on kitty keyboard mode, so Shift+Enter sends the kitty form.
 Add `?backlog` to see a board of Fathom's own backlog, with one pending and one declined board request.
@@ -60,17 +63,21 @@ pnpm check
 This runs the TypeScript compiler, the vitest suite, `cargo fmt --check`, `cargo clippy -D warnings`, and `cargo test`.
 GitHub Actions runs the same checks on Ubuntu 24.04 for every pull request and every push to `main`.
 
-Two Rust tests are ignored by default because they need outside state:
+Three Rust tests are ignored by default because they need outside state:
 
 - `tasks::home_tests::reads_a_real_home` reads a Firstmate home copy set in `FATHOM_TEST_HOME`.
 - `herdr::tests::sizes_types_and_sends_into_a_lab_terminal` attaches to a throwaway herdr-core session set in `FATHOM_LAB_SESSION` and `FATHOM_LAB_SOCKET`.
   The labeled terminal (`FATHOM_LAB_LABEL`, default `firstmate.role=primary`) must echo each line it reads as `GOT:<line>`.
   It checks the attach and panel sizes reach the terminal, types a line, sends a card message, follows a second client's size by attaching again, and takes the size back.
   Never point it at a session you use.
+- `launch::tests::opens_each_agent_in_a_lab` opens Claude Code, Codex and Firstmate in the same throwaway session through the launch module.
+  It starts stub `claude` and `codex` scripts from a temporary folder, never the real tools, and checks each terminal's labels, folder, command line and MCP config file, that the chat lookup finds it, and that a board-request nudge reaches it.
 
 ```sh
 FATHOM_LAB_SESSION=<lab session> FATHOM_LAB_SOCKET=<lab socket> FATHOM_LAB_LABEL=<label> \
   cargo test --manifest-path src-tauri/Cargo.toml --lib -- --ignored types_and_sends
+FATHOM_LAB_SESSION=<lab session> FATHOM_LAB_SOCKET=<lab socket> \
+  cargo test --manifest-path src-tauri/Cargo.toml --lib -- --ignored opens_each_agent
 ```
 
 ## Build a release
@@ -314,7 +321,7 @@ Fathom asks your login shell for its PATH once at startup and uses it to find he
   With reduced motion turned on in the system settings, the working visor glows without blinking.
 - Changes come from herdr-core events and from changes to the `.meta` files; there is no polling loop.
 - Clicking the sailor opens the crewmate's terminal in a large view, attached the same way as the chat panel, so you can watch and type.
-  The chat panel stays attached to Firstmate's terminal meanwhile.
+  The chat panel stays attached to its terminal meanwhile.
 - Escape, a click on the dimmed board around the view, or the close button closes the view.
   Escape closes the view rather than reaching the crewmate's terminal.
   Closing only detaches Fathom; the crewmate and its terminal keep running.
@@ -323,7 +330,9 @@ Fathom asks your login shell for its PATH once at startup and uses it to find he
 
 - Firstmate home, default `~/Documents/firstmate` under your home directory when Firstmate is installed there, otherwise empty.
   Empty means Fathom's own backlog.
-- Chat terminal label, default `firstmate.role=primary`.
+- Chat terminal label.
+  Empty means the default for the board: `firstmate.role=primary` with a Firstmate home, and Fathom's own `fathom.role=chat` on the backlog.
+- Agent folder, default your home directory: the folder Claude Code and Codex start in when the chat panel opens them.
 - herdr-core session and socket; empty means herdr-core's defaults.
 - Row names.
 - Appearance: a font and a size for the chat, and a font and a size for the board.
@@ -342,9 +351,31 @@ The board rows keep their light bands in both themes.
 All herdr-core calls (`ls`, `get`, `events`, `attach`, `send`) live in `src-tauri/src/herdr.rs`.
 Fathom talks only to herdr-core, never to the Herdr app.
 
-The chat panel attaches to the terminal that carries the configured label.
-If none carries it, the panel lists the terminals herdr-core knows and lets you pick one.
+The chat panel attaches to the terminal that carries the configured label, or else to a terminal Fathom opened (`fathom.role=chat`).
+If none carries either, the panel offers to open a terminal and also lists the terminals herdr-core knows so you can pick one.
 Keystrokes in the panel go into that terminal.
+
+### Opening a terminal
+
+The panel offers Claude Code and Codex, and Firstmate as well on a board with a Firstmate home.
+It remembers the last agent you opened.
+The panel's title names the agent; on the backlog it never says Firstmate.
+
+Fathom starts the agent with herdr-core's `run --bg` on its own herdr-core session and labels the terminal `fathom.role=chat` and `fathom.agent=<claude|codex|firstmate>`.
+The label makes it the chat terminal, so the panel finds it again after Fathom restarts.
+herdr-core runs the program in its own environment, so Fathom looks the command up on your login shell's PATH and starts it by its full path.
+It starts the agent through your login shell, as `<shell> -l -i -c 'exec "$0" "$@"' <program> <args>`, so the agent and its hooks get the same environment as a terminal you open yourself, including what your rc files add to PATH (for example `node` from nvm or fnm).
+The shell is `SHELL`, or your account's shell when `SHELL` is unset.
+fish gets `exec $argv` instead, and any other shell falls back to `/bin/sh`.
+Because the shell starts the agent, `hc ls` lists the terminal under the shell's name.
+
+- Claude Code starts in the agent folder with `--mcp-config <file>`.
+  The file is `fathom-mcp.json` beside Fathom's database and points at Fathom's own binary with `--mcp --db <database>`, so Claude Code gets the [MCP server](#the-mcp-server) for this session only.
+- Codex starts in the agent folder with `-c mcp_servers.fathom.command=...` and `-c mcp_servers.fathom.args=[...]`, the same server for this run only.
+- Firstmate starts as plain `claude` in the Firstmate home, without Fathom's MCP server.
+
+Fathom never changes Claude Code's or Codex's own configuration.
+If herdr-core or the agent's command is missing, the panel says which one, and a missing folder is named too.
 
 ### Scrolling
 

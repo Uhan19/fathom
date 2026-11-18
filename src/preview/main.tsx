@@ -1,5 +1,6 @@
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
+import type { AgentKey } from "../agents";
 import { ROW_ORDER, type BoardView, type Card, type CardPlace, type Column, type Layout, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type Settings } from "../api";
 import { presetFonts } from "../appearance";
 import { cellCount, groupCards, type Cells } from "../board";
@@ -9,7 +10,10 @@ import {
   FIXTURE_BACKLOG_COLUMNS,
   FIXTURE_BACKLOG_REQUESTS,
   FIXTURE_CARDS,
+  FIXTURE_AGENT_ADDRESS,
   FIXTURE_COLUMNS, FIXTURE_LATE_CARD, FIXTURE_REQUESTS, FIXTURE_SCREEN, FIXTURE_TERMINALS, FIXTURE_WORKERS,
+  agentScreen,
+  agentTerminal,
   fixtureDetail,
   workerScreen,
 } from "./fixture";
@@ -24,10 +28,13 @@ const sendFails = params.has("sendfail");
 const lateCard = params.has("late");
 const deleteFails = params.has("deletefail");
 const KITTY_PUSH = params.has("kitty") ? "\x1b[>1u" : "";
+const rememberedAgent = (params.get("agent") as AgentKey | null) ?? null;
+const missingTool = params.get("missing");
+let openedAgent: AgentKey | null = rememberedAgent;
 
 let settings: Settings = {
   home: backlog ? "" : "/home/demo/firstmate",
-  terminalLabel: "firstmate.role=primary",
+  terminalLabel: backlog ? "fathom.role=chat" : "firstmate.role=primary",
   hcSession: "",
   hcSocket: "",
   chatFont: presetFonts("chat")[0].key,
@@ -36,7 +43,19 @@ let settings: Settings = {
   boardFontSize: 14,
   chatAddedFonts: [],
   boardAddedFonts: [],
+  agentFolder: "/home/demo",
+  chatAgent: rememberedAgent,
 };
+
+const openChatTerminal = (agent: AgentKey) => {
+  if (missingTool) throw { kind: "missing", tool: missingTool };
+  settings = { ...settings, chatAgent: agent };
+  openedAgent = agent;
+  setTimeout(() => void emit("herdr://terminals"), 0);
+  return agentTerminal(agent, agent === "firstmate" ? settings.home : settings.agentFolder);
+};
+
+const chatScreen = (terminal: string) => (terminal === FIXTURE_AGENT_ADDRESS && openedAgent ? agentScreen(openedAgent) : KITTY_PUSH + FIXTURE_SCREEN);
 const INSTALLED_FONTS = ["American Typewriter", "Andale Mono", "Avenir Next", "Courier New", "Georgia", "Helvetica Neue", "Menlo", "PT Mono", "Times New Roman", "Trebuchet MS"];
 let columns: Column[] = (backlog ? FIXTURE_BACKLOG_COLUMNS : FIXTURE_COLUMNS).map((c) => ({ ...c }));
 let nextColumnId = columns.length + 1;
@@ -244,13 +263,16 @@ mockIPC(
       case "herdr_status":
         return { connected: true, message: "" };
       case "find_chat_terminal":
-        return noLabel ? null : FIXTURE_TERMINALS[0];
+        if (noLabel) return null;
+        return rememberedAgent ? agentTerminal(rememberedAgent, rememberedAgent === "firstmate" ? settings.home : settings.agentFolder) : FIXTURE_TERMINALS[0];
+      case "open_chat_terminal":
+        return openChatTerminal(args.agent as AgentKey);
       case "list_terminals":
         return FIXTURE_TERMINALS;
       case "attach_terminal": {
         const output = args.output as Output;
         outputs.set(args.view, output);
-        const screen = args.view === "worker" ? workerScreen(args.terminal as string) : KITTY_PUSH + FIXTURE_SCREEN;
+        const screen = args.view === "worker" ? workerScreen(args.terminal as string) : chatScreen(args.terminal as string);
         console.info("attach_terminal", args.view, args.terminal, args.cols, args.rows);
         setTimeout(() => output.onmessage(bytes(screen)), 50);
         if (otherClient && args.view === "chat") {

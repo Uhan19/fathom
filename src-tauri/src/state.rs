@@ -11,14 +11,16 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter};
 
 use crate::db::{CardPlace, Column, Db, MoveRequest, MoveStatus, MoveTo, RowName, Snapshot};
-use crate::herdr::{self, Frame, Herdr, Notice, View};
+use crate::herdr::{self, Frame, Herdr, Notice, Terminal, View};
+use crate::launch::{self, Agent, FathomServer, Launch, LaunchError};
 use crate::moves::{self, Placement};
+use crate::shell_path;
 use crate::source::{Source, SourceKind};
 use crate::tasks::Card;
 use crate::watch::{self, StateChange};
 use crate::workers::{self, Worker};
 
-pub const DEFAULT_LABEL: &str = "firstmate.role=primary";
+pub const FIRSTMATE_LABEL: &str = "firstmate.role=primary";
 const DEFAULT_HOME_RELATIVE: &str = "Documents/firstmate";
 const FIRSTMATE_MARKER: &str = "bin/fm-tasks-axi.sh";
 const REFRESH_DEBOUNCE: Duration = Duration::from_millis(250);
@@ -42,6 +44,8 @@ const KEY_BOARD_FONT: &str = "boardFont";
 const KEY_BOARD_FONT_SIZE: &str = "boardFontSize";
 const KEY_CHAT_ADDED_FONTS: &str = "chatAddedFonts";
 const KEY_BOARD_ADDED_FONTS: &str = "boardAddedFonts";
+const KEY_AGENT_FOLDER: &str = "agentFolder";
+const KEY_CHAT_AGENT: &str = "chatAgent";
 #[cfg(target_os = "macos")]
 const DEFAULT_CHAT_FONT: &str = "sf-mono";
 #[cfg(not(target_os = "macos"))]
@@ -64,6 +68,9 @@ pub struct Settings {
     pub board_font_size: u16,
     pub chat_added_fonts: Vec<String>,
     pub board_added_fonts: Vec<String>,
+    pub agent_folder: String,
+    #[serde(default)]
+    pub chat_agent: Option<Agent>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -139,6 +146,27 @@ pub fn default_home() -> String {
         .unwrap_or_default()
 }
 
+fn user_home() -> String {
+    std::env::home_dir()
+        .map(|home| home.display().to_string())
+        .unwrap_or_default()
+}
+
+fn default_label(home: &str) -> String {
+    match Source::of(home) {
+        Source::Firstmate { .. } => FIRSTMATE_LABEL.to_string(),
+        Source::Backlog => launch::chat_label(),
+    }
+}
+
+fn chosen_label(stored: Option<&String>, home: &str) -> String {
+    let built_in = [FIRSTMATE_LABEL.to_string(), launch::chat_label()];
+    stored
+        .map(|label| label.trim().to_string())
+        .filter(|label| !label.is_empty() && !built_in.contains(label))
+        .unwrap_or_else(|| default_label(home))
+}
+
 pub fn load_settings(db: &Db) -> Result<Settings, String> {
     let stored = db.settings()?;
     let get = |key: &str, fallback: String| {
@@ -162,12 +190,13 @@ pub fn load_settings(db: &Db) -> Result<Settings, String> {
             .map(clean_families)
             .unwrap_or_default()
     };
+    let home = stored
+        .get(KEY_HOME)
+        .map(|home| home.trim().to_string())
+        .unwrap_or_else(default_home);
     Ok(Settings {
-        home: stored
-            .get(KEY_HOME)
-            .map(|home| home.trim().to_string())
-            .unwrap_or_else(default_home),
-        terminal_label: get(KEY_LABEL, DEFAULT_LABEL.to_string()),
+        terminal_label: chosen_label(stored.get(KEY_LABEL), &home),
+        home,
         hc_session: get(KEY_SESSION, String::new()),
         hc_socket: get(KEY_SOCKET, String::new()),
         chat_font: get(KEY_CHAT_FONT, DEFAULT_CHAT_FONT.to_string()),
@@ -176,6 +205,10 @@ pub fn load_settings(db: &Db) -> Result<Settings, String> {
         board_font_size: size(KEY_BOARD_FONT_SIZE, DEFAULT_BOARD_FONT_SIZE),
         chat_added_fonts: families(KEY_CHAT_ADDED_FONTS),
         board_added_fonts: families(KEY_BOARD_ADDED_FONTS),
+        agent_folder: get(KEY_AGENT_FOLDER, user_home()),
+        chat_agent: stored
+            .get(KEY_CHAT_AGENT)
+            .and_then(|key| serde_json::from_value(json!(key)).ok()),
     })
 }
 
@@ -331,6 +364,7 @@ impl AppState {
                 KEY_BOARD_ADDED_FONTS,
                 &families_json(&next.board_added_fonts),
             )?;
+            db.set_setting(KEY_AGENT_FOLDER, next.agent_folder.trim())?;
         }
         let saved = load_settings(&self.db.lock().unwrap())?;
         *self.settings.lock().unwrap() = saved.clone();
@@ -343,6 +377,59 @@ impl AppState {
             self.herdr.set_connection(connection_of(&saved));
         }
         Ok(saved)
+    }
+
+    pub fn find_chat_terminal(&self) -> Result<Option<Terminal>, String> {
+        let label = self.settings.lock().unwrap().terminal_label.clone();
+        let chat = launch::chat_label();
+        match self.herdr.find_by_label(&label)? {
+            None if label != chat => self.herdr.find_by_label(&chat),
+            found => Ok(found),
+        }
+    }
+
+    pub fn open_chat_terminal(&self, agent: Agent) -> Result<Terminal, LaunchError> {
+        let folder = self.settings.lock().unwrap().agent_folder.clone();
+        let cwd = match (self.source(), agent) {
+            (Source::Firstmate { home }, Agent::Firstmate) => home,
+            (Source::Backlog, Agent::Firstmate) => {
+                return Err(LaunchError::Failed {
+                    message: "Firstmate needs a board on a Firstmate home".into(),
+                });
+            }
+            _ => PathBuf::from(folder),
+        };
+        self.remember_chat_agent(agent);
+        let server = FathomServer {
+            program: std::env::current_exe().map_err(|e| LaunchError::Failed {
+                message: format!("cannot find Fathom's own program: {e}"),
+            })?,
+            db: self.db.lock().unwrap().path().to_path_buf(),
+        };
+        let shell = shell_path::login_shell().map(PathBuf::from);
+        launch::open(
+            &self.herdr,
+            &Launch {
+                agent,
+                role: launch::CHAT_ROLE,
+                cwd: &cwd,
+                server: &server,
+                shell: shell.as_deref(),
+            },
+            |program| shell_path::find_first(&[program]),
+        )
+    }
+
+    fn remember_chat_agent(&self, agent: Agent) {
+        let saved = self
+            .db
+            .lock()
+            .unwrap()
+            .set_setting(KEY_CHAT_AGENT, agent.key());
+        match saved {
+            Ok(()) => self.settings.lock().unwrap().chat_agent = Some(agent),
+            Err(error) => eprintln!("fathom: cannot remember the chat agent: {error}"),
+        }
     }
 
     pub fn restart_watcher(&self) {
@@ -609,6 +696,51 @@ mod tests {
         assert_eq!(stored.chat_font, "menlo");
         assert_eq!(stored.chat_font_size, 17);
         assert_eq!(stored.board_font_size, DEFAULT_BOARD_FONT_SIZE);
+    }
+
+    #[test]
+    fn the_chat_label_defaults_to_the_board_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path()).unwrap();
+        db.set_setting(KEY_HOME, "").unwrap();
+        assert_eq!(
+            load_settings(&db).unwrap().terminal_label,
+            "fathom.role=chat"
+        );
+
+        db.set_setting(KEY_LABEL, FIRSTMATE_LABEL).unwrap();
+        assert_eq!(
+            load_settings(&db).unwrap().terminal_label,
+            "fathom.role=chat"
+        );
+
+        db.set_setting(KEY_HOME, "/somewhere/firstmate").unwrap();
+        assert_eq!(load_settings(&db).unwrap().terminal_label, FIRSTMATE_LABEL);
+        db.set_setting(KEY_LABEL, "fathom.role=chat").unwrap();
+        assert_eq!(load_settings(&db).unwrap().terminal_label, FIRSTMATE_LABEL);
+
+        db.set_setting(KEY_LABEL, " team.role=lead ").unwrap();
+        assert_eq!(load_settings(&db).unwrap().terminal_label, "team.role=lead");
+        db.set_setting(KEY_HOME, "").unwrap();
+        assert_eq!(load_settings(&db).unwrap().terminal_label, "team.role=lead");
+    }
+
+    #[test]
+    fn the_agent_folder_defaults_to_home_and_the_last_agent_is_remembered() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path()).unwrap();
+        let fresh = load_settings(&db).unwrap();
+        assert_eq!(fresh.agent_folder, user_home());
+        assert_eq!(fresh.chat_agent, None);
+
+        db.set_setting(KEY_AGENT_FOLDER, "/work/projects").unwrap();
+        db.set_setting(KEY_CHAT_AGENT, "codex").unwrap();
+        let stored = load_settings(&db).unwrap();
+        assert_eq!(stored.agent_folder, "/work/projects");
+        assert_eq!(stored.chat_agent, Some(Agent::Codex));
+
+        db.set_setting(KEY_CHAT_AGENT, "nonsense").unwrap();
+        assert_eq!(load_settings(&db).unwrap().chat_agent, None);
     }
 
     #[test]

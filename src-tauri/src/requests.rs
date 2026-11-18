@@ -66,9 +66,12 @@ pub fn send_note(home: &Path, request_id: &str, body: &str) -> Result<String, St
         .spawn()
         .map_err(|e| format!("cannot run {INBOX_SCRIPT}: {e}"))?;
     if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(body.as_bytes())
-            .map_err(|e| format!("cannot write the request: {e}"))?;
+        match stdin.write_all(body.as_bytes()) {
+            Err(e) if e.kind() != std::io::ErrorKind::BrokenPipe => {
+                return Err(format!("cannot write the request: {e}"));
+            }
+            _ => {}
+        }
     }
     let output = child.wait_with_output().map_err(|e| e.to_string())?;
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -171,6 +174,16 @@ exit 3"#,
         let home = fake_inbox("echo 'fm-inbox: no inbox' >&2; exit 1");
         assert_eq!(
             send_note(home.path(), "r", "b").unwrap_err(),
+            "fm-inbox: no inbox"
+        );
+    }
+
+    #[test]
+    fn an_inbox_that_exits_before_reading_still_reports_its_own_error() {
+        const LARGER_THAN_A_PIPE: usize = 1 << 20;
+        let home = fake_inbox("echo 'fm-inbox: no inbox' >&2; exit 1");
+        assert_eq!(
+            send_note(home.path(), "r", &"b".repeat(LARGER_THAN_A_PIPE)).unwrap_err(),
             "fm-inbox: no inbox"
         );
     }

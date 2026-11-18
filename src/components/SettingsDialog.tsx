@@ -47,7 +47,7 @@ export function SettingsDialog({ settings, rowNames, onPreview, onSaved, onClose
     api.dataInfo().then(setData).catch(() => setData(null));
   }, []);
 
-  const field = (key: keyof Settings) => ({
+  const field = (key: "home" | "terminalLabel" | "hcSession" | "hcSocket" | "agentFolder") => ({
     value: draft[key],
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => setDraft({ ...draft, [key]: e.target.value }),
   });
@@ -156,6 +156,12 @@ export function SettingsDialog({ settings, rowNames, onPreview, onSaved, onClose
             <label className="field">
               <span>Chat terminal label</span>
               <input className="text-input mono" {...field("terminalLabel")} spellCheck={false} />
+              <small>Leave it empty for the default: firstmate.role=primary on a Firstmate home, fathom.role=chat on Fathom's backlog.</small>
+            </label>
+            <label className="field">
+              <span>Agent folder</span>
+              <input className="text-input mono" {...field("agentFolder")} spellCheck={false} />
+              <small>Claude Code and Codex terminals that Fathom opens start in this folder. Leave it empty for your home folder.</small>
             </label>
             <div className="field-pair">
               <label className="field">

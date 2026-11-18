@@ -13,7 +13,7 @@ use crate::state::now_ms;
 use crate::tasks::Row;
 
 pub const MCP_FLAG: &str = "--mcp";
-const DB_FLAG: &str = "--db";
+pub const DB_FLAG: &str = "--db";
 const DB_ENV: &str = "FATHOM_DB";
 const SERVER_NAME: &str = "fathom";
 const INSTRUCTIONS: &str = "\

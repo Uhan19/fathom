@@ -25,6 +25,7 @@ import { Board } from "./components/Board";
 import { Brand } from "./components/Brand";
 import { CardDetail } from "./components/CardDetail";
 import { ChatPanel } from "./components/ChatPanel";
+import { chatTitle, initialAgent, type AgentKey } from "./agents";
 import { WorkerTerminal, type Watched } from "./components/WorkerTerminal";
 import { ChevronLeft } from "./components/Icons";
 import { SettingsDialog } from "./components/SettingsDialog";
@@ -43,6 +44,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(true);
   const [chatTerminal, setChatTerminal] = useState<Terminal | null>(null);
+  const [pickedAgent, setPickedAgent] = useState<AgentKey | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [preview, setPreview] = useState<Appearance | null>(null);
   const [detailWidth, setDetailWidth] = useState(DETAIL_WIDTH.initial);
@@ -184,6 +186,9 @@ export default function App() {
 
   const selectCard = (card: Card) => setSelectedId((id) => (id === card.id ? null : card.id));
   const connectionKey = settings ? `${settings.hcSession}|${settings.hcSocket}|${settings.terminalLabel}` : "";
+  const chatSource = view?.source ?? (settings?.home.trim() ? "firstmate" : "fathom");
+  const chatAgent = initialAgent(chatSource, pickedAgent ?? settings?.chatAgent ?? null);
+  const chatName = chatTitle(chatSource, chatTerminal, chatAgent);
 
   return (
     <div className="app">
@@ -299,6 +304,10 @@ export default function App() {
             <ChatPanel
               width={chatWidth}
               label={settings.terminalLabel}
+              source={chatSource}
+              agent={chatAgent}
+              agentFolder={chatAgent === "firstmate" ? settings.home : settings.agentFolder}
+              onAgent={setPickedAgent}
               fontFamily={chatFontStack(appearance ?? appearanceOf(settings))}
               fontSize={(appearance ?? settings).chatFontSize}
               theme={theme}
@@ -309,9 +318,9 @@ export default function App() {
           </div>
         )}
         {settings && !chatOpen && (
-          <button className="chat-rail" onClick={() => setChatOpen(true)} aria-label="Open Firstmate chat">
+          <button className="chat-rail" onClick={() => setChatOpen(true)} aria-label={`Open ${chatName} chat`}>
             <ChevronLeft />
-            <span className="vname">Firstmate</span>
+            <span className="vname">{chatName}</span>
           </button>
         )}
       </main>
