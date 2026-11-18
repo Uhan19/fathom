@@ -1,4 +1,4 @@
-import type { MoveStatus, SourceKind } from "./api";
+import type { MoveStatus, SourceKind, WorkerStatus } from "./api";
 
 export interface MoveCopy {
   heading: string;
@@ -10,6 +10,7 @@ interface Owner {
   Agent: string;
   waitsFor: string;
   tasks: string;
+  worker: string;
 }
 
 const OWNERS: Record<SourceKind, Owner> = {
@@ -18,12 +19,14 @@ const OWNERS: Record<SourceKind, Owner> = {
     Agent: "Firstmate",
     waitsFor: "Firstmate's task list agrees",
     tasks: "Firstmate's tasks",
+    worker: "crewmate",
   },
   fathom: {
     agent: "the agent",
     Agent: "The agent",
     waitsFor: "the agent moves the task or declines",
     tasks: "The backlog tasks",
+    worker: "worker",
   },
 };
 
@@ -60,4 +63,28 @@ export function projectTasks(source: SourceKind): string {
 
 export function emptyBoardText(source: SourceKind, home: string): string {
   return source === "fathom" ? "No tasks yet. Agents add them through Fathom's MCP server." : `No tasks yet in ${home}.`;
+}
+
+const WORKER_DOING: Record<WorkerStatus, string> = {
+  working: "is working on this",
+  idle: "is on this, idle",
+};
+
+export function sailorLabel(source: SourceKind, status: WorkerStatus): string {
+  return `A ${OWNERS[source].worker} ${WORKER_DOING[status]}. Open its terminal`;
+}
+
+export interface WorkerViewCopy {
+  label: string;
+  close: string;
+  closeHint: string;
+}
+
+export function workerViewCopy(source: SourceKind, title: string): WorkerViewCopy {
+  const worker = OWNERS[source].worker;
+  return {
+    label: `${worker[0].toUpperCase()}${worker.slice(1)} terminal for ${title}`,
+    close: `Close the ${worker} terminal`,
+    closeHint: `Close (the ${worker} keeps running)`,
+  };
 }

@@ -328,6 +328,7 @@ export default function App() {
         <WorkerTerminal
           key={watched.terminal}
           watched={watched}
+          source={chatSource}
           status={watchedWorker?.status ?? null}
           fontFamily={chatFontStack(appearance ?? appearanceOf(settings))}
           fontSize={(appearance ?? settings).chatFontSize}

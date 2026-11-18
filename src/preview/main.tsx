@@ -9,11 +9,13 @@ import {
   FIXTURE_BACKLOG_CARDS,
   FIXTURE_BACKLOG_COLUMNS,
   FIXTURE_BACKLOG_REQUESTS,
+  FIXTURE_BACKLOG_WORKERS,
   FIXTURE_CARDS,
   FIXTURE_AGENT_ADDRESS,
   FIXTURE_COLUMNS, FIXTURE_LATE_CARD, FIXTURE_REQUESTS, FIXTURE_SCREEN, FIXTURE_TERMINALS, FIXTURE_WORKERS,
   agentScreen,
   agentTerminal,
+  backlogWorkerScreen,
   fixtureDetail,
   workerScreen,
 } from "./fixture";
@@ -229,7 +231,7 @@ mockIPC(
         requests = requests.map((r) => (r.requestId === args.requestId ? { ...r, status: "dismissed" } : r));
         return overlay();
       case "workers":
-        return empty || backlog ? [] : FIXTURE_WORKERS;
+        return empty ? [] : backlog ? FIXTURE_BACKLOG_WORKERS : FIXTURE_WORKERS;
       case "get_settings":
         return settings;
       case "save_settings":
@@ -272,7 +274,7 @@ mockIPC(
       case "attach_terminal": {
         const output = args.output as Output;
         outputs.set(args.view, output);
-        const screen = args.view === "worker" ? workerScreen(args.terminal as string) : chatScreen(args.terminal as string);
+        const screen = args.view === "worker" ? (backlog ? backlogWorkerScreen : workerScreen)(args.terminal as string) : chatScreen(args.terminal as string);
         console.info("attach_terminal", args.view, args.terminal, args.cols, args.rows);
         setTimeout(() => output.onmessage(bytes(screen)), 50);
         if (otherClient && args.view === "chat") {

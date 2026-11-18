@@ -114,6 +114,11 @@ export const FIXTURE_BACKLOG_CARDS: Card[] = BACKLOG_SEEDS.map(([id, project, ro
 
 export const FIXTURE_BACKLOG_COLUMNS: Column[] = columnsFor(FIXTURE_BACKLOG_CARDS);
 
+export const FIXTURE_BACKLOG_WORKERS: Worker[] = [
+  { taskId: "2", terminal: "t3", status: "working" },
+  { taskId: "5", terminal: "t4", status: "idle" },
+];
+
 const backlogRequest = (over: Partial<MoveRequest> & Pick<MoveRequest, "cardId" | "fromRow" | "toRow">): MoveRequest => ({
   ...fixtureRequest(over),
   title: FIXTURE_BACKLOG_CARDS.find((c) => c.id === over.cardId)?.title ?? "",
@@ -191,6 +196,18 @@ export const workerScreen = (terminal: string) =>
     ` ${ESC}36m●${ESC}0m Reading the invoice service handlers.`,
     ` ${ESC}36m●${ESC}0m Split GET routes into a read module; 14 of 22 tests pass.`,
     ` ${ESC}33m…${ESC}0m Running the remaining tests.`,
+    "",
+    ` > `,
+  ].join("\r\n");
+
+export const backlogWorkerScreen = (terminal: string) =>
+  [
+    `${ESC}1m worker on ${terminal}${ESC}0m ${ESC}2m- preview screen with invented text${ESC}0m`,
+    "",
+    ` ${ESC}36m●${ESC}0m Read task 2 and moved it to shallows.`,
+    ` ${ESC}36m●${ESC}0m Plotted 41 of 58 soundings on the north reef grid.`,
+    ` ${ESC}36m●${ESC}0m Added progress to the task detail.`,
+    ` ${ESC}33m…${ESC}0m Checking the depth contours against last season's chart.`,
     "",
     ` > `,
   ].join("\r\n");

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { errorText, events, type WorkerStatus } from "../api";
+import { errorText, events, type SourceKind, type WorkerStatus } from "../api";
 import { useLiveTerminal } from "../liveTerminal";
+import { workerViewCopy } from "../source";
 import { isPlainEscape } from "../terminalInput";
 import type { Theme } from "../theme";
 import { Close, Sailor } from "./Icons";
@@ -15,6 +16,7 @@ type Phase = { kind: "attaching" } | { kind: "attached" } | { kind: "ended" } | 
 
 interface WorkerTerminalProps {
   watched: Watched;
+  source: SourceKind;
   status: WorkerStatus | null;
   fontFamily: string;
   fontSize: number;
@@ -22,7 +24,7 @@ interface WorkerTerminalProps {
   onClose: () => void;
 }
 
-export function WorkerTerminal({ watched, status, fontFamily, fontSize, theme, onClose }: WorkerTerminalProps) {
+export function WorkerTerminal({ watched, source, status, fontFamily, fontSize, theme, onClose }: WorkerTerminalProps) {
   const [phase, setPhase] = useState<Phase>({ kind: "attaching" });
   const { hostRef, scrollRef, attach: attachLive, release, focus } = useLiveTerminal("worker", fontFamily, fontSize, theme);
 
@@ -65,6 +67,7 @@ export function WorkerTerminal({ watched, status, fontFamily, fontSize, theme, o
   const pressedOnBackdrop = useRef(false);
 
   const shown = phase.kind === "attached" || phase.kind === "ended";
+  const copy = workerViewCopy(source, watched.title);
 
   return (
     <div
@@ -77,7 +80,7 @@ export function WorkerTerminal({ watched, status, fontFamily, fontSize, theme, o
         pressedOnBackdrop.current = false;
       }}
     >
-      <section className="watch" role="dialog" aria-modal="true" aria-label={`Crewmate terminal for ${watched.title}`}>
+      <section className="watch" role="dialog" aria-modal="true" aria-label={copy.label}>
         <header className="watch-head">
           <span className={`sailor${status ? ` ${status}` : ""}`} aria-hidden="true">
             <Sailor />
@@ -89,7 +92,7 @@ export function WorkerTerminal({ watched, status, fontFamily, fontSize, theme, o
           <span className="terminal-chip">{watched.terminal}</span>
           <span className="watch-status">{status ?? "no longer live"}</span>
           <span className="spacer" />
-          <button className="ico" onClick={onClose} aria-label="Close the crewmate terminal" title="Close (the crewmate keeps running)">
+          <button className="ico" onClick={onClose} aria-label={copy.close} title={copy.closeHint}>
             <Close />
           </button>
         </header>

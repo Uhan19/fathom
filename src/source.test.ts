@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardMessageLabel, cardMessagePrompt, emptyBoardText, moveCopy, projectTasks } from "./source";
+import { cardMessageLabel, cardMessagePrompt, emptyBoardText, moveCopy, projectTasks, sailorLabel, workerViewCopy } from "./source";
 
 const move = "from Seabed to Surface";
 
@@ -49,5 +49,19 @@ describe("cardMessagePrompt", () => {
     expect(cardMessagePrompt("fathom", true)).toBe("Message the agent about this card…");
     expect(cardMessagePrompt("fathom", false)).toBe("Connect the chat panel to message the agent");
     expect(cardMessageLabel("fathom")).toBe("Message the agent about this card");
+  });
+});
+
+describe("worker wording", () => {
+  it("calls a backlog worker a worker and a Firstmate worker a crewmate", () => {
+    expect(sailorLabel("fathom", "working")).toBe("A worker is working on this. Open its terminal");
+    expect(sailorLabel("fathom", "idle")).toBe("A worker is on this, idle. Open its terminal");
+    expect(sailorLabel("firstmate", "working")).toBe("A crewmate is working on this. Open its terminal");
+    expect(workerViewCopy("fathom", "Chart the reef")).toEqual({
+      label: "Worker terminal for Chart the reef",
+      close: "Close the worker terminal",
+      closeHint: "Close (the worker keeps running)",
+    });
+    expect(workerViewCopy("firstmate", "Chart the reef").label).toBe("Crewmate terminal for Chart the reef");
   });
 });
