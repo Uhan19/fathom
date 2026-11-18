@@ -5,24 +5,23 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use notify::RecommendedWatcher;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::json;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter};
 
+use crate::control;
 use crate::db::{CardPlace, Column, Db, MoveRequest, MoveStatus, MoveTo, RowName, Snapshot};
 use crate::herdr::{self, Frame, Herdr, Notice, Terminal, View};
-use crate::launch::{self, Agent, FathomServer, Launch, LaunchError};
+use crate::launch::{self, Agent, FathomServer, Launch, LaunchError, SignIn};
 use crate::moves::{self, Placement};
+use crate::settings::{self, Settings};
 use crate::shell_path;
 use crate::source::{Source, SourceKind};
 use crate::tasks::Card;
 use crate::watch::{self, StateChange};
 use crate::workers::{self, Worker};
 
-pub const FIRSTMATE_LABEL: &str = "firstmate.role=primary";
-const DEFAULT_HOME_RELATIVE: &str = "Documents/firstmate";
-const FIRSTMATE_MARKER: &str = "bin/fm-tasks-axi.sh";
 const REFRESH_DEBOUNCE: Duration = Duration::from_millis(250);
 const STORE_POLL: Duration = REFRESH_DEBOUNCE;
 const WORKERS_DEBOUNCE: Duration = Duration::from_millis(80);
@@ -33,45 +32,11 @@ pub const EVENT_HERDR: &str = "herdr://status";
 pub const EVENT_TERMINALS: &str = "herdr://terminals";
 pub const EVENT_VIEW_ENDED: &str = "terminal://ended";
 pub const EVENT_WORKERS: &str = "workers://updated";
-
-const KEY_HOME: &str = "home";
-const KEY_LABEL: &str = "terminalLabel";
-const KEY_SESSION: &str = "hcSession";
-const KEY_SOCKET: &str = "hcSocket";
-const KEY_CHAT_FONT: &str = "chatFont";
-const KEY_CHAT_FONT_SIZE: &str = "chatFontSize";
-const KEY_BOARD_FONT: &str = "boardFont";
-const KEY_BOARD_FONT_SIZE: &str = "boardFontSize";
-const KEY_CHAT_ADDED_FONTS: &str = "chatAddedFonts";
-const KEY_BOARD_ADDED_FONTS: &str = "boardAddedFonts";
-const KEY_AGENT_FOLDER: &str = "agentFolder";
-const KEY_CHAT_AGENT: &str = "chatAgent";
-#[cfg(target_os = "macos")]
-const DEFAULT_CHAT_FONT: &str = "sf-mono";
-#[cfg(not(target_os = "macos"))]
-const DEFAULT_CHAT_FONT: &str = "jetbrains-mono";
-const DEFAULT_CHAT_FONT_SIZE: u16 = 13;
-const DEFAULT_BOARD_FONT: &str = "default";
-const DEFAULT_BOARD_FONT_SIZE: u16 = 14;
-const FONT_SIZES: std::ops::RangeInclusive<u16> = 9..=28;
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Settings {
-    pub home: String,
-    pub terminal_label: String,
-    pub hc_session: String,
-    pub hc_socket: String,
-    pub chat_font: String,
-    pub chat_font_size: u16,
-    pub board_font: String,
-    pub board_font_size: u16,
-    pub chat_added_fonts: Vec<String>,
-    pub board_added_fonts: Vec<String>,
-    pub agent_folder: String,
-    #[serde(default)]
-    pub chat_agent: Option<Agent>,
-}
+pub const EVENT_SETTINGS: &str = "settings://updated";
+pub const EVENT_HELPER: &str = "helper://updated";
+const IDLE: &str = "idle";
+const BLOCKED: &str = "blocked";
+const ENDED_STATES: [&str; 2] = ["finished", "lost"];
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -109,6 +74,21 @@ pub struct HerdrStatus {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelperStatus {
+    pub terminal: Option<String>,
+    pub status: String,
+    pub asking: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelperCheck {
+    pub claude: Option<String>,
+    pub sign_in: Option<SignIn>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AttachedSize {
@@ -125,6 +105,7 @@ pub struct AppState {
     refresh: Sender<()>,
     workers_tick: Sender<()>,
     published_workers: Mutex<Option<Vec<Worker>>>,
+    published_helper: Mutex<HelperStatus>,
     watchers: Mutex<Vec<RecommendedWatcher>>,
     started: Instant,
     launch_logged: AtomicBool,
@@ -136,95 +117,6 @@ pub fn now_ms() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
-}
-
-pub fn default_home() -> String {
-    std::env::home_dir()
-        .map(|h| h.join(DEFAULT_HOME_RELATIVE))
-        .filter(|home| home.join(FIRSTMATE_MARKER).is_file())
-        .map(|home| home.display().to_string())
-        .unwrap_or_default()
-}
-
-fn user_home() -> String {
-    std::env::home_dir()
-        .map(|home| home.display().to_string())
-        .unwrap_or_default()
-}
-
-fn default_label(home: &str) -> String {
-    match Source::of(home) {
-        Source::Firstmate { .. } => FIRSTMATE_LABEL.to_string(),
-        Source::Backlog => launch::chat_label(),
-    }
-}
-
-fn chosen_label(stored: Option<&String>, home: &str) -> String {
-    let built_in = [FIRSTMATE_LABEL.to_string(), launch::chat_label()];
-    stored
-        .map(|label| label.trim().to_string())
-        .filter(|label| !label.is_empty() && !built_in.contains(label))
-        .unwrap_or_else(|| default_label(home))
-}
-
-pub fn load_settings(db: &Db) -> Result<Settings, String> {
-    let stored = db.settings()?;
-    let get = |key: &str, fallback: String| {
-        stored
-            .get(key)
-            .filter(|v| !v.trim().is_empty())
-            .cloned()
-            .unwrap_or(fallback)
-    };
-    let size = |key: &str, fallback: u16| {
-        stored
-            .get(key)
-            .and_then(|v| v.trim().parse::<u16>().ok())
-            .filter(|v| FONT_SIZES.contains(v))
-            .unwrap_or(fallback)
-    };
-    let families = |key: &str| {
-        stored
-            .get(key)
-            .and_then(|v| serde_json::from_str::<Vec<String>>(v).ok())
-            .map(clean_families)
-            .unwrap_or_default()
-    };
-    let home = stored
-        .get(KEY_HOME)
-        .map(|home| home.trim().to_string())
-        .unwrap_or_else(default_home);
-    Ok(Settings {
-        terminal_label: chosen_label(stored.get(KEY_LABEL), &home),
-        home,
-        hc_session: get(KEY_SESSION, String::new()),
-        hc_socket: get(KEY_SOCKET, String::new()),
-        chat_font: get(KEY_CHAT_FONT, DEFAULT_CHAT_FONT.to_string()),
-        chat_font_size: size(KEY_CHAT_FONT_SIZE, DEFAULT_CHAT_FONT_SIZE),
-        board_font: get(KEY_BOARD_FONT, DEFAULT_BOARD_FONT.to_string()),
-        board_font_size: size(KEY_BOARD_FONT_SIZE, DEFAULT_BOARD_FONT_SIZE),
-        chat_added_fonts: families(KEY_CHAT_ADDED_FONTS),
-        board_added_fonts: families(KEY_BOARD_ADDED_FONTS),
-        agent_folder: get(KEY_AGENT_FOLDER, user_home()),
-        chat_agent: stored
-            .get(KEY_CHAT_AGENT)
-            .and_then(|key| serde_json::from_value(json!(key)).ok()),
-    })
-}
-
-fn clean_families(families: Vec<String>) -> Vec<String> {
-    let mut seen = Vec::<String>::new();
-    for family in families {
-        let family = family.trim();
-        if !family.is_empty() && !seen.iter().any(|f| f == family) {
-            seen.push(family.to_string());
-        }
-    }
-    seen
-}
-
-fn families_json(families: &[String]) -> String {
-    serde_json::to_string(&clean_families(families.to_vec())).unwrap_or_else(|_| "[]".into())
 }
 
 pub(crate) fn connection_of(settings: &Settings) -> herdr::Connection {
@@ -241,7 +133,7 @@ impl AppState {
         log_dir: PathBuf,
         started: Instant,
     ) -> Result<Arc<AppState>, String> {
-        let settings = load_settings(&db)?;
+        let settings = settings::load(&db)?;
         let (refresh, requests) = mpsc::channel();
         let (workers_tick, worker_ticks) = mpsc::channel();
         let herdr_status = Arc::new(Mutex::new(HerdrStatus {
@@ -272,6 +164,7 @@ impl AppState {
             refresh,
             workers_tick,
             published_workers: Mutex::new(None),
+            published_helper: Mutex::default(),
             watchers: Mutex::new(Vec::new()),
             started,
             launch_logged: AtomicBool::new(false),
@@ -280,7 +173,7 @@ impl AppState {
         spawn_refresher(app.clone(), Arc::clone(&state), requests);
         spawn_worker_publisher(app.clone(), Arc::clone(&state), worker_ticks);
         state.restart_watcher();
-        state.watch_store();
+        state.watch_store(app.clone());
         state.herdr.start_events();
         Ok(state)
     }
@@ -348,35 +241,34 @@ impl AppState {
     }
 
     pub fn save_settings(&self, next: Settings) -> Result<Settings, String> {
-        let previous = self.settings.lock().unwrap().clone();
-        {
-            let db = self.db.lock().unwrap();
-            db.set_setting(KEY_HOME, next.home.trim())?;
-            db.set_setting(KEY_LABEL, next.terminal_label.trim())?;
-            db.set_setting(KEY_SESSION, next.hc_session.trim())?;
-            db.set_setting(KEY_SOCKET, next.hc_socket.trim())?;
-            db.set_setting(KEY_CHAT_FONT, next.chat_font.trim())?;
-            db.set_setting(KEY_CHAT_FONT_SIZE, &next.chat_font_size.to_string())?;
-            db.set_setting(KEY_BOARD_FONT, next.board_font.trim())?;
-            db.set_setting(KEY_BOARD_FONT_SIZE, &next.board_font_size.to_string())?;
-            db.set_setting(KEY_CHAT_ADDED_FONTS, &families_json(&next.chat_added_fonts))?;
-            db.set_setting(
-                KEY_BOARD_ADDED_FONTS,
-                &families_json(&next.board_added_fonts),
-            )?;
-            db.set_setting(KEY_AGENT_FOLDER, next.agent_folder.trim())?;
-        }
-        let saved = load_settings(&self.db.lock().unwrap())?;
-        *self.settings.lock().unwrap() = saved.clone();
-        if saved.home != previous.home {
+        let saved = settings::store(&self.db.lock().unwrap(), &next)?;
+        self.adopt_settings(saved.clone());
+        Ok(saved)
+    }
+
+    fn adopt_settings(&self, next: Settings) -> bool {
+        let previous = std::mem::replace(&mut *self.settings.lock().unwrap(), next.clone());
+        if next.home != previous.home {
             self.restart_watcher();
             self.request_refresh();
             self.request_workers();
         }
-        if connection_of(&saved) != connection_of(&previous) {
-            self.herdr.set_connection(connection_of(&saved));
+        if connection_of(&next) != connection_of(&previous) {
+            self.herdr.set_connection(connection_of(&next));
         }
-        Ok(saved)
+        next != previous
+    }
+
+    fn reload_settings(&self, app: &AppHandle) {
+        let loaded = settings::load(&self.db.lock().unwrap());
+        match loaded {
+            Ok(next) => {
+                if self.adopt_settings(next.clone()) {
+                    let _ = app.emit(EVENT_SETTINGS, next);
+                }
+            }
+            Err(error) => eprintln!("fathom: cannot reload the settings: {error}"),
+        }
     }
 
     pub fn find_chat_terminal(&self) -> Result<Option<Terminal>, String> {
@@ -400,12 +292,7 @@ impl AppState {
             _ => PathBuf::from(folder),
         };
         self.remember_chat_agent(agent);
-        let server = FathomServer {
-            program: std::env::current_exe().map_err(|e| LaunchError::Failed {
-                message: format!("cannot find Fathom's own program: {e}"),
-            })?,
-            db: self.db.lock().unwrap().path().to_path_buf(),
-        };
+        let server = self.fathom_server()?;
         let shell = shell_path::login_shell().map(PathBuf::from);
         launch::open(
             &self.herdr,
@@ -422,15 +309,92 @@ impl AppState {
         )
     }
 
+    fn fathom_server(&self) -> Result<FathomServer, LaunchError> {
+        Ok(FathomServer {
+            program: std::env::current_exe().map_err(|e| LaunchError::Failed {
+                message: format!("cannot find Fathom's own program: {e}"),
+            })?,
+            db: self.db.lock().unwrap().path().to_path_buf(),
+        })
+    }
+
     fn remember_chat_agent(&self, agent: Agent) {
-        let saved = self
-            .db
-            .lock()
-            .unwrap()
-            .set_setting(KEY_CHAT_AGENT, agent.key());
+        let saved = settings::remember_chat_agent(&self.db.lock().unwrap(), agent);
         match saved {
             Ok(()) => self.settings.lock().unwrap().chat_agent = Some(agent),
             Err(error) => eprintln!("fathom: cannot remember the chat agent: {error}"),
+        }
+    }
+
+    pub fn find_helper(&self) -> Result<Option<Terminal>, String> {
+        self.herdr.find_by_label(&launch::helper_label())
+    }
+
+    pub fn helper_check(&self) -> HelperCheck {
+        let claude = shell_path::find_first(&[launch::CLAUDE]);
+        HelperCheck {
+            sign_in: claude
+                .as_deref()
+                .map(|claude| launch::claude_sign_in(claude, shell_path::get())),
+            claude: claude.map(|path| path.display().to_string()),
+        }
+    }
+
+    pub fn open_helper(&self) -> Result<Terminal, LaunchError> {
+        let claude =
+            shell_path::find_first(&[launch::CLAUDE]).ok_or_else(|| LaunchError::Missing {
+                tool: launch::CLAUDE.into(),
+            })?;
+        let server = self.fathom_server()?;
+        let shell = shell_path::login_shell().map(PathBuf::from);
+        let terminal = launch::open_helper(&self.herdr, &server, shell.as_deref(), &claude)?;
+        let db = self.db.lock().unwrap();
+        let remembered = settings::remember_helper_started(&db)
+            .and_then(|()| settings::set_helper_asking(&db, false));
+        match remembered {
+            Ok(()) => self.settings.lock().unwrap().helper_started = true,
+            Err(error) => eprintln!("fathom: cannot remember that Bosun started: {error}"),
+        }
+        drop(db);
+        self.request_workers();
+        Ok(terminal)
+    }
+
+    pub fn stop_helper(&self, terminal: &str) -> Result<(), String> {
+        self.herdr.detach(View::Helper);
+        self.herdr.kill(terminal)?;
+        let _ = self.herdr.run(&["rm", terminal]);
+        self.request_workers();
+        Ok(())
+    }
+
+    pub fn helper_status(&self) -> HelperStatus {
+        let terminal = self.herdr.terminals().into_values().find(|t| {
+            t.labels.get(launch::ROLE_KEY).map(String::as_str) == Some(launch::HELPER_ROLE)
+                && !ENDED_STATES.contains(&t.state.as_str())
+        });
+        let Some(terminal) = terminal else {
+            return HelperStatus::default();
+        };
+        let flagged = settings::helper_asking(&self.db.lock().unwrap()).unwrap_or(false);
+        HelperStatus {
+            asking: terminal.status == BLOCKED || flagged,
+            terminal: Some(terminal.address),
+            status: terminal.status,
+        }
+    }
+
+    fn publish_helper(&self, app: &AppHandle) {
+        let mut helper = self.helper_status();
+        let mut published = self.published_helper.lock().unwrap();
+        let stopped_asking = helper.status == IDLE && published.status != IDLE;
+        if stopped_asking && helper.asking {
+            let _ = settings::set_helper_asking(&self.db.lock().unwrap(), false);
+            helper = self.helper_status();
+        }
+        if *published != helper {
+            let _ = app.emit(EVENT_HELPER, &helper);
+            *published = helper;
         }
     }
 
@@ -460,18 +424,23 @@ impl AppState {
         }
     }
 
-    fn watch_store(self: &Arc<Self>) {
-        let state = Arc::downgrade(self);
-        let refresh = self.refresh.clone();
+    fn watch_store(self: &Arc<Self>, app: AppHandle) {
+        let polled = Arc::downgrade(self);
+        let changed = Arc::downgrade(self);
         watch::poll_store(
             STORE_POLL,
             move || {
-                let state = state.upgrade()?;
+                let state = polled.upgrade()?;
                 let changed = state.db.lock().unwrap().changed_elsewhere();
                 Some(changed.unwrap_or(false))
             },
             move || {
-                let _ = refresh.send(());
+                let Some(state) = changed.upgrade() else {
+                    return;
+                };
+                state.request_refresh();
+                state.reload_settings(&app);
+                state.request_workers();
             },
         );
     }
@@ -494,20 +463,11 @@ impl AppState {
         }
     }
 
-    pub fn add_column(&self, name: &str) -> Result<Vec<Column>, String> {
-        self.db.lock().unwrap().add_column(name)
-    }
-
     pub fn delete_column(&self, id: i64, move_to: Option<MoveTo>) -> Result<Layout, String> {
-        let cards = match self.source() {
-            Source::Firstmate { home } => moves::cached_cards(&self.db, &home)?,
-            backlog => backlog.read_cards(&self.db)?,
-        };
-        let mut db = self.db.lock().unwrap();
-        let columns = db.delete_column(id, move_to.as_ref(), &cards)?;
+        let columns = control::delete_column(&self.db, &self.source(), id, move_to.as_ref())?;
         Ok(Layout {
             columns,
-            overlay: overlay_of(&db)?,
+            overlay: self.overlay()?,
         })
     }
 
@@ -612,11 +572,14 @@ fn spawn_worker_publisher(app: AppHandle, state: Arc<AppState>, ticks: Receiver<
         while ticks.recv().is_ok() {
             while ticks.recv_timeout(WORKERS_DEBOUNCE).is_ok() {}
             let workers = state.workers();
-            let mut published = state.published_workers.lock().unwrap();
-            if published.as_ref() != Some(&workers) {
-                let _ = app.emit(EVENT_WORKERS, &workers);
-                *published = Some(workers);
+            {
+                let mut published = state.published_workers.lock().unwrap();
+                if published.as_ref() != Some(&workers) {
+                    let _ = app.emit(EVENT_WORKERS, &workers);
+                    *published = Some(workers);
+                }
             }
+            state.publish_helper(&app);
         }
     });
 }
@@ -673,94 +636,5 @@ fn on_herdr_notice(
                 json!({ "view": view, "terminal": terminal }),
             );
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn font_settings_default_and_reject_sizes_out_of_range() {
-        let dir = tempfile::tempdir().unwrap();
-        let db = Db::open(dir.path()).unwrap();
-        let fresh = load_settings(&db).unwrap();
-        assert_eq!(fresh.chat_font, DEFAULT_CHAT_FONT);
-        assert_eq!(fresh.chat_font_size, DEFAULT_CHAT_FONT_SIZE);
-        assert_eq!(fresh.board_font, DEFAULT_BOARD_FONT);
-        assert_eq!(fresh.board_font_size, DEFAULT_BOARD_FONT_SIZE);
-
-        db.set_setting(KEY_CHAT_FONT, "menlo").unwrap();
-        db.set_setting(KEY_CHAT_FONT_SIZE, "17").unwrap();
-        db.set_setting(KEY_BOARD_FONT_SIZE, "400").unwrap();
-        let stored = load_settings(&db).unwrap();
-        assert_eq!(stored.chat_font, "menlo");
-        assert_eq!(stored.chat_font_size, 17);
-        assert_eq!(stored.board_font_size, DEFAULT_BOARD_FONT_SIZE);
-    }
-
-    #[test]
-    fn the_chat_label_defaults_to_the_board_source() {
-        let dir = tempfile::tempdir().unwrap();
-        let db = Db::open(dir.path()).unwrap();
-        db.set_setting(KEY_HOME, "").unwrap();
-        assert_eq!(
-            load_settings(&db).unwrap().terminal_label,
-            "fathom.role=chat"
-        );
-
-        db.set_setting(KEY_LABEL, FIRSTMATE_LABEL).unwrap();
-        assert_eq!(
-            load_settings(&db).unwrap().terminal_label,
-            "fathom.role=chat"
-        );
-
-        db.set_setting(KEY_HOME, "/somewhere/firstmate").unwrap();
-        assert_eq!(load_settings(&db).unwrap().terminal_label, FIRSTMATE_LABEL);
-        db.set_setting(KEY_LABEL, "fathom.role=chat").unwrap();
-        assert_eq!(load_settings(&db).unwrap().terminal_label, FIRSTMATE_LABEL);
-
-        db.set_setting(KEY_LABEL, " team.role=lead ").unwrap();
-        assert_eq!(load_settings(&db).unwrap().terminal_label, "team.role=lead");
-        db.set_setting(KEY_HOME, "").unwrap();
-        assert_eq!(load_settings(&db).unwrap().terminal_label, "team.role=lead");
-    }
-
-    #[test]
-    fn the_agent_folder_defaults_to_home_and_the_last_agent_is_remembered() {
-        let dir = tempfile::tempdir().unwrap();
-        let db = Db::open(dir.path()).unwrap();
-        let fresh = load_settings(&db).unwrap();
-        assert_eq!(fresh.agent_folder, user_home());
-        assert_eq!(fresh.chat_agent, None);
-
-        db.set_setting(KEY_AGENT_FOLDER, "/work/projects").unwrap();
-        db.set_setting(KEY_CHAT_AGENT, "codex").unwrap();
-        let stored = load_settings(&db).unwrap();
-        assert_eq!(stored.agent_folder, "/work/projects");
-        assert_eq!(stored.chat_agent, Some(Agent::Codex));
-
-        db.set_setting(KEY_CHAT_AGENT, "nonsense").unwrap();
-        assert_eq!(load_settings(&db).unwrap().chat_agent, None);
-    }
-
-    #[test]
-    fn added_fonts_are_trimmed_deduplicated_and_survive_bad_json() {
-        let dir = tempfile::tempdir().unwrap();
-        let db = Db::open(dir.path()).unwrap();
-        assert!(load_settings(&db).unwrap().chat_added_fonts.is_empty());
-
-        let list = vec![
-            " Fira Code ".to_string(),
-            "Fira Code".into(),
-            String::new(),
-            "Iosevka".into(),
-        ];
-        db.set_setting(KEY_CHAT_ADDED_FONTS, &families_json(&list))
-            .unwrap();
-        db.set_setting(KEY_BOARD_ADDED_FONTS, "not json").unwrap();
-        let stored = load_settings(&db).unwrap();
-        assert_eq!(stored.chat_added_fonts, ["Fira Code", "Iosevka"]);
-        assert!(stored.board_added_fonts.is_empty());
     }
 }

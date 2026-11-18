@@ -5,15 +5,18 @@ use serde::Serialize;
 use tauri::State;
 use tauri::ipc::{Channel, InvokeResponseBody};
 
+use crate::control;
 use crate::db::{Column, MoveTo};
 use crate::export;
 use crate::fonts;
 use crate::herdr::{Terminal, View};
 use crate::launch::{Agent, LaunchError};
 use crate::moves::Placement;
+use crate::settings::Settings;
 use crate::source::Source;
 use crate::state::{
-    AppState, AttachedSize, BoardView, HerdrStatus, Layout, Overlay, Settings, now_ms,
+    AppState, AttachedSize, BoardView, HelperCheck, HelperStatus, HerdrStatus, Layout, Overlay,
+    now_ms,
 };
 use crate::tasks::{Detail, Row};
 use crate::workers::Worker;
@@ -64,22 +67,22 @@ pub fn update_column(
     width: Option<i64>,
     collapsed: Option<bool>,
 ) -> Result<(), String> {
-    state.db.lock().unwrap().update_column(id, width, collapsed)
+    control::set_column_view(&state.db.lock().unwrap(), id, width, collapsed).map(|_| ())
 }
 
 #[tauri::command]
 pub fn set_column_name(state: AppStateRef, id: i64, name: String) -> Result<(), String> {
-    state.db.lock().unwrap().set_column_name(id, &name)
+    control::rename_column(&state.db.lock().unwrap(), id, &name).map(|_| ())
 }
 
 #[tauri::command]
 pub fn move_column(state: AppStateRef, id: i64, index: usize) -> Result<Vec<Column>, String> {
-    state.db.lock().unwrap().move_column(id, index)
+    control::move_column(&mut state.db.lock().unwrap(), id, index)
 }
 
 #[tauri::command]
 pub fn add_column(state: AppStateRef, name: String) -> Result<Vec<Column>, String> {
-    state.add_column(&name)
+    control::add_column(&state.db.lock().unwrap(), &name)
 }
 
 #[tauri::command]
@@ -93,7 +96,7 @@ pub fn delete_column(
 
 #[tauri::command]
 pub fn set_row_name(state: AppStateRef, row: Row, name: String) -> Result<(), String> {
-    state.db.lock().unwrap().set_row_name(row, &name)
+    control::rename_row(&state.db.lock().unwrap(), row, &name).map(|_| ())
 }
 
 #[tauri::command]
@@ -197,6 +200,39 @@ pub async fn open_chat_terminal(
         .map_err(|e| LaunchError::Failed {
             message: e.to_string(),
         })?
+}
+
+#[tauri::command]
+pub async fn find_helper(state: AppStateRef<'_>) -> Result<Option<Terminal>, String> {
+    let state = Arc::clone(&state);
+    blocking(move || state.find_helper()).await
+}
+
+#[tauri::command]
+pub async fn helper_check(state: AppStateRef<'_>) -> Result<HelperCheck, String> {
+    let state = Arc::clone(&state);
+    blocking(move || Ok(state.helper_check())).await
+}
+
+#[tauri::command]
+pub fn helper_status(state: AppStateRef) -> HelperStatus {
+    state.helper_status()
+}
+
+#[tauri::command]
+pub async fn open_helper(state: AppStateRef<'_>) -> Result<Terminal, LaunchError> {
+    let state = Arc::clone(&state);
+    tauri::async_runtime::spawn_blocking(move || state.open_helper())
+        .await
+        .map_err(|e| LaunchError::Failed {
+            message: e.to_string(),
+        })?
+}
+
+#[tauri::command]
+pub async fn stop_helper(state: AppStateRef<'_>, terminal: String) -> Result<(), String> {
+    let state = Arc::clone(&state);
+    blocking(move || state.stop_helper(&terminal)).await
 }
 
 #[tauri::command]

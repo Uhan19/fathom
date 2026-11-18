@@ -1,4 +1,5 @@
 mod commands;
+mod control;
 mod db;
 mod export;
 mod fonts;
@@ -7,6 +8,7 @@ mod launch;
 mod mcp;
 mod moves;
 mod requests;
+mod settings;
 mod shell_path;
 mod source;
 mod state;
@@ -30,7 +32,10 @@ pub fn run() {
     let context = tauri::generate_context!();
     let identifier = context.config().identifier.clone();
 
-    if let Some(code) = run_mcp_flag(&identifier).or_else(|| run_export_flag(&identifier)) {
+    if let Some(code) = run_helper_asking_flag(&identifier)
+        .or_else(|| run_mcp_flag(&identifier))
+        .or_else(|| run_export_flag(&identifier))
+    {
         std::process::exit(code);
     }
 
@@ -70,6 +75,11 @@ pub fn run() {
             commands::herdr_status,
             commands::find_chat_terminal,
             commands::open_chat_terminal,
+            commands::find_helper,
+            commands::helper_check,
+            commands::helper_status,
+            commands::open_helper,
+            commands::stop_helper,
             commands::list_terminals,
             commands::attach_terminal,
             commands::resize_terminal,
@@ -118,7 +128,22 @@ fn run_mcp_flag(identifier: &str) -> Option<i32> {
     }
     let result = default_data_dir(identifier)
         .and_then(|dir| mcp::store_path(&args, mcp::db_env(), dir.join(db::FILE_NAME)))
-        .and_then(|store| mcp::serve_stdio(&store));
+        .and_then(|store| mcp::serve_stdio(&store, mcp::wants_helper(&args)));
+    exit_code(result)
+}
+
+fn run_helper_asking_flag(identifier: &str) -> Option<i32> {
+    let args: Vec<String> = std::env::args().collect();
+    let asking = mcp::helper_asking(&args)?;
+    let result = asking.and_then(|asking| {
+        default_data_dir(identifier)
+            .and_then(|dir| mcp::store_path(&args, mcp::db_env(), dir.join(db::FILE_NAME)))
+            .and_then(|store| mcp::record_helper_asking(&store, asking))
+    });
+    exit_code(result)
+}
+
+fn exit_code(result: Result<(), String>) -> Option<i32> {
     match result {
         Ok(()) => Some(0),
         Err(error) => {

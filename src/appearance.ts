@@ -1,4 +1,5 @@
 import type { Settings } from "./api";
+import fonts from "./fontPresets.json";
 
 export interface FontChoice {
   key: string;
@@ -10,40 +11,7 @@ export interface FontChoice {
 
 export type Platform = "macos" | "linux";
 
-const BODY_STACK = "Inter, system-ui, sans-serif";
-const DEFAULT_BOARD_FONT: FontChoice = { key: "default", name: "Inter + Saira", stack: BODY_STACK, heading: '"Saira", Inter, system-ui, sans-serif' };
-const INTER: FontChoice = { key: "inter", name: "Inter", stack: BODY_STACK };
-
-const PRESETS: Record<Platform, Record<Surface, FontChoice[]>> = {
-  macos: {
-    chat: [
-      { key: "sf-mono", name: "SF Mono", stack: 'ui-monospace, "SF Mono", Menlo, monospace' },
-      { key: "menlo", name: "Menlo", stack: "Menlo, monospace" },
-      { key: "monaco", name: "Monaco", stack: "Monaco, monospace" },
-      { key: "courier", name: "Courier New", stack: '"Courier New", Courier, monospace' },
-    ],
-    board: [
-      DEFAULT_BOARD_FONT,
-      INTER,
-      { key: "system", name: "SF Pro (system)", stack: "system-ui, -apple-system, sans-serif" },
-      { key: "avenir", name: "Avenir Next", stack: '"Avenir Next", Avenir, system-ui, sans-serif' },
-    ],
-  },
-  linux: {
-    chat: [
-      { key: "jetbrains-mono", name: "JetBrains Mono", stack: '"JetBrains Mono", monospace' },
-      { key: "dejavu-sans-mono", name: "DejaVu Sans Mono", stack: '"DejaVu Sans Mono", monospace' },
-      { key: "liberation-mono", name: "Liberation Mono", stack: '"Liberation Mono", monospace' },
-      { key: "noto-sans-mono", name: "Noto Sans Mono", stack: '"Noto Sans Mono", monospace' },
-    ],
-    board: [
-      DEFAULT_BOARD_FONT,
-      INTER,
-      { key: "system", name: "System UI", stack: "system-ui, sans-serif" },
-      { key: "dejavu-sans", name: "DejaVu Sans", stack: '"DejaVu Sans", system-ui, sans-serif' },
-    ],
-  },
-};
+const PRESETS: Record<Platform, Record<Surface, FontChoice[]>> = fonts.presets;
 
 export function platformOf(navigatorPlatform: string): Platform {
   return navigatorPlatform.startsWith("Mac") ? "macos" : "linux";
@@ -59,8 +27,8 @@ const CHAT_FALLBACK = "ui-monospace, monospace";
 const BOARD_FALLBACK = "system-ui, sans-serif";
 const ADDED_PREFIX = "family:";
 
-export const CHAT_FONT_SIZES = range(10, 20);
-export const BOARD_FONT_SIZES = range(11, 20);
+export const CHAT_FONT_SIZES = range(...(fonts.sizes.chat as [number, number]));
+export const BOARD_FONT_SIZES = range(...(fonts.sizes.board as [number, number]));
 export const BOARD_BASE_SIZE = 14;
 
 export type Surface = "chat" | "board";
