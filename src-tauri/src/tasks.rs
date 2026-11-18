@@ -18,7 +18,7 @@ const ENV_TO_CLEAR: [&str; 6] = [
     "TASKS_AXI_FILE",
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Row {
     Surface,
