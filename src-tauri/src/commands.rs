@@ -5,12 +5,14 @@ use serde::Serialize;
 use tauri::State;
 use tauri::ipc::{Channel, InvokeResponseBody};
 
-use crate::db::Column;
+use crate::db::{Column, MoveTo};
 use crate::export;
 use crate::fonts;
 use crate::herdr::{Terminal, View};
 use crate::moves::Placement;
-use crate::state::{AppState, AttachedSize, BoardView, HerdrStatus, Overlay, Settings, now_ms};
+use crate::state::{
+    AppState, AttachedSize, BoardView, HerdrStatus, Layout, Overlay, Settings, now_ms,
+};
 use crate::tasks::{self, Detail, Row};
 use crate::workers::Worker;
 
@@ -74,8 +76,12 @@ pub fn add_column(state: AppStateRef, name: String) -> Result<Vec<Column>, Strin
 }
 
 #[tauri::command]
-pub fn delete_column(state: AppStateRef, id: i64) -> Result<Vec<Column>, String> {
-    state.delete_column(id)
+pub fn delete_column(
+    state: AppStateRef,
+    id: i64,
+    move_to: Option<MoveTo>,
+) -> Result<Layout, String> {
+    state.delete_column(id, move_to)
 }
 
 #[tauri::command]

@@ -75,6 +75,13 @@ export interface Overlay {
   requests: MoveRequest[];
 }
 
+export interface Layout {
+  columns: Column[];
+  overlay: Overlay;
+}
+
+export type MoveTo = { kind: "column"; id: number } | { kind: "newColumn"; name: string };
+
 export interface Placement {
   cardId: string;
   title: string;
@@ -162,7 +169,7 @@ export const api = {
     invoke<void>("update_column", { id, width: change.width ?? null, collapsed: change.collapsed ?? null }),
   setColumnName: (id: number, name: string) => invoke<void>("set_column_name", { id, name }),
   addColumn: (name: string) => invoke<Column[]>("add_column", { name }),
-  deleteColumn: (id: number) => invoke<Column[]>("delete_column", { id }),
+  deleteColumn: (id: number, moveTo?: MoveTo) => invoke<Layout>("delete_column", { id, moveTo: moveTo ?? null }),
   setRowName: (row: RowKey, name: string) => invoke<void>("set_row_name", { row, name }),
   placeCard: (placement: Placement) => invoke<Overlay>("place_card", { placement }),
   resendRequest: (requestId: string) => invoke<Overlay>("resend_request", { requestId }),

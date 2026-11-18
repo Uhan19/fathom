@@ -16,6 +16,7 @@ const MIGRATIONS: [&str; 3] = [
 ];
 const COLUMN_FIELDS: &str = "id, project, name, position, width, collapsed";
 const NEXT_POSITION: &str = "(SELECT COALESCE(MAX(position) + 1, 0) FROM columns)";
+const NEW_COLUMN_NEEDS_A_NAME: &str = "a new column needs a name";
 const OPEN_STATUSES: &str = "'sending', 'asked', 'failed', 'answered'";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -111,6 +112,13 @@ pub struct MoveRequest {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum MoveTo {
+    Column { id: i64 },
+    NewColumn { name: String },
+}
+
 pub struct Db {
     conn: Connection,
     path: PathBuf,
@@ -187,10 +195,11 @@ impl Db {
 
     pub fn ensure_columns(&mut self, cards: &[Card]) -> Result<Vec<Column>, String> {
         let columns = self.columns()?;
-        let placed = self.placed_columns()?;
+        let places = self.places_by_card()?;
+        let shown = ShownCards::new(cards, &columns, &places, &[]);
         let homeless: BTreeSet<&str> = cards
             .iter()
-            .filter(|card| shown_column(card, &placed, &columns).is_none())
+            .filter(|card| shown.column(card).is_none())
             .map(|card| card.project.as_str())
             .collect();
         if homeless.is_empty() {
@@ -219,7 +228,7 @@ impl Db {
     pub fn add_column(&self, name: &str) -> Result<Vec<Column>, String> {
         let name = name.trim();
         if name.is_empty() {
-            return Err("a new column needs a name".into());
+            return Err(NEW_COLUMN_NEEDS_A_NAME.into());
         }
         self.conn
             .execute(
@@ -230,24 +239,66 @@ impl Db {
         self.columns()
     }
 
-    pub fn delete_column(&mut self, id: i64, cards: &[Card]) -> Result<Vec<Column>, String> {
+    pub fn delete_column(
+        &mut self,
+        id: i64,
+        move_to: Option<&MoveTo>,
+        cards: &[Card],
+    ) -> Result<Vec<Column>, String> {
         let columns = self.columns()?;
         let Some(column) = columns.iter().find(|c| c.id == id) else {
             return Ok(columns);
         };
-        let placed = self.placed_columns()?;
-        let held = cards
-            .iter()
-            .filter(|card| shown_column(card, &placed, &columns) == Some(id))
-            .count();
-        if held > 0 {
-            return Err(format!(
-                "{} still holds {held} {}; move them to another column first",
-                column.name,
-                if held == 1 { "card" } else { "cards" }
-            ));
-        }
+        let places = self.places_by_card()?;
+        let requests = self.open_requests()?;
+        let shown = ShownCards::new(cards, &columns, &places, &requests);
+        let held = shown.ordered_in(id);
+        let target = match move_to {
+            _ if held.is_empty() => None,
+            None => {
+                return Err(format!(
+                    "{} now holds {}; choose a column to move to",
+                    column.name,
+                    card_count(held.len())
+                ));
+            }
+            Some(MoveTo::Column { id: target }) if *target == id => {
+                return Err(format!("{} cannot take its own cards", column.name));
+            }
+            Some(MoveTo::Column { id: target }) if !columns.iter().any(|c| c.id == *target) => {
+                return Err("the column to move the cards to is gone".into());
+            }
+            Some(MoveTo::NewColumn { name }) if name.trim().is_empty() => {
+                return Err(NEW_COLUMN_NEEDS_A_NAME.into());
+            }
+            Some(target) => Some(target),
+        };
         let tx = self.conn.transaction().map_err(err)?;
+        if let Some(target) = target {
+            let target = match target {
+                MoveTo::Column { id } => *id,
+                MoveTo::NewColumn { name } => {
+                    tx.execute(
+                        &format!("INSERT INTO columns (project, name, position, width) VALUES (NULL, ?1, {NEXT_POSITION}, ?2)"),
+                        params![name.trim(), DEFAULT_COLUMN_WIDTH],
+                    )
+                    .map_err(err)?;
+                    tx.last_insert_rowid()
+                }
+            };
+            for row in Row::ALL {
+                let start = shown.next_position(target, row);
+                let in_row = held.iter().filter(|card| shown.row(card) == row);
+                for (position, card) in (start..).zip(in_row) {
+                    tx.execute(
+                        "INSERT INTO card_places (card_id, column_id, row_key, position) VALUES (?1, ?2, ?3, ?4)
+                         ON CONFLICT(card_id) DO UPDATE SET column_id = excluded.column_id, row_key = excluded.row_key, position = excluded.position",
+                        params![card.id, target, row.key(), position],
+                    )
+                    .map_err(err)?;
+                }
+            }
+        }
         tx.execute(
             "UPDATE card_places SET column_id = NULL WHERE column_id = ?1",
             params![id],
@@ -289,11 +340,11 @@ impl Db {
         Ok(())
     }
 
-    fn placed_columns(&self) -> Result<HashMap<String, i64>, String> {
+    fn places_by_card(&self) -> Result<HashMap<String, CardPlace>, String> {
         Ok(self
             .places()?
             .into_iter()
-            .filter_map(|p| Some((p.card_id, p.column?)))
+            .map(|p| (p.card_id.clone(), p))
             .collect())
     }
 
@@ -611,17 +662,88 @@ impl Db {
     }
 }
 
-fn shown_column(card: &Card, placed: &HashMap<String, i64>, columns: &[Column]) -> Option<i64> {
-    placed
-        .get(&card.id)
-        .filter(|id| columns.iter().any(|c| c.id == **id))
-        .copied()
-        .or_else(|| {
-            columns
-                .iter()
-                .find(|c| c.project.as_deref() == Some(card.project.as_str()))
-                .map(|c| c.id)
-        })
+struct ShownCards<'a> {
+    cards: &'a [Card],
+    columns: &'a [Column],
+    places: &'a HashMap<String, CardPlace>,
+    requests: &'a [MoveRequest],
+}
+
+impl<'a> ShownCards<'a> {
+    fn new(
+        cards: &'a [Card],
+        columns: &'a [Column],
+        places: &'a HashMap<String, CardPlace>,
+        requests: &'a [MoveRequest],
+    ) -> Self {
+        ShownCards {
+            cards,
+            columns,
+            places,
+            requests,
+        }
+    }
+
+    fn column(&self, card: &Card) -> Option<i64> {
+        let placed = self.places.get(&card.id).and_then(|p| p.column);
+        placed
+            .filter(|id| self.columns.iter().any(|c| c.id == *id))
+            .or_else(|| {
+                self.columns
+                    .iter()
+                    .find(|c| c.project.as_deref() == Some(card.project.as_str()))
+                    .map(|c| c.id)
+            })
+    }
+
+    fn row(&self, card: &Card) -> Row {
+        match self.requests.iter().rev().find(|r| r.card_id == card.id) {
+            Some(r) if r.status != MoveStatus::Answered => r.to_row,
+            _ => card.row,
+        }
+    }
+
+    fn position(&self, card: &Card, row: Row) -> i64 {
+        self.places
+            .get(&card.id)
+            .filter(|p| p.row == row)
+            .map_or(-1, |p| p.position)
+    }
+
+    fn ordered_in(&self, column: i64) -> Vec<&'a Card> {
+        Row::ALL
+            .into_iter()
+            .flat_map(|row| {
+                let mut here: Vec<&Card> = self
+                    .cards
+                    .iter()
+                    .filter(|card| self.column(card) == Some(column) && self.row(card) == row)
+                    .collect();
+                if row == Row::Landed {
+                    here.sort_by(|a, b| b.closed.cmp(&a.closed));
+                }
+                here.sort_by_key(|card| self.position(card, row));
+                here
+            })
+            .collect()
+    }
+
+    fn next_position(&self, column: i64, row: Row) -> i64 {
+        self.cards
+            .iter()
+            .filter(|card| self.column(card) == Some(column) && self.row(card) == row)
+            .map(|card| self.position(card, row) + 1)
+            .max()
+            .unwrap_or(0)
+    }
+}
+
+fn card_count(n: usize) -> String {
+    if n == 1 {
+        "1 card".into()
+    } else {
+        format!("{n} cards")
+    }
 }
 
 fn err(e: impl std::fmt::Display) -> String {
@@ -736,26 +858,182 @@ mod tests {
         assert_eq!((grown[1].width, grown[1].collapsed), (300, true));
     }
 
+    fn place_rows(db: &Db) -> Vec<(String, Option<i64>, Row, i64)> {
+        let mut places: Vec<_> = db
+            .places()
+            .unwrap()
+            .into_iter()
+            .map(|p| (p.card_id, p.column, p.row, p.position))
+            .collect();
+        places.sort_by(|a, b| (a.2.key(), a.3).cmp(&(b.2.key(), b.3)));
+        places
+    }
+
+    fn to_column(id: i64) -> MoveTo {
+        MoveTo::Column { id }
+    }
+
+    fn to_new(name: &str) -> MoveTo {
+        MoveTo::NewColumn { name: name.into() }
+    }
+
     #[test]
-    fn a_column_that_still_shows_cards_is_not_deleted() {
+    fn deleting_a_column_moves_its_cards_after_the_targets_own_in_their_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Db::open(dir.path()).unwrap();
+        let cards = [
+            card("a", "harbor"),
+            card("b", "harbor"),
+            card("c", "reef"),
+            card("d", "reef"),
+            card("e", "reef"),
+            card("f", "reef"),
+        ];
+        let columns = db.ensure_columns(&cards).unwrap();
+        let (harbor, reef) = (columns[0].id, columns[1].id);
+        db.place_cards("b", harbor, Row::Seabed, &["b".into(), "a".into()])
+            .unwrap();
+        db.place_cards(
+            "e",
+            reef,
+            Row::Seabed,
+            &["e".into(), "c".into(), "d".into()],
+        )
+        .unwrap();
+        db.add_request(&request("r1", "f", Row::Deep)).unwrap();
+
+        let columns = db
+            .delete_column(reef, Some(&to_column(harbor)), &cards)
+            .unwrap();
+
+        assert_eq!(names(&columns), ["harbor"]);
+        assert_eq!(names(&db.deleted_columns().unwrap()), ["reef"]);
+        assert_eq!(
+            place_rows(&db),
+            [
+                ("f".into(), Some(harbor), Row::Deep, 0),
+                ("b".into(), Some(harbor), Row::Seabed, 0),
+                ("a".into(), None, Row::Seabed, 1),
+                ("e".into(), Some(harbor), Row::Seabed, 2),
+                ("c".into(), Some(harbor), Row::Seabed, 3),
+                ("d".into(), Some(harbor), Row::Seabed, 4),
+            ]
+        );
+    }
+
+    #[test]
+    fn deleting_a_column_can_move_its_cards_to_a_new_column() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Db::open(dir.path()).unwrap();
+        let cards = [card("a", "harbor"), card("b", "reef"), card("c", "reef")];
+        let reef = db.ensure_columns(&cards).unwrap()[1].id;
+
+        let columns = db
+            .delete_column(reef, Some(&to_new("  This week ")), &cards)
+            .unwrap();
+
+        assert_eq!(names(&columns), ["harbor", "This week"]);
+        assert_eq!(projects(&columns), [Some("harbor"), None]);
+        let week = columns[1].id;
+        assert!(week > reef);
+        assert_eq!(
+            place_rows(&db),
+            [
+                ("b".into(), Some(week), Row::Seabed, 0),
+                ("c".into(), Some(week), Row::Seabed, 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_card_that_arrived_after_the_dialog_opened_is_moved_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Db::open(dir.path()).unwrap();
+        let in_dialog = [card("a", "harbor"), card("b", "reef")];
+        let columns = db.ensure_columns(&in_dialog).unwrap();
+        let (harbor, reef) = (columns[0].id, columns[1].id);
+        let now = [card("a", "harbor"), card("b", "reef"), card("c", "reef")];
+
+        db.delete_column(reef, Some(&to_column(harbor)), &now)
+            .unwrap();
+
+        assert_eq!(
+            place_rows(&db),
+            [
+                ("b".into(), Some(harbor), Row::Seabed, 0),
+                ("c".into(), Some(harbor), Row::Seabed, 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_card_that_arrived_after_an_empty_column_dialog_opened_stops_the_delete() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Db::open(dir.path()).unwrap();
+        let in_dialog = [card("a", "harbor"), card("b", "reef")];
+        let columns = db.ensure_columns(&in_dialog).unwrap();
+        let (harbor, reef) = (columns[0].id, columns[1].id);
+        db.place_cards("b", harbor, Row::Seabed, &["b".into()])
+            .unwrap();
+        let now = [card("a", "harbor"), card("b", "reef"), card("c", "reef")];
+
+        let error = db.delete_column(reef, None, &now).unwrap_err();
+
+        assert_eq!(error, "reef now holds 1 card; choose a column to move to");
+        assert_eq!(names(&db.columns().unwrap()), ["harbor", "reef"]);
+    }
+
+    #[test]
+    fn a_move_that_cannot_happen_changes_nothing() {
         let dir = tempfile::tempdir().unwrap();
         let mut db = Db::open(dir.path()).unwrap();
         let cards = [card("a", "harbor"), card("b", "reef")];
-        db.ensure_columns(&cards).unwrap();
-        let custom = db.add_column("Now").unwrap()[2].id;
-        db.place_cards("b", custom, Row::Seabed, &["b".into()])
+        let reef = db.ensure_columns(&cards).unwrap()[1].id;
+        db.place_cards("b", reef, Row::Seabed, &["b".into()])
             .unwrap();
-        let reef = db.columns().unwrap()[1].id;
-        db.delete_column(reef, &cards).unwrap();
+        let before = (db.columns().unwrap(), place_rows(&db));
 
-        let error = db.delete_column(custom, &cards).unwrap_err();
-        assert_eq!(
-            error,
-            "Now still holds 1 card; move them to another column first"
-        );
-        let harbor = db.columns().unwrap()[0].id;
-        assert!(db.delete_column(harbor, &cards).is_err());
-        assert_eq!(names(&db.columns().unwrap()), ["harbor", "Now"]);
+        for (move_to, error) in [
+            (None, "reef now holds 1 card; choose a column to move to"),
+            (Some(to_column(reef)), "reef cannot take its own cards"),
+            (
+                Some(to_column(99)),
+                "the column to move the cards to is gone",
+            ),
+            (Some(to_new("  ")), "a new column needs a name"),
+        ] {
+            assert_eq!(
+                db.delete_column(reef, move_to.as_ref(), &cards),
+                Err(error.into())
+            );
+        }
+        assert_eq!((db.columns().unwrap(), place_rows(&db)), before);
+
+        db.conn
+            .execute_batch(
+                "CREATE TEMP TRIGGER refuse_delete BEFORE UPDATE OF deleted ON columns
+                 BEGIN SELECT RAISE(ABORT, 'disk is full'); END;",
+            )
+            .unwrap();
+        let error = db
+            .delete_column(reef, Some(&to_new("Later")), &cards)
+            .unwrap_err();
+        assert_eq!(error, "disk is full");
+        assert_eq!((db.columns().unwrap(), place_rows(&db)), before);
+        assert!(db.deleted_columns().unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_empty_column_is_deleted_without_a_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Db::open(dir.path()).unwrap();
+        let cards = [card("a", "harbor")];
+        db.ensure_columns(&cards).unwrap();
+        let later = db.add_column("Later").unwrap()[1].id;
+        let columns = db
+            .delete_column(later, Some(&to_new("Ignored")), &cards)
+            .unwrap();
+        assert_eq!(names(&columns), ["harbor"]);
     }
 
     #[test]
@@ -772,7 +1050,7 @@ mod tests {
         db.update_column(reef.id, Some(400), None).unwrap();
 
         assert_eq!(
-            names(&db.delete_column(reef.id, &cards).unwrap()),
+            names(&db.delete_column(reef.id, None, &cards).unwrap()),
             ["harbor", "Now"]
         );
         assert_eq!(
@@ -797,7 +1075,7 @@ mod tests {
         let custom = db.add_column("Later").unwrap()[1].id;
         db.place_cards("gone", custom, Row::Deep, &["gone".into(), "a".into()])
             .unwrap();
-        db.delete_column(custom, &cards).unwrap();
+        db.delete_column(custom, None, &cards).unwrap();
         assert!(db.deleted_columns().unwrap().is_empty());
         let places: Vec<(String, Option<i64>)> = db
             .places()

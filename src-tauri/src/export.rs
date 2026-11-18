@@ -217,7 +217,7 @@ mod tests {
         reef.project = "reef".into();
         let seeded = db.ensure_columns(&[card, reef]).unwrap();
         let (harbor, reef) = (seeded[1].id, seeded[2].id);
-        db.delete_column(reef, &[]).unwrap();
+        db.delete_column(reef, None, &[]).unwrap();
         db.place_cards(
             "harbor-lights",
             harbor,

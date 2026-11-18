@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ROW_ORDER, type Card, type Column, type MoveRequest, type Overlay, type Placement, type RowKey, type Worker } from "../api";
+import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
+import { ROW_ORDER, type Card, type Column, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type Worker } from "../api";
 import {
   boardMinWidth,
   cardNote,
@@ -12,6 +12,7 @@ import {
   renamedColumn,
   shownRequest,
 } from "../board";
+import { deletePlan, moveTargets, NEW_COLUMN, nextDraft, startDraft } from "../columnDelete";
 import { useCardDrag, type CardDrag } from "../cardDrag";
 import type { DropTarget } from "../dropTarget";
 import { startDrag } from "../drag";
@@ -28,7 +29,7 @@ interface BoardProps {
   onColumnChange: (id: number, change: { width?: number; collapsed?: boolean }) => void;
   onColumnRename: (id: number, name: string) => void;
   onColumnAdd: (name: string) => void;
-  onColumnDelete: (id: number) => void;
+  onColumnDelete: (id: number, moveTo?: MoveTo) => Promise<void>;
   onPlace: (placement: Placement) => void;
   onWatch: (card: Card, worker: Worker) => void;
 }
@@ -36,7 +37,8 @@ interface BoardProps {
 export function Board(props: BoardProps) {
   const { cards, columns, overlay, workers, rowNames, selectedId, onSelect, onColumnChange, onColumnRename, onPlace, onWatch } = props;
   const [liveWidths, setLiveWidths] = useState<Record<number, number>>({});
-  const [deleting, setDeleting] = useState<Column | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const deleting = columns.find((c) => c.id === deletingId);
   const shown = columns.map((c) => (liveWidths[c.id] ? { ...c, width: liveWidths[c.id] } : c));
   const cells = groupCards(cards, shown, overlay);
   const template = columnTemplate(shown);
@@ -103,7 +105,7 @@ export function Board(props: BoardProps) {
                 <span className="column-total">{total}</span>
                 <button
                   className="ico column-delete"
-                  onClick={() => setDeleting(column)}
+                  onClick={() => setDeletingId(column.id)}
                   aria-label={`Delete ${column.name}`}
                   title={`Delete ${column.name}`}
                 >
@@ -179,11 +181,9 @@ export function Board(props: BoardProps) {
         <DeleteColumnDialog
           column={deleting}
           held={cellCount(cells, deleting.id)}
-          onDelete={() => {
-            props.onColumnDelete(deleting.id);
-            setDeleting(null);
-          }}
-          onClose={() => setDeleting(null)}
+          targets={moveTargets(columns, deleting.id)}
+          onDelete={(moveTo) => props.onColumnDelete(deleting.id, moveTo).then(() => setDeletingId(null))}
+          onClose={() => setDeletingId(null)}
         />
       )}
     </div>
@@ -231,46 +231,95 @@ function AddColumn({ onAdd }: { onAdd: (name: string) => void }) {
 interface DeleteColumnDialogProps {
   column: Column;
   held: number;
-  onDelete: () => void;
+  targets: Column[];
+  onDelete: (moveTo?: MoveTo) => Promise<void>;
   onClose: () => void;
 }
 
-function DeleteColumnDialog({ column, held, onDelete, onClose }: DeleteColumnDialogProps) {
+function DeleteColumnDialog({ column, held, targets, onDelete, onClose }: DeleteColumnDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   useEffect(() => dialogRef.current?.showModal(), []);
-  const cards = held === 1 ? "1 card" : `${held} cards`;
+  const [draft, dispatch] = useReducer(nextDraft, targets, startDraft);
+  const { moving, choice, moveTo, ready } = deletePlan(held, targets, draft);
+
+  const submit = () => {
+    if (!ready) return;
+    dispatch({ type: "submit" });
+    onDelete(moveTo).catch((e) => dispatch({ type: "fail", error: String(e) }));
+  };
 
   return (
     <dialog ref={dialogRef} className="confirm" onCancel={onClose} aria-label={`Delete ${column.name}`}>
-      <h2>{held > 0 ? `${column.name} still holds ${cards}` : `Delete ${column.name}?`}</h2>
-      <p>
-        {held > 0 ? (
-          "Move them to another column first, so no card drops off the board."
-        ) : column.project === null ? (
-          "The column leaves the board for good."
-        ) : (
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        <h2>Delete {column.name}?</h2>
+        {moving && (
           <>
-            The column leaves the board. Firstmate's tasks for <span className="confirm-name">{column.project}</span> are not changed. It
-            comes back only if a new <span className="confirm-name">{column.project}</span> task has no other column to show in.
+            <p>
+              {held === 1 ? "It holds 1 card, which moves" : `It holds ${held} cards, which move`} to the end of the column you pick. Then this
+              column is deleted.
+            </p>
+            <div className="confirm-move">
+              <label className="field">
+                <span>Move the cards to</span>
+                <select
+                  className="text-input"
+                  value={String(choice)}
+                  disabled={draft.busy}
+                  autoFocus
+                  onChange={(e) => dispatch({ type: "pick", choice: e.target.value === NEW_COLUMN ? NEW_COLUMN : Number(e.target.value) })}
+                >
+                  {targets.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                  <option value={NEW_COLUMN}>New column</option>
+                </select>
+              </label>
+              {choice === NEW_COLUMN && (
+                <input
+                  className="text-input"
+                  aria-label="Name of the new column"
+                  placeholder="Column name"
+                  value={draft.name}
+                  disabled={draft.busy}
+                  autoFocus
+                  spellCheck={false}
+                  onChange={(e) => dispatch({ type: "name", name: e.target.value })}
+                />
+              )}
+            </div>
           </>
         )}
-      </p>
-      <div className="confirm-foot">
-        {held > 0 ? (
-          <button className="btn btn-dark" onClick={onClose} autoFocus>
-            OK
+        <p>
+          {column.project === null ? (
+            "The column leaves the board for good."
+          ) : (
+            <>
+              The column leaves the board. Firstmate's tasks for <span className="confirm-name">{column.project}</span> are not changed. It
+              comes back only if a new <span className="confirm-name">{column.project}</span> task has no other column to show in.
+            </>
+          )}
+        </p>
+        {draft.error && (
+          <div className="error-text" role="alert">
+            Could not delete the column: {draft.error}
+          </div>
+        )}
+        <div className="confirm-foot">
+          <button type="button" className="btn" onClick={onClose} autoFocus={!moving}>
+            Cancel
           </button>
-        ) : (
-          <>
-            <button className="btn" onClick={onClose} autoFocus>
-              Cancel
-            </button>
-            <button className="btn btn-danger" onClick={onDelete}>
-              Delete column
-            </button>
-          </>
-        )}
-      </div>
+          <button type="submit" className="btn btn-danger" disabled={!ready}>
+            {moving ? "Move and delete" : "Delete column"}
+          </button>
+        </div>
+      </form>
     </dialog>
   );
 }

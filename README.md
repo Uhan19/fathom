@@ -29,6 +29,7 @@ It is handy for layout work without herdr-core or Firstmate.
 Add `?nolabel`, `?error` or `?empty` to the URL to see the terminal picker, a read error, or an empty board.
 Add `?other=120x45` to see the chat while another client owns a 120 by 45 terminal; a key press in the panel takes the size back.
 Add `?kitty` to have the mocked terminal turn on kitty keyboard mode, so Shift+Enter sends the kitty form.
+Add `?late` to have a card arrive in a column at the moment you confirm deleting it, or `?deletefail` to see a delete fail.
 
 ## Run the checks
 
@@ -139,8 +140,12 @@ The goal is under 0.5 s on a warm start.
   An added column belongs to no project; drag cards into it to group them however you like.
   It renames, collapses and resizes like any other column.
 - Hovering a column header shows a trash button that deletes the column after a confirmation.
-- A column that still shows cards cannot be deleted, so no card ever drops off the board.
-  Drag its cards to other columns first, or collapse the column instead.
+- Deleting a column that still shows cards first moves them, so no card ever drops off the board.
+  The dialog says how many cards the column holds and asks where they go: any other column, or a new column you name.
+  The cards land at the end of each row of that column, in the order they had.
+  Moving and deleting happen together, so if anything fails nothing changes and the dialog shows the error.
+  A card that arrives while the dialog is open moves with the rest.
+  If the column looked empty when you opened the dialog, a card arriving before you confirm stops the delete and the dialog asks where it goes.
 - Deleting an added column removes it for good.
 - Deleting a project column hides it and remembers that, so it stays gone on later reads.
   There is no restore button.

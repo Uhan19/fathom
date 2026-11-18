@@ -8,6 +8,7 @@ import {
   type Card,
   type Column,
   type HerdrStatus,
+  type MoveTo,
   type Overlay,
   type Placement,
   type RowKey,
@@ -126,6 +127,17 @@ export default function App() {
       })
       .catch((e) => setColumnError(errorText(e)));
 
+  const deleteColumn = (id: number, moveTo?: MoveTo) =>
+    api
+      .deleteColumn(id, moveTo)
+      .then(({ columns, overlay }) => {
+        setColumnError(null);
+        setView((v) => v && { ...v, columns, ...overlay });
+      })
+      .catch((e) => {
+        throw errorText(e);
+      });
+
   const overlay: Overlay = { places: view?.places ?? [], requests: view?.requests ?? [] };
   const workerByTask = useMemo(() => Object.fromEntries(workers.map((w) => [w.taskId, w])) as Record<string, Worker>, [workers]);
   const watchedWorker = watched ? workers.find((w) => w.terminal === watched.terminal) : undefined;
@@ -212,7 +224,7 @@ export default function App() {
               onColumnChange={changeColumn}
               onColumnRename={renameColumn}
               onColumnAdd={(name) => void replaceColumns(api.addColumn(name))}
-              onColumnDelete={(id) => void replaceColumns(api.deleteColumn(id))}
+              onColumnDelete={deleteColumn}
               onPlace={placeCard}
               onWatch={(card, worker) => setWatched({ taskId: card.id, title: card.title, terminal: worker.terminal })}
             />

@@ -147,6 +147,10 @@ code,
   background: #962f28;
 }
 
+.btn-danger:disabled:hover {
+  background: #b23a32;
+}
+
 .mini {
   font-size: calc(11px * var(--board-scale));
   font-weight: 600;
@@ -1394,8 +1398,12 @@ button.sailor:focus-visible {
   background: rgba(15, 37, 51, 0.32);
 }
 
+.confirm form {
+  display: grid;
+  gap: 10px;
+}
 .confirm h2 {
-  margin: 0 0 8px;
+  margin: 0;
   font-family: var(--heading);
   font-size: calc(17px * var(--board-scale));
   font-weight: 700;
@@ -1413,11 +1421,16 @@ button.sailor:focus-visible {
   white-space: nowrap;
 }
 
+.confirm-move {
+  display: grid;
+  gap: 8px;
+  margin: 2px 0 4px;
+}
 .confirm-foot {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 18px;
+  margin-top: 8px;
 }
 
 /* Crewmate terminal */
