@@ -99,12 +99,15 @@ export interface Worker {
   status: WorkerStatus;
 }
 
+export type SourceKind = "firstmate" | "fathom";
+
 export interface BoardView extends Overlay {
   columns: Column[];
   rowNames: RowName[];
   cards: Card[];
   takenAtMs: number | null;
   home: string;
+  source: SourceKind;
   fromCache: boolean;
   error: string | null;
 }
@@ -172,7 +175,8 @@ export const api = {
   addColumn: (name: string) => invoke<Column[]>("add_column", { name }),
   deleteColumn: (id: number, moveTo?: MoveTo) => invoke<Layout>("delete_column", { id, moveTo: moveTo ?? null }),
   setRowName: (row: RowKey, name: string) => invoke<void>("set_row_name", { row, name }),
-  placeCard: (placement: Placement) => invoke<Overlay>("place_card", { placement }),
+  placeCard: (placement: Placement, chatTerminal: string | null) =>
+    invoke<Overlay>("place_card", { placement, chatTerminal }),
   resendRequest: (requestId: string) => invoke<Overlay>("resend_request", { requestId }),
   dismissRequest: (requestId: string) => invoke<Overlay>("dismiss_request", { requestId }),
   workers: () => invoke<Worker[]>("workers"),

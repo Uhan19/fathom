@@ -86,11 +86,55 @@ export const FIXTURE_REQUESTS: MoveRequest[] = [
   }),
 ];
 
-export const FIXTURE_COLUMNS: Column[] = [...new Set(FIXTURE_CARDS.map((c) => c.project))]
-  .sort()
-  .map((project, position) => ({ id: position + 1, project, name: project, position, width: 240, collapsed: false }));
+const columnsFor = (cards: Card[]): Column[] =>
+  [...new Set(cards.map((c) => c.project))]
+    .sort()
+    .map((project, position) => ({ id: position + 1, project, name: project, position, width: 240, collapsed: false }));
+
+export const FIXTURE_COLUMNS: Column[] = columnsFor(FIXTURE_CARDS);
+
+type BacklogSeed = [id: number, project: string, row: RowKey, title: string];
+
+const BACKLOG_SEEDS: BacklogSeed[] = [
+  [1, "reef-map", "surface", "Confirm which survey grid to use"],
+  [2, "reef-map", "shallows", "Chart the north reef from the new soundings"],
+  [3, "reef-map", "seabed", "Mark the shipwrecks on the chart"],
+  [4, "reef-map", "landed", "Import last year's buoy positions"],
+  [5, "tide-tables", "shallows", "Fix the off-by-one hour in daylight saving weeks"],
+  [6, "tide-tables", "seabed", "Add spring tide warnings"],
+  [7, "tide-tables", "deep", "Port the tide model to the new library"],
+  [8, "dry-dock", "seabed", "List the hull repairs for the winter"],
+  [9, "dry-dock", "landed", "Book the crane for the mast lift"],
+];
+
+export const FIXTURE_BACKLOG_CARDS: Card[] = BACKLOG_SEEDS.map(([id, project, row, title]) =>
+  seeded([String(id), project, row, title, { kind: "task", state: row === "landed" ? "done" : "open", closed: row === "landed" ? "2026-11-16" : "" }]),
+);
+
+export const FIXTURE_BACKLOG_COLUMNS: Column[] = columnsFor(FIXTURE_BACKLOG_CARDS);
+
+const backlogRequest = (over: Partial<MoveRequest> & Pick<MoveRequest, "cardId" | "fromRow" | "toRow">): MoveRequest => ({
+  ...fixtureRequest(over),
+  title: FIXTURE_BACKLOG_CARDS.find((c) => c.id === over.cardId)?.title ?? "",
+  noteId: null,
+  ...over,
+});
+
+export const FIXTURE_BACKLOG_REQUESTS: MoveRequest[] = [
+  backlogRequest({ cardId: "3", fromRow: "seabed", toRow: "shallows" }),
+  backlogRequest({
+    cardId: "7",
+    fromRow: "deep",
+    toRow: "shallows",
+    status: "answered",
+    answer: "Not yet: the new library has no tide model until its next release.",
+  }),
+];
 
 export function fixtureDetail(card: Card): Detail {
+  if (card.kind === "task") {
+    return { card, body: `Invented preview notes for ${card.title.toLowerCase()}.`, created: "2026-11-02", priority: "", deps: [] };
+  }
   return {
     card,
     body: `${card.title}.\n\nThis is invented preview text for ${card.project}. It stands in for the full task body that tasks-axi show returns.`,

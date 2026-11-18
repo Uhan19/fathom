@@ -18,6 +18,7 @@ import {
 } from "./api";
 import { appearanceOf, boardStyle, chatFontStack, type Appearance } from "./appearance";
 import { placeLocally, rowCounts, shownRequest } from "./board";
+import { emptyBoardText } from "./source";
 import { moveTo } from "./columnOrder";
 import { startDrag } from "./drag";
 import { Board } from "./components/Board";
@@ -167,7 +168,7 @@ export default function App() {
 
   const placeCard = (placement: Placement) => {
     setView((v) => v && { ...v, ...placeLocally({ places: v.places, requests: v.requests }, placement, Date.now()) });
-    void changeOverlay(api.placeCard(placement));
+    void changeOverlay(api.placeCard(placement, chatTerminal?.address ?? null));
   };
 
   const anyCollapsed = view?.columns.some((c) => c.collapsed) ?? false;
@@ -237,6 +238,7 @@ export default function App() {
           view.columns.length > 0 ? (
             <Board
               cards={cards}
+              source={view.source}
               columns={view.columns}
               overlay={overlay}
               workers={workerByTask}
@@ -252,7 +254,7 @@ export default function App() {
               onWatch={(card, worker) => setWatched({ taskId: card.id, title: card.title, terminal: worker.terminal })}
             />
           ) : (
-            <div className="board-empty">No tasks yet in {view.home}.</div>
+            <div className="board-empty">{emptyBoardText(view.source, view.home)}</div>
           )
         ) : (
           <div className="board-empty">{readError ? "" : "Reading tasks…"}</div>
@@ -272,6 +274,7 @@ export default function App() {
             </div>
             <CardDetail
               card={selected}
+              source={view?.source ?? "firstmate"}
               rowNames={rowNames}
               request={shownRequest(selected.id, overlay.requests)}
               width={detailWidth}
