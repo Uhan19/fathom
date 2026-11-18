@@ -203,6 +203,9 @@ Keystrokes in the panel go into that terminal.
   Option-drag selects text even when the program takes the mouse.
 - A program can copy to the clipboard with OSC 52, for example when it handles mouse selection itself.
   Fathom never answers a program's request to read the clipboard.
+- Dropping files from Finder onto the chat panel types their full paths, as a paste, without pressing Enter.
+  Each path is escaped with backslashes the way macOS terminal apps do it, and the paths are separated and followed by a space.
+  A file dropped anywhere else in the window does nothing.
 
 The message box on a card sends `<card title> (<task id>): <text>` to the same terminal with `hc send`.
 

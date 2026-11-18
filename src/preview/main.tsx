@@ -1,4 +1,4 @@
-import { mockIPC } from "@tauri-apps/api/mocks";
+import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import type { BoardView, Card, CardPlace, MoveRequest, Overlay, Placement, Settings } from "../api";
 import { FIXTURE_CARDS, FIXTURE_COLUMNS, FIXTURE_REQUESTS, FIXTURE_SCREEN, FIXTURE_TERMINALS, FIXTURE_WORKERS, fixtureDetail, workerScreen } from "./fixture";
@@ -81,6 +81,8 @@ const view = (fromCache: boolean): BoardView => ({
 type Output = { onmessage: (message: number[] | { cols: number; rows: number }) => void };
 const outputs = new Map<unknown, Output>();
 const bytes = (text: string) => [...new TextEncoder().encode(text)];
+
+mockWindows("main");
 
 mockIPC(
   (cmd, payload) => {

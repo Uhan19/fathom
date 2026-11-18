@@ -170,6 +170,14 @@ export function useLiveTerminal(view: View, fontFamily: string, fontSize: number
 
   const focus = useCallback(() => xtermRef.current?.focus(), []);
 
+  const paste = useCallback((text: string) => {
+    const term = xtermRef.current;
+    if (!term) return;
+    lastUserInput.current = performance.now();
+    term.paste(text);
+    term.focus();
+  }, []);
+
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -217,5 +225,5 @@ export function useLiveTerminal(view: View, fontFamily: string, fontSize: number
     return () => cancelAnimationFrame(frame);
   }, [fontFamily, fontSize, syncSize]);
 
-  return { hostRef, scrollRef, attach, release, focus };
+  return { hostRef, scrollRef, attach, release, focus, paste };
 }

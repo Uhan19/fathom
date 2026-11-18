@@ -604,10 +604,13 @@ mod tests {
     fn column_names_override_the_project_and_reset_when_empty() {
         let dir = tempfile::tempdir().unwrap();
         let mut db = Db::open(dir.path()).unwrap();
-        db.ensure_columns(&["harbor".into(), "reef".into()]).unwrap();
+        db.ensure_columns(&["harbor".into(), "reef".into()])
+            .unwrap();
         db.update_column("harbor", Some(320), Some(false)).unwrap();
         db.set_column_name("harbor", "  Harbor web  ").unwrap();
-        let renamed = db.ensure_columns(&["harbor".into(), "reef".into()]).unwrap();
+        let renamed = db
+            .ensure_columns(&["harbor".into(), "reef".into()])
+            .unwrap();
         assert_eq!(renamed[0].project, "harbor");
         assert_eq!(renamed[0].name, "Harbor web");
         assert_eq!(renamed[0].width, 320);
