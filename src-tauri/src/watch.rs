@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::time::Duration;
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
@@ -34,6 +35,23 @@ pub fn watch_task_list(
         .watch(&data, RecursiveMode::NonRecursive)
         .map_err(|e| format!("cannot watch {}: {e}", data.display()))?;
     Ok(watcher)
+}
+
+pub fn poll_store(
+    interval: Duration,
+    changed_elsewhere: impl Fn() -> Option<bool> + Send + 'static,
+    on_change: impl Fn() + Send + 'static,
+) {
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(interval);
+            match changed_elsewhere() {
+                None => return,
+                Some(true) => on_change(),
+                Some(false) => {}
+            }
+        }
+    });
 }
 
 pub fn watch_state(
@@ -77,7 +95,6 @@ fn classify(path: &Path) -> Option<StateChange> {
 mod tests {
     use super::*;
     use std::sync::mpsc;
-    use std::time::Duration;
 
     #[test]
     fn reports_changes_to_the_task_list_only() {
@@ -96,6 +113,50 @@ mod tests {
         assert!(rx.recv_timeout(Duration::from_millis(800)).is_err());
         std::fs::write(data.join(TASK_LIST), "second").unwrap();
         assert!(rx.recv_timeout(Duration::from_secs(5)).is_ok());
+    }
+
+    #[test]
+    fn reports_store_writes_from_other_connections_only() {
+        use crate::db::Db;
+        use crate::db::backlog::NewTask;
+        use std::sync::{Arc, Mutex};
+
+        let dir = tempfile::tempdir().unwrap();
+        let app = Arc::new(Mutex::new(Db::open(dir.path()).unwrap()));
+        let store = app.lock().unwrap().path().to_path_buf();
+        let (tx, rx) = mpsc::channel();
+        let watched = Arc::downgrade(&app);
+        poll_store(
+            Duration::from_millis(20),
+            move || {
+                let db = watched.upgrade()?;
+                let changed = db.lock().unwrap().changed_elsewhere();
+                Some(changed.unwrap_or(false))
+            },
+            move || {
+                let _ = tx.send(());
+            },
+        );
+
+        app.lock().unwrap().set_setting("home", "").unwrap();
+        assert!(rx.recv_timeout(Duration::from_millis(300)).is_err());
+
+        let other = Db::open_file(&store).unwrap();
+        other
+            .add_task(
+                &NewTask {
+                    title: "Chart the reef".into(),
+                    project: "reef-map".into(),
+                    ..NewTask::default()
+                },
+                1,
+            )
+            .unwrap();
+        assert!(rx.recv_timeout(Duration::from_secs(2)).is_ok());
+        assert!(rx.recv_timeout(Duration::from_millis(300)).is_err());
+
+        drop(app);
+        std::thread::sleep(Duration::from_millis(100));
     }
 
     #[test]

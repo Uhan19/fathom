@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::db::backlog::Task;
 use crate::db::{CardPlace, Column, Db, MoveRequest, RowName, Snapshot};
 
 #[derive(Serialize)]
@@ -16,6 +17,7 @@ struct Everything {
     snapshot: Option<Snapshot>,
     card_places: Vec<CardPlace>,
     move_requests: Vec<MoveRequest>,
+    backlog_tasks: Vec<Task>,
 }
 
 pub fn export(db: &Db, parent: &Path, now_ms: i64) -> Result<PathBuf, String> {
@@ -33,6 +35,7 @@ pub fn export(db: &Db, parent: &Path, now_ms: i64) -> Result<PathBuf, String> {
         snapshot: db.snapshot()?,
         card_places: db.places()?,
         move_requests: db.all_requests()?,
+        backlog_tasks: db.tasks(None, None)?,
     };
     let json = serde_json::to_string_pretty(&everything).map_err(|e| e.to_string())?;
     std::fs::write(out.join("fathom.json"), json).map_err(|e| e.to_string())?;
@@ -163,6 +166,32 @@ pub fn export(db: &Db, parent: &Path, now_ms: i64) -> Result<PathBuf, String> {
             Ok(())
         },
     )?;
+    write_csv(
+        &out.join("backlog_tasks.csv"),
+        &[
+            "id",
+            "title",
+            "detail",
+            "project",
+            "row",
+            "created_ms",
+            "updated_ms",
+        ],
+        |w| {
+            for t in &everything.backlog_tasks {
+                w.write_record([
+                    &t.id.to_string(),
+                    &t.title,
+                    &t.detail,
+                    &t.project,
+                    t.row.key(),
+                    &t.created_ms.to_string(),
+                    &t.updated_ms.to_string(),
+                ])?;
+            }
+            Ok(())
+        },
+    )?;
     Ok(out)
 }
 
@@ -238,6 +267,16 @@ mod tests {
             error: None,
         })
         .unwrap();
+        db.add_task(
+            &crate::db::backlog::NewTask {
+                title: "Chart the reef".into(),
+                detail: "Start at the north buoy".into(),
+                project: "reef".into(),
+                row: Some(Row::Surface),
+            },
+            7,
+        )
+        .unwrap();
 
         let target = tempfile::tempdir().unwrap();
         let out = export(&db, target.path(), 99).unwrap();
@@ -260,6 +299,9 @@ mod tests {
         assert!(cards.contains("pr:https://example.com/pull/7"));
         let requests = std::fs::read_to_string(out.join("move_requests.csv")).unwrap();
         assert!(requests.contains("fathom-move-harbor-lights-5,harbor-lights"));
+        assert_eq!(json["backlogTasks"][0]["title"], "Chart the reef");
+        let tasks = std::fs::read_to_string(out.join("backlog_tasks.csv")).unwrap();
+        assert!(tasks.contains("\n1,Chart the reef,Start at the north buoy,reef,surface,7,7\n"));
         for name in [
             "columns.csv",
             "row_names.csv",

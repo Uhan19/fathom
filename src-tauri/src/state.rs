@@ -13,13 +13,16 @@ use tauri::{AppHandle, Emitter};
 use crate::db::{CardPlace, Column, Db, MoveRequest, MoveStatus, MoveTo, RowName, Snapshot};
 use crate::herdr::{self, Frame, Herdr, Notice, View};
 use crate::moves::{self, Placement};
-use crate::tasks::{self, Card};
+use crate::source::{Source, SourceKind};
+use crate::tasks::Card;
 use crate::watch::{self, StateChange};
 use crate::workers::{self, Worker};
 
 pub const DEFAULT_LABEL: &str = "firstmate.role=primary";
 const DEFAULT_HOME_RELATIVE: &str = "Documents/firstmate";
+const FIRSTMATE_MARKER: &str = "bin/fm-tasks-axi.sh";
 const REFRESH_DEBOUNCE: Duration = Duration::from_millis(250);
+const STORE_POLL: Duration = REFRESH_DEBOUNCE;
 const WORKERS_DEBOUNCE: Duration = Duration::from_millis(80);
 const LAUNCH_LOG: &str = "launch.log";
 
@@ -68,6 +71,7 @@ pub struct BoardView {
     pub cards: Vec<Card>,
     pub taken_at_ms: Option<i64>,
     pub home: String,
+    pub source: SourceKind,
     pub from_cache: bool,
     pub error: Option<String>,
     #[serde(flatten)]
@@ -126,7 +130,9 @@ pub fn now_ms() -> i64 {
 
 pub fn default_home() -> String {
     std::env::home_dir()
-        .map(|h| h.join(DEFAULT_HOME_RELATIVE).display().to_string())
+        .map(|h| h.join(DEFAULT_HOME_RELATIVE))
+        .filter(|home| home.join(FIRSTMATE_MARKER).is_file())
+        .map(|home| home.display().to_string())
         .unwrap_or_default()
 }
 
@@ -154,7 +160,10 @@ pub fn load_settings(db: &Db) -> Result<Settings, String> {
             .unwrap_or_default()
     };
     Ok(Settings {
-        home: get(KEY_HOME, default_home()),
+        home: stored
+            .get(KEY_HOME)
+            .map(|home| home.trim().to_string())
+            .unwrap_or_else(default_home),
         terminal_label: get(KEY_LABEL, DEFAULT_LABEL.to_string()),
         hc_session: get(KEY_SESSION, String::new()),
         hc_socket: get(KEY_SOCKET, String::new()),
@@ -235,12 +244,13 @@ impl AppState {
         spawn_refresher(app.clone(), Arc::clone(&state), requests);
         spawn_worker_publisher(app.clone(), Arc::clone(&state), worker_ticks);
         state.restart_watcher();
+        state.watch_store();
         state.herdr.start_events();
         Ok(state)
     }
 
-    pub fn home(&self) -> PathBuf {
-        PathBuf::from(&self.settings.lock().unwrap().home)
+    pub fn source(&self) -> Source {
+        Source::of(&self.settings.lock().unwrap().home)
     }
 
     pub fn request_refresh(&self) {
@@ -248,7 +258,8 @@ impl AppState {
     }
 
     pub fn cached_board(&self) -> Result<BoardView, String> {
-        let home = self.home().display().to_string();
+        let source = self.source();
+        let home = source.home();
         let db = self.db.lock().unwrap();
         let snapshot = db.snapshot()?.filter(|s| s.home == home);
         Ok(BoardView {
@@ -257,6 +268,7 @@ impl AppState {
             taken_at_ms: snapshot.as_ref().map(|s| s.taken_at_ms),
             cards: snapshot.map(|s| s.cards).unwrap_or_default(),
             home,
+            source: source.kind(),
             from_cache: true,
             error: None,
             overlay: overlay_of(&db)?,
@@ -268,15 +280,14 @@ impl AppState {
     }
 
     pub fn read_board(&self) -> Result<BoardView, String> {
-        let home = self.home();
-        match tasks::read_board(&home) {
+        let source = self.source();
+        match source.read_cards(&self.db) {
             Ok(cards) => {
-                moves::reconcile(&self.db, &home, &cards)?;
                 let mut db = self.db.lock().unwrap();
                 let columns = db.ensure_columns(&cards)?;
                 let snapshot = Snapshot {
                     taken_at_ms: now_ms(),
-                    home: home.display().to_string(),
+                    home: source.home(),
                     cards,
                 };
                 db.save_snapshot(&snapshot)?;
@@ -286,6 +297,7 @@ impl AppState {
                     cards: snapshot.cards,
                     taken_at_ms: Some(snapshot.taken_at_ms),
                     home: snapshot.home,
+                    source: source.kind(),
                     from_cache: false,
                     error: None,
                     overlay: overlay_of(&db)?,
@@ -331,7 +343,11 @@ impl AppState {
     }
 
     pub fn restart_watcher(&self) {
-        let home = self.home();
+        let mut watchers = self.watchers.lock().unwrap();
+        watchers.clear();
+        let Source::Firstmate { home } = self.source() else {
+            return;
+        };
         let refresh = self.refresh.clone();
         let task_list = watch::watch_task_list(&home, move || {
             let _ = refresh.send(());
@@ -344,14 +360,28 @@ impl AppState {
                 StateChange::Replies => refresh.send(()),
             };
         });
-        let mut watchers = self.watchers.lock().unwrap();
-        watchers.clear();
         for watcher in [task_list, state] {
             match watcher {
                 Ok(watcher) => watchers.push(watcher),
                 Err(error) => eprintln!("fathom: {error}"),
             }
         }
+    }
+
+    fn watch_store(self: &Arc<Self>) {
+        let state = Arc::downgrade(self);
+        let refresh = self.refresh.clone();
+        watch::poll_store(
+            STORE_POLL,
+            move || {
+                let state = state.upgrade()?;
+                let changed = state.db.lock().unwrap().changed_elsewhere();
+                Some(changed.unwrap_or(false))
+            },
+            move || {
+                let _ = refresh.send(());
+            },
+        );
     }
 
     pub fn request_workers(&self) {
@@ -362,9 +392,12 @@ impl AppState {
         if !self.herdr_status.lock().unwrap().connected {
             return vec![];
         }
+        let Source::Firstmate { home } = self.source() else {
+            return vec![];
+        };
         let session = self.settings.lock().unwrap().hc_session.clone();
         workers::live_workers(
-            &workers::read_bindings(&self.home()),
+            &workers::read_bindings(&home),
             &session,
             &self.herdr.terminals(),
         )
@@ -375,7 +408,10 @@ impl AppState {
     }
 
     pub fn delete_column(&self, id: i64, move_to: Option<MoveTo>) -> Result<Layout, String> {
-        let cards = moves::cached_cards(&self.db, &self.home())?;
+        let cards = match self.source() {
+            Source::Firstmate { home } => moves::cached_cards(&self.db, &home)?,
+            backlog => backlog.read_cards(&self.db)?,
+        };
         let mut db = self.db.lock().unwrap();
         let columns = db.delete_column(id, move_to.as_ref(), &cards)?;
         Ok(Layout {
@@ -384,13 +420,22 @@ impl AppState {
         })
     }
 
-    pub fn place_card(&self, placement: Placement) -> Result<Overlay, String> {
-        moves::place(&self.db, &self.home(), placement, now_ms())?;
+    pub fn place_card(
+        &self,
+        placement: Placement,
+        chat_terminal: Option<&str>,
+    ) -> Result<Overlay, String> {
+        self.source()
+            .place(&self.db, placement, now_ms(), chat_terminal, |terminal, line| {
+                self.herdr.send(terminal, line)
+            })?;
         self.overlay()
     }
 
     pub fn resend_request(&self, request_id: &str) -> Result<Overlay, String> {
-        moves::resend(&self.db, &self.home(), request_id)?;
+        if let Source::Firstmate { home } = self.source() {
+            moves::resend(&self.db, &home, request_id)?;
+        }
         self.overlay()
     }
 

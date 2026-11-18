@@ -6,6 +6,7 @@ mod herdr;
 mod moves;
 mod requests;
 mod shell_path;
+mod source;
 mod state;
 mod tasks;
 mod toon;

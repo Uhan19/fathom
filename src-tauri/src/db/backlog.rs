@@ -253,11 +253,13 @@ impl Db {
     }
 
     pub fn ask_to_move(&mut self, request: MoveRequest) -> Result<MoveRequest, String> {
-        task_id(&request.card_id).and_then(|id| self.task(id))?;
-        let request = MoveRequest {
-            status: MoveStatus::Asked,
-            ..request
+        let task = task_id(&request.card_id).and_then(|id| self.task(id))?;
+        let status = if task.row == request.to_row {
+            MoveStatus::Landed
+        } else {
+            MoveStatus::Asked
         };
+        let request = MoveRequest { status, ..request };
         self.add_request(&request)?;
         Ok(request)
     }
