@@ -711,7 +711,7 @@ button.column-name:focus-visible,
   flex: none;
   align-self: flex-start;
   display: inline-flex;
-  margin: -2px -3px 0 0;
+  margin: -2px -3px -3px 0;
   padding: 0;
   border: 0;
   border-radius: 6px;
@@ -720,7 +720,7 @@ button.column-name:focus-visible,
 }
 
 button.sailor {
-  margin: -5px -6px 0 0;
+  margin: -5px -6px -6px 0;
   padding: 3px;
   cursor: pointer;
 }
