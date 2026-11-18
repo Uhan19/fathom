@@ -145,7 +145,10 @@ export function SettingsDialog({ settings, rowNames, onPreview, onSaved, onClose
             <label className="field">
               <span>Firstmate home</span>
               <input className="text-input mono" {...field("home")} spellCheck={false} autoFocus />
-              <small>Fathom reads tasks through bin/fm-tasks-axi.sh in this folder and never writes there.</small>
+              <small>
+                Fathom reads tasks through bin/fm-tasks-axi.sh in this folder and never writes there. Leave it empty to use Fathom's own
+                backlog.
+              </small>
             </label>
           </fieldset>
           <fieldset>

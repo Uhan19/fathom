@@ -10,10 +10,11 @@ use crate::export;
 use crate::fonts;
 use crate::herdr::{Terminal, View};
 use crate::moves::Placement;
+use crate::source::Source;
 use crate::state::{
     AppState, AttachedSize, BoardView, HerdrStatus, Layout, Overlay, Settings, now_ms,
 };
-use crate::tasks::{self, Detail, Row};
+use crate::tasks::{Detail, Row};
 use crate::workers::Worker;
 
 type AppStateRef<'a> = State<'a, Arc<AppState>>;
@@ -51,8 +52,8 @@ pub fn log_launch(state: AppStateRef, source: String, cards: usize) -> Option<u1
 
 #[tauri::command]
 pub async fn card_detail(state: AppStateRef<'_>, id: String) -> Result<Detail, String> {
-    let home = state.home();
-    blocking(move || tasks::read_detail(&home, &id)).await
+    let state = Arc::clone(&state);
+    blocking(move || state.source().detail(&state.db, &id)).await
 }
 
 #[tauri::command]
@@ -95,9 +96,13 @@ pub fn set_row_name(state: AppStateRef, row: Row, name: String) -> Result<(), St
 }
 
 #[tauri::command]
-pub async fn place_card(state: AppStateRef<'_>, placement: Placement) -> Result<Overlay, String> {
+pub async fn place_card(
+    state: AppStateRef<'_>,
+    placement: Placement,
+    chat_terminal: Option<String>,
+) -> Result<Overlay, String> {
     let state = Arc::clone(&state);
-    blocking(move || state.place_card(placement)).await
+    blocking(move || state.place_card(placement, chat_terminal.as_deref())).await
 }
 
 #[tauri::command]
@@ -151,8 +156,10 @@ pub fn open_link(state: AppStateRef, target: String) -> Result<(), String> {
     if target.starts_with("https://") || target.starts_with("http://") {
         return tauri_plugin_opener::open_url(target, None::<&str>).map_err(|e| e.to_string());
     }
-    let home = state
-        .home()
+    let Source::Firstmate { home } = state.source() else {
+        return Err(format!("cannot open {target} without a Firstmate home"));
+    };
+    let home = home
         .canonicalize()
         .map_err(|e| format!("cannot resolve the Firstmate home: {e}"))?;
     let path = home

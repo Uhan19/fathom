@@ -3,12 +3,21 @@ import { emit } from "@tauri-apps/api/event";
 import { ROW_ORDER, type BoardView, type Card, type CardPlace, type Column, type Layout, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type Settings } from "../api";
 import { cellCount, groupCards, type Cells } from "../board";
 import { moveTo } from "../columnOrder";
-import { FIXTURE_CARDS, FIXTURE_COLUMNS, FIXTURE_LATE_CARD, FIXTURE_REQUESTS, FIXTURE_SCREEN, FIXTURE_TERMINALS, FIXTURE_WORKERS, fixtureDetail, workerScreen } from "./fixture";
+import {
+  FIXTURE_BACKLOG_CARDS,
+  FIXTURE_BACKLOG_COLUMNS,
+  FIXTURE_BACKLOG_REQUESTS,
+  FIXTURE_CARDS,
+  FIXTURE_COLUMNS, FIXTURE_LATE_CARD, FIXTURE_REQUESTS, FIXTURE_SCREEN, FIXTURE_TERMINALS, FIXTURE_WORKERS,
+  fixtureDetail,
+  workerScreen,
+} from "./fixture";
 
 const params = new URLSearchParams(location.search);
 const noLabel = params.has("nolabel");
 const failing = params.has("error");
 const empty = params.has("empty");
+const backlog = params.has("backlog");
 const otherClient = params.get("other")?.match(/^(\d+)x(\d+)$/);
 const sendFails = params.has("sendfail");
 const lateCard = params.has("late");
@@ -16,7 +25,7 @@ const deleteFails = params.has("deletefail");
 const KITTY_PUSH = params.has("kitty") ? "\x1b[>1u" : "";
 
 let settings: Settings = {
-  home: "/home/demo/firstmate",
+  home: backlog ? "" : "/home/demo/firstmate",
   terminalLabel: "firstmate.role=primary",
   hcSession: "",
   hcSocket: "",
@@ -28,12 +37,12 @@ let settings: Settings = {
   boardAddedFonts: [],
 };
 const INSTALLED_FONTS = ["American Typewriter", "Andale Mono", "Avenir Next", "Courier New", "Georgia", "Helvetica Neue", "Menlo", "PT Mono", "Times New Roman", "Trebuchet MS"];
-let columns: Column[] = FIXTURE_COLUMNS.map((c) => ({ ...c }));
+let columns: Column[] = (backlog ? FIXTURE_BACKLOG_COLUMNS : FIXTURE_COLUMNS).map((c) => ({ ...c }));
 let nextColumnId = columns.length + 1;
 const rowNames = new Map<string, string>();
-let cards: Card[] = empty ? [] : FIXTURE_CARDS;
+let cards: Card[] = empty ? [] : backlog ? FIXTURE_BACKLOG_CARDS : FIXTURE_CARDS;
 let places: CardPlace[] = [];
-let requests: MoveRequest[] = empty ? [] : FIXTURE_REQUESTS.map((r) => ({ ...r }));
+let requests: MoveRequest[] = empty ? [] : (backlog ? FIXTURE_BACKLOG_REQUESTS : FIXTURE_REQUESTS).map((r) => ({ ...r }));
 const OPEN = ["sending", "asked", "failed", "answered"];
 const overlay = (): Overlay => ({ places, requests: requests.filter((r) => OPEN.includes(r.status)) });
 
@@ -44,7 +53,14 @@ const sendRequest = (request: MoveRequest) => {
   console.info("move request", request.requestId, request.status);
 };
 
-const placeCard = (p: Placement) => {
+const askAgent = (request: MoveRequest, chatTerminal: string | null) => {
+  request.status = "asked";
+  const waiting = requests.filter((r) => r.status === "asked").length;
+  const line = waiting === 1 ? "1 board request waiting" : `${waiting} board requests waiting`;
+  console.info("board request", request.requestId, chatTerminal ? `nudged ${chatTerminal}: ${line}` : "waiting without a chat terminal");
+};
+
+const placeCard = (p: Placement, chatTerminal: string | null) => {
   const previous = new Map(places.map((place) => [place.cardId, place.column]));
   places = [
     ...places.filter((place) => !p.order.includes(place.cardId)),
@@ -65,8 +81,9 @@ const placeCard = (p: Placement) => {
     error: null,
   };
   requests.push(request);
-  sendRequest(request);
   if (cards.find((c) => c.id === p.cardId)?.row === p.toRow) request.status = "landed";
+  else if (backlog) askAgent(request, chatTerminal);
+  else sendRequest(request);
 };
 
 const addColumn = (name: string): Column[] => {
@@ -135,6 +152,7 @@ const view = (fromCache: boolean): BoardView => ({
   cards,
   takenAtMs: Date.now(),
   home: settings.home,
+  source: settings.home.trim() ? "firstmate" : "fathom",
   fromCache,
   error: failing && !fromCache ? "fm-tasks-axi.sh exited with status 1: error: \"backlog not found\"" : null,
   ...overlay(),
@@ -180,7 +198,7 @@ mockIPC(
         rowNames.set(args.row as string, args.name as string);
         return null;
       case "place_card":
-        placeCard(args.placement as Placement);
+        placeCard(args.placement as Placement, (args.chatTerminal as string | null) ?? null);
         return overlay();
       case "resend_request": {
         const request = requests.find((r) => r.requestId === args.requestId);
@@ -191,7 +209,7 @@ mockIPC(
         requests = requests.map((r) => (r.requestId === args.requestId ? { ...r, status: "dismissed" } : r));
         return overlay();
       case "workers":
-        return empty ? [] : FIXTURE_WORKERS;
+        return empty || backlog ? [] : FIXTURE_WORKERS;
       case "get_settings":
         return settings;
       case "save_settings":

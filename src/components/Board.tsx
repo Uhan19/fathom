@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
-import { ROW_ORDER, type Card, type Column, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type Worker } from "../api";
+import { ROW_ORDER, type Card, type Column, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type SourceKind, type Worker } from "../api";
 import {
   boardMinWidth,
   cardNote,
@@ -13,6 +13,7 @@ import {
   renamedColumn,
   shownRequest,
 } from "../board";
+import { projectTasks } from "../source";
 import { deletePlan, moveTargets, NEW_COLUMN, nextDraft, startDraft } from "../columnDelete";
 import { useCardDrag, type CardDrag } from "../cardDrag";
 import { useColumnDrag, type ColumnDrag } from "../columnDrag";
@@ -22,6 +23,7 @@ import { ChevronLeft, ChevronRight, Plus, Sailor, Trash, Wave } from "./Icons";
 
 interface BoardProps {
   cards: Card[];
+  source: SourceKind;
   columns: Column[];
   overlay: Overlay;
   workers: Record<string, Worker>;
@@ -196,6 +198,7 @@ export function Board(props: BoardProps) {
       {deleting && (
         <DeleteColumnDialog
           column={deleting}
+          source={props.source}
           held={cellCount(cells, deleting.id)}
           targets={moveTargets(columns, deleting.id)}
           onDelete={(moveTo) => props.onColumnDelete(deleting.id, moveTo).then(() => setDeletingId(null))}
@@ -246,13 +249,14 @@ function AddColumn({ onAdd }: { onAdd: (name: string) => void }) {
 
 interface DeleteColumnDialogProps {
   column: Column;
+  source: SourceKind;
   held: number;
   targets: Column[];
   onDelete: (moveTo?: MoveTo) => Promise<void>;
   onClose: () => void;
 }
 
-function DeleteColumnDialog({ column, held, targets, onDelete, onClose }: DeleteColumnDialogProps) {
+function DeleteColumnDialog({ column, source, held, targets, onDelete, onClose }: DeleteColumnDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   useEffect(() => dialogRef.current?.showModal(), []);
   const [draft, dispatch] = useReducer(nextDraft, targets, startDraft);
@@ -317,7 +321,7 @@ function DeleteColumnDialog({ column, held, targets, onDelete, onClose }: Delete
             "The column leaves the board for good."
           ) : (
             <>
-              The column leaves the board. Firstmate's tasks for <span className="confirm-name">{column.project}</span> are not changed. It
+              The column leaves the board. {projectTasks(source)} for <span className="confirm-name">{column.project}</span> are not changed. It
               comes back only if a new <span className="confirm-name">{column.project}</span> task has no other column to show in.
             </>
           )}

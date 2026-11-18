@@ -1,5 +1,9 @@
+pub mod backlog;
+
+use std::cell::Cell;
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -9,11 +13,13 @@ use crate::tasks::{Card, Row};
 pub const FILE_NAME: &str = "fathom.sqlite";
 pub const DEFAULT_COLUMN_WIDTH: i64 = 240;
 
-const MIGRATIONS: [&str; 3] = [
+const MIGRATIONS: [&str; 4] = [
     include_str!("../migrations/0001_init.sql"),
     include_str!("../migrations/0002_card_moves.sql"),
     include_str!("../migrations/0003_column_ids.sql"),
+    include_str!("../migrations/0004_backlog.sql"),
 ];
+const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const COLUMN_FIELDS: &str = "id, project, name, position, width, collapsed";
 const NEXT_POSITION: &str = "(SELECT COALESCE(MAX(position) + 1, 0) FROM columns)";
 const NEW_COLUMN_NEEDS_A_NAME: &str = "a new column needs a name";
@@ -122,20 +128,43 @@ pub enum MoveTo {
 pub struct Db {
     conn: Connection,
     path: PathBuf,
+    seen_version: Cell<i64>,
 }
 
 impl Db {
     pub fn open(dir: &Path) -> Result<Db, String> {
-        std::fs::create_dir_all(dir)
-            .map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
-        let path = dir.join(FILE_NAME);
+        Db::open_file(&dir.join(FILE_NAME))
+    }
+
+    pub fn open_file(path: &Path) -> Result<Db, String> {
+        if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+            std::fs::create_dir_all(dir)
+                .map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+        }
         let conn =
-            Connection::open(&path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
+            Connection::open(path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
+        conn.busy_timeout(BUSY_TIMEOUT).map_err(err)?;
         conn.pragma_update(None, "journal_mode", "WAL")
             .map_err(err)?;
-        let mut db = Db { conn, path };
+        let mut db = Db {
+            conn,
+            path: path.to_path_buf(),
+            seen_version: Cell::new(0),
+        };
         db.migrate()?;
+        db.seen_version.set(db.data_version()?);
         Ok(db)
+    }
+
+    fn data_version(&self) -> Result<i64, String> {
+        self.conn
+            .pragma_query_value(None, "data_version", |r| r.get(0))
+            .map_err(err)
+    }
+
+    pub fn changed_elsewhere(&self) -> Result<bool, String> {
+        let version = self.data_version()?;
+        Ok(self.seen_version.replace(version) != version)
     }
 
     pub fn path(&self) -> &Path {
@@ -799,6 +828,51 @@ mod tests {
         drop(db);
         let db = Db::open(dir.path()).unwrap();
         assert_eq!(db.schema_version().unwrap(), MIGRATIONS.len());
+    }
+
+    #[test]
+    fn the_backlog_migration_upgrades_a_version_three_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(FILE_NAME);
+        {
+            let conn = Connection::open(&path).unwrap();
+            for sql in &MIGRATIONS[..3] {
+                conn.execute_batch(sql).unwrap();
+            }
+            conn.pragma_update(None, "user_version", 3).unwrap();
+            conn.execute(
+                "INSERT INTO columns (project, name, position, width) VALUES ('reef-map', 'Reef', 0, 240)",
+                [],
+            )
+            .unwrap();
+        }
+        let db = Db::open(dir.path()).unwrap();
+        assert_eq!(db.schema_version().unwrap(), 4);
+        assert_eq!(db.columns().unwrap()[0].name, "Reef");
+        assert!(db.tasks(None, None).unwrap().is_empty());
+    }
+
+    #[test]
+    fn notices_commits_from_other_connections_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = Db::open(dir.path()).unwrap();
+        assert!(!app.changed_elsewhere().unwrap());
+        app.set_setting("home", "").unwrap();
+        assert!(!app.changed_elsewhere().unwrap());
+
+        let other = Db::open_file(&dir.path().join(FILE_NAME)).unwrap();
+        other
+            .add_task(
+                &backlog::NewTask {
+                    title: "Chart the reef".into(),
+                    project: "reef-map".into(),
+                    ..Default::default()
+                },
+                1,
+            )
+            .unwrap();
+        assert!(app.changed_elsewhere().unwrap());
+        assert!(!app.changed_elsewhere().unwrap());
     }
 
     fn projects(columns: &[Column]) -> Vec<Option<&str>> {

@@ -1,17 +1,18 @@
 # Fathom
 
-Fathom is a macOS desktop board for Firstmate's tasks.
+Fathom is a macOS desktop board for an agent's tasks.
+It reads Firstmate's task list when a Firstmate home is set, and otherwise keeps its own backlog that any agent fills through Fathom's MCP server.
 Each task is a card, each project starts as a column, and each row shows how deep the work sits.
 You can add your own columns, drag columns into the order you like, and delete ones you no longer need.
 It shows the board, opens card details, and embeds Firstmate's live terminal as a chat panel.
-Cards can be dragged to arrange them, and a drag to another row asks Firstmate to move the task.
+Cards can be dragged to arrange them, and a drag to another row asks the agent to move the task.
 A small sailor on a card shows that a crewmate is on the task: its red visor glows and blinks while it works and dims while idle.
 Clicking the sailor opens that crewmate's live terminal.
 
 ## Requirements
 
 - macOS, Rust (stable), Node 22 or newer, and pnpm.
-- Firstmate installed, with `bin/fm-tasks-axi.sh` and `bin/fm-inbox.sh` in its home.
+- For Firstmate's tasks: Firstmate installed, with `bin/fm-tasks-axi.sh` and `bin/fm-inbox.sh` in its home.
 - `hc` (herdr-core) and `tasks-axi` on your login shell's PATH.
 
 ## Run the dev build
@@ -29,6 +30,7 @@ It is handy for layout work without herdr-core or Firstmate.
 Add `?nolabel`, `?error` or `?empty` to the URL to see the terminal picker, a read error, or an empty board.
 Add `?other=120x45` to see the chat while another client owns a 120 by 45 terminal; a key press in the panel takes the size back.
 Add `?kitty` to have the mocked terminal turn on kitty keyboard mode, so Shift+Enter sends the kitty form.
+Add `?backlog` to see a board of Fathom's own backlog, with one pending and one declined board request.
 Add `?late` to have a card arrive in a column at the moment you confirm deleting it, or `?deletefail` to see a delete fail.
 
 ## Run the checks
@@ -83,13 +85,14 @@ Both versions share the same database, and migrations only ever add, so an older
 | Database | `~/Library/Application Support/app.fathom.board/fathom.sqlite` | `~/Library/Application Support/app.fathom.board.dev/fathom.sqlite` |
 | Launch timing log | `~/Library/Logs/app.fathom.board/launch.log` | `~/Library/Logs/app.fathom.board.dev/launch.log` |
 
-The database holds only what Fathom adds on top of Firstmate:
+The database holds Fathom's own backlog and what Fathom adds on top of either task source:
 
+- backlog tasks (generated id, title, detail, project, row, created and updated times), used when no Firstmate home is set,
 - columns (generated id, project or none for an added column, name, order, width, collapsed, deleted),
 - row names,
 - settings,
 - card places: a card's order within its cell and the column the user put it in (by column id),
-- move requests sent to Firstmate and what became of them,
+- move requests (board requests) and what became of them,
 - a disposable snapshot of the last board, used to paint the next launch at once.
 
 Migrations live in `src-tauri/migrations` and are numbered; the applied version is SQLite's `user_version`.
@@ -109,12 +112,16 @@ The goal is under 0.5 s on a warm start.
 
 ## How the board is read
 
+Fathom reads one task source.
+With a Firstmate home set in Settings it reads Firstmate's task list, as described below.
+With the home left empty it reads its own backlog; see [Fathom's own backlog](#fathoms-own-backlog).
+
 - Fathom reads tasks only through `<firstmate home>/bin/fm-tasks-axi.sh list` and `show`.
   It never parses `data/backlog.md`.
 - Fathom never writes files in Firstmate's home itself.
   The only thing it sends is a move request, through `bin/fm-inbox.sh note`.
 - It watches the task list file and listens to herdr-core events; either one triggers a re-read.
-  There is no polling loop.
+  Firstmate's tasks need no polling loop; only Fathom's own database is polled, as described in [Live refresh](#live-refresh).
 - On open it paints the snapshot cache, then refreshes.
 - Each task's row comes from its state and hold:
 
@@ -134,6 +141,74 @@ The goal is under 0.5 s on a warm start.
   Enter or a click elsewhere saves, Escape cancels, and an empty name returns to the project's name.
   An added column has no project name to return to, so emptying its name keeps the current one.
   The project itself and Firstmate's task list keep their names.
+
+## Fathom's own backlog
+
+A fresh install without Firstmate (no `bin/fm-tasks-axi.sh` under `~/Documents/firstmate`) starts with an empty Firstmate home and uses the backlog stored in Fathom's database.
+Clearing the Firstmate home in Settings switches an existing install to it.
+Fathom has no form for adding tasks; an agent keeps the backlog through the MCP server below.
+Nothing in the backlog cares which agent fills it.
+
+### The MCP server
+
+The app binary doubles as a stdio MCP server named `fathom` when started with `--mcp`.
+It answers on stdin and stdout, opens no window, and exits when the client closes the connection.
+Its tools show up in Claude Code as `mcp__fathom__*`:
+
+| Tool | What it does |
+| --- | --- |
+| `list_tasks` | Lists tasks, optionally only one `project` or one `row`. |
+| `add_task` | Adds a task with a `title`, a `project`, and optionally a `detail` and a starting `row` (default `seabed`). |
+| `update_task` | Changes a task's `title`, `detail` or `project`. |
+| `move_task` | Moves a task to a `row`; this also answers any board request asking for that row. |
+| `list_requests` | Lists pending board requests, oldest first. |
+| `answer_request` | Accepts a request, which moves the task, or declines it with a short `reason`. |
+
+The server's instructions tell the agent to keep its task list in Fathom and to answer board requests.
+Rows use the fixed keys `surface` (needs the user), `shallows` (in progress), `deep` (parked or waiting), `seabed` (queued) and `landed` (done).
+
+The server uses the app's database by default.
+`--db <file>` or the `FATHOM_DB` environment variable points it at another SQLite file instead, and the flag wins over the variable.
+A binary built with plain `cargo build` carries the release app id, so pass `--db` when trying it out.
+
+Register the packaged binary with Claude Code yourself; Fathom never changes Claude Code's configuration:
+
+```sh
+claude mcp add --scope user fathom -- "/path/to/Fathom.app/Contents/MacOS/fathom" --mcp
+```
+
+Or pass it for one session with `claude --mcp-config fathom-mcp.json`, where `fathom-mcp.json` holds:
+
+```json
+{
+  "mcpServers": {
+    "fathom": {
+      "command": "/path/to/Fathom.app/Contents/MacOS/fathom",
+      "args": ["--mcp"]
+    }
+  }
+}
+```
+
+Release builds live in versioned folders, so point the command at the new build after an upgrade.
+
+### Board requests and the nudge
+
+- Dragging a backlog card to another row stores a board request instead of moving the task.
+  The card waits in the new row marked "asked", the same way a Firstmate move does.
+- If the chat panel is attached to a terminal, Fathom sends it one line with herdr-core's `send`, such as `1 board request waiting`.
+  The count covers every request still waiting.
+  Without an attached chat terminal the request just waits for the agent's next `list_requests`.
+- The agent answers by moving the task to the requested row, or by declining with a short reason.
+  A declined card goes back to its task's row and the card panel shows the reason until you dismiss it.
+- Dragging a card back to the row its task is in withdraws the request and sends no nudge.
+- Firstmate cards keep using Firstmate's inbox as described in [Arranging cards and asking for moves](#arranging-cards-and-asking-for-moves).
+
+### Live refresh
+
+The MCP server runs as its own process and writes to the same database.
+Fathom checks SQLite's `data_version` every 250 ms, a cheap check that changes only when another connection commits.
+A change triggers the same debounced re-read the Firstmate watchers use, so the window follows the agent's edits on its own.
 
 ## Adding, reordering and deleting columns
 
@@ -199,7 +274,8 @@ Fathom asks your login shell for its PATH once at startup and uses it to find `h
 
 ## Settings
 
-- Firstmate home, default `~/Documents/firstmate` under your home directory.
+- Firstmate home, default `~/Documents/firstmate` under your home directory when Firstmate is installed there, otherwise empty.
+  Empty means Fathom's own backlog.
 - Chat terminal label, default `firstmate.role=primary`.
 - herdr-core session and socket; empty means herdr-core's defaults.
 - Row names.
