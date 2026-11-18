@@ -200,17 +200,30 @@ export const workerScreen = (terminal: string) =>
     ` > `,
   ].join("\r\n");
 
-export const backlogWorkerScreen = (terminal: string) =>
-  [
-    `${ESC}1m worker on ${terminal}${ESC}0m ${ESC}2m- preview screen with invented text${ESC}0m`,
-    "",
+const BACKLOG_WORKER_LINES: Record<string, string[]> = {
+  "2": [
     ` ${ESC}36m●${ESC}0m Read task 2 and moved it to shallows.`,
     ` ${ESC}36m●${ESC}0m Plotted 41 of 58 soundings on the north reef grid.`,
     ` ${ESC}36m●${ESC}0m Added progress to the task detail.`,
     ` ${ESC}33m…${ESC}0m Checking the depth contours against last season's chart.`,
+  ],
+  "5": [
+    ` ${ESC}36m●${ESC}0m Read task 5 and moved it to shallows.`,
+    ` ${ESC}36m●${ESC}0m Found the hour shift: the table adds the offset twice in the changeover week.`,
+    ` ${ESC}32m✓${ESC}0m Fixed it and added the finding to the task detail.`,
+  ],
+};
+
+export const backlogWorkerScreen = (terminal: string) => {
+  const taskId = FIXTURE_BACKLOG_WORKERS.find((w) => w.terminal === terminal)?.taskId ?? "";
+  return [
+    `${ESC}1m worker on ${terminal}${ESC}0m ${ESC}2m- preview screen with invented text${ESC}0m`,
+    "",
+    ...(BACKLOG_WORKER_LINES[taskId] ?? []),
     "",
     ` > `,
   ].join("\r\n");
+};
 
 export const FIXTURE_AGENT_ADDRESS = "t7";
 
