@@ -1,16 +1,10 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import type { Card, RowKey } from "./api";
+import { pickTarget, sameTarget, type DropTarget, type RowBox } from "./dropTarget";
 
 const START_DISTANCE = 5;
 const EDGE = 56;
 const MAX_SCROLL_STEP = 18;
-const END = Number.MAX_SAFE_INTEGER;
-
-export interface DropTarget {
-  project: string;
-  row: RowKey;
-  index: number;
-}
 
 export interface CardDrag {
   card: Card;
@@ -39,18 +33,18 @@ export function useCardDrag(scroller: RefObject<HTMLElement | null>, onDrop: (ca
 
     const update = () => {
       if (!current) return;
-      const target = targetAt(pointer.x, pointer.y, card.id) ?? (insideBoard(scroller.current, pointer) ? current.target : null);
+      const board = scroller.current;
+      const target = board && insideBoard(board, pointer) ? pickTarget(measureRows(board, card.id), pointer.x, pointer.y) : null;
+      if (current.x === pointer.x && current.y === pointer.y && sameTarget(current.target, target)) return;
       current = { ...current, x: pointer.x, y: pointer.y, target };
       setDrag(current);
     };
 
-    const scrollEdges = () => {
+    const everyFrame = () => {
       const step = scrollStep(scroller.current, pointer);
-      if (step && scroller.current) {
-        scroller.current.scrollBy(step.x, step.y);
-        update();
-      }
-      frame = requestAnimationFrame(scrollEdges);
+      if (step) scroller.current?.scrollBy(step.x, step.y);
+      update();
+      frame = requestAnimationFrame(everyFrame);
     };
 
     const move = (e: PointerEvent) => {
@@ -68,7 +62,7 @@ export function useCardDrag(scroller: RefObject<HTMLElement | null>, onDrop: (ca
           target: null,
         };
         document.body.classList.add("moving-card");
-        frame = requestAnimationFrame(scrollEdges);
+        frame = requestAnimationFrame(everyFrame);
       }
       update();
     };
@@ -106,22 +100,35 @@ export function useCardDrag(scroller: RefObject<HTMLElement | null>, onDrop: (ca
   return { drag, begin, justDragged };
 }
 
-function targetAt(x: number, y: number, draggedId: string): DropTarget | null {
-  const cell = document.elementFromPoint(x, y)?.closest<HTMLElement>(".cell[data-project]");
-  const { project, row } = cell?.dataset ?? {};
-  if (!cell || !project || !row) return null;
-  if (cell.dataset.collapsed === "true") return { project, row: row as RowKey, index: END };
-  const above = [...cell.querySelectorAll<HTMLElement>(".card[data-id]")].filter((el) => {
-    if (el.dataset.id === draggedId) return false;
-    const box = el.getBoundingClientRect();
-    return box.top + box.height / 2 < y;
+function measureRows(board: HTMLElement, draggedId: string): RowBox[] {
+  return [...board.querySelectorAll<HTMLElement>(".row[data-row]")].map((rowEl) => {
+    const band = rowEl.getBoundingClientRect();
+    return {
+      row: rowEl.dataset.row as RowKey,
+      top: band.top,
+      bottom: band.bottom,
+      cells: [...rowEl.querySelectorAll<HTMLElement>(".cell[data-project]")].map((cell) => {
+        const box = cell.getBoundingClientRect();
+        return {
+          project: cell.dataset.project!,
+          left: box.left,
+          right: box.right,
+          collapsed: cell.dataset.collapsed === "true",
+          cardMiddles: [...cell.querySelectorAll<HTMLElement>(".card[data-id]")]
+            .filter((el) => el.dataset.id !== draggedId)
+            .map((el) => {
+              const card = el.getBoundingClientRect();
+              return card.top + card.height / 2;
+            }),
+        };
+      }),
+    };
   });
-  return { project, row: row as RowKey, index: above.length };
 }
 
-function insideBoard(board: HTMLElement | null, p: { x: number; y: number }): boolean {
-  const box = board?.getBoundingClientRect();
-  return !!box && p.x >= box.left && p.x <= box.right && p.y >= box.top && p.y <= box.bottom;
+function insideBoard(board: HTMLElement, p: { x: number; y: number }): boolean {
+  const box = board.getBoundingClientRect();
+  return p.x >= box.left && p.x <= box.right && p.y >= box.top && p.y <= box.bottom;
 }
 
 function scrollStep(board: HTMLElement | null, p: { x: number; y: number }): { x: number; y: number } | null {
