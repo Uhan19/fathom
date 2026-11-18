@@ -276,7 +276,7 @@ const HELPER_SCREENS: Record<string, string[]> = {
     "   2. Anthropic Console account",
   ],
   ready: [
-    ` ${ESC}1m Bosun${ESC}0m ${ESC}2m- preview screen with invented text${ESC}0m`,
+    ` ${ESC}1mBosun${ESC}0m ${ESC}2m- preview screen with invented text${ESC}0m`,
     "",
     ` > show me only the harbor-web tasks`,
     ` ${ESC}36m●${ESC}0m fathom - show_projects (projects: ["harbor-web"])`,
@@ -285,14 +285,14 @@ const HELPER_SCREENS: Record<string, string[]> = {
     ` > `,
   ],
   working: [
-    ` ${ESC}1m Bosun${ESC}0m ${ESC}2m- preview screen with invented text${ESC}0m`,
+    ` ${ESC}1mBosun${ESC}0m ${ESC}2m- preview screen with invented text${ESC}0m`,
     "",
     ` > collapse every column except atlas-api`,
     ` ${ESC}36m●${ESC}0m fathom - get_board_layout`,
     ` ${ESC}33m✻${ESC}0m Collapsing 6 columns…`,
   ],
   asking: [
-    ` ${ESC}1m Bosun${ESC}0m ${ESC}2m- preview screen with invented text${ESC}0m`,
+    ` ${ESC}1mBosun${ESC}0m ${ESC}2m- preview screen with invented text${ESC}0m`,
     "",
     ` > drop the scratch column into keel-cli`,
     ` ${ESC}1mTool use${ESC}0m  fathom - delete_column (id: 8, move_to_column: 3)`,

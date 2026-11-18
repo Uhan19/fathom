@@ -33,6 +33,7 @@ export function useLiveTerminal(view: View, fontFamily: string, fontSize: number
   themeRef.current = theme;
 
   const measure = useCallback((): Size | null => {
+    if (!scrollRef.current?.getClientRects().length) return null;
     const dims = fitRef.current?.proposeDimensions();
     return dims && Number.isFinite(dims.cols) && Number.isFinite(dims.rows) ? dims : null;
   }, []);

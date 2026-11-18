@@ -1713,6 +1713,10 @@ button.sailor:focus-visible {
   min-height: 0;
 }
 
+.bosun-body .chat-status {
+  padding: 18px 20px;
+}
+
 .terminal-scroll.dimmed {
   opacity: 0.45;
   cursor: default;
