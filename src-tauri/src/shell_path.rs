@@ -10,11 +10,16 @@ pub fn get() -> &'static str {
     PATH.get_or_init(resolve)
 }
 
-pub fn find(program: &str) -> Option<std::path::PathBuf> {
-    get()
-        .split(':')
-        .map(|dir| std::path::Path::new(dir).join(program))
-        .find(|candidate| is_executable(candidate))
+pub fn find_first(programs: &[&str]) -> Option<std::path::PathBuf> {
+    find_first_in(get(), programs)
+}
+
+fn find_first_in(path: &str, programs: &[&str]) -> Option<std::path::PathBuf> {
+    programs.iter().find_map(|program| {
+        path.split(':')
+            .map(|dir| std::path::Path::new(dir).join(program))
+            .find(|candidate| is_executable(candidate))
+    })
 }
 
 fn is_executable(path: &std::path::Path) -> bool {
@@ -81,6 +86,39 @@ mod tests {
             merge("/usr/bin:/bin", "/opt/tools:/usr/bin:"),
             "/usr/bin:/bin:/opt/tools"
         );
+    }
+
+    fn executable(dir: &std::path::Path, name: &str) {
+        use std::os::unix::fs::PermissionsExt;
+        let file = dir.join(name);
+        std::fs::write(&file, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[test]
+    fn finds_the_first_program_anywhere_on_the_path_before_the_next() {
+        let early = tempfile::tempdir().unwrap();
+        let late = tempfile::tempdir().unwrap();
+        executable(early.path(), "hc");
+        let path = format!("{}:{}", early.path().display(), late.path().display());
+        let programs = ["herdr-core", "hc"];
+        assert_eq!(
+            find_first_in(&path, &programs),
+            Some(early.path().join("hc"))
+        );
+        executable(late.path(), "herdr-core");
+        assert_eq!(
+            find_first_in(&path, &programs),
+            Some(late.path().join("herdr-core"))
+        );
+    }
+
+    #[test]
+    fn skips_files_that_are_not_executable() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("hc"), "").unwrap();
+        let path = dir.path().display().to_string();
+        assert_eq!(find_first_in(&path, &["hc"]), None);
     }
 
     #[test]

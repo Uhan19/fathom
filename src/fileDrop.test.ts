@@ -1,5 +1,6 @@
 /// <reference types="node" />
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { droppedPathsText, escapedPath } from "./fileDrop";
 
@@ -10,6 +11,9 @@ const AWKWARD_PATHS = [
   "/Users/demo/back\\slash\tand tab",
   "/Users/demo/Café 日本/émoji 🐳.png",
 ];
+
+const SHELLS = ["/bin/sh", "/bin/bash", "/bin/zsh"];
+const INSTALLED_SHELLS = SHELLS.filter((shell) => existsSync(shell));
 
 function wordsThroughShell(shell: string, text: string): string[] {
   const out = execFileSync(shell, ["-c", `for word in ${text}; do printf '%s\\0' "$word"; done`], { encoding: "utf8" });
@@ -34,7 +38,11 @@ describe("dropped file paths", () => {
     expect(droppedPathsText([])).toBe("");
   });
 
-  it.each(["/bin/sh", "/bin/zsh"])("reads back as the original paths in %s", (shell) => {
+  it("finds a POSIX shell to read back with", () => {
+    expect(INSTALLED_SHELLS).toContain("/bin/sh");
+  });
+
+  it.each(INSTALLED_SHELLS)("reads back as the original paths in %s", (shell) => {
     expect(wordsThroughShell(shell, droppedPathsText(AWKWARD_PATHS))).toEqual(AWKWARD_PATHS);
   });
 });
