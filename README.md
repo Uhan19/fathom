@@ -2,12 +2,15 @@
 
 Fathom is a macOS desktop board for Firstmate's tasks.
 Each task is a card, each project is a column, and each row shows how deep the work sits.
-Milestone 1 is read-only: it shows the board, opens card details, and embeds Firstmate's live terminal as a chat panel.
+It shows the board, opens card details, and embeds Firstmate's live terminal as a chat panel.
+Cards can be dragged to arrange them, and a drag to another row asks Firstmate to move the task.
+A small sailor on a card shows that a crewmate is on the task: blinking while it works, steady while idle.
+Clicking the sailor opens that crewmate's live terminal.
 
 ## Requirements
 
 - macOS, Rust (stable), Node 22 or newer, and pnpm.
-- Firstmate installed, with `bin/fm-tasks-axi.sh` in its home.
+- Firstmate installed, with `bin/fm-tasks-axi.sh` and `bin/fm-inbox.sh` in its home.
 - `hc` (herdr-core) and `tasks-axi` on your login shell's PATH.
 
 ## Run the dev build
@@ -83,6 +86,8 @@ The database holds only what Fathom adds on top of Firstmate:
 - columns (project, name, order, width, collapsed),
 - row names,
 - settings,
+- card places: a card's order within its cell and the column the user put it in,
+- move requests sent to Firstmate and what became of them,
 - a disposable snapshot of the last board, used to paint the next launch at once.
 
 Migrations live in `src-tauri/migrations` and are numbered; the applied version is SQLite's `user_version`.
@@ -103,7 +108,9 @@ The goal is under 0.5 s on a warm start.
 ## How the board is read
 
 - Fathom reads tasks only through `<firstmate home>/bin/fm-tasks-axi.sh list` and `show`.
-  It never parses `data/backlog.md` and never writes in Firstmate's home.
+  It never parses `data/backlog.md`.
+- Fathom never writes files in Firstmate's home itself.
+  The only thing it sends is a move request, through `bin/fm-inbox.sh note`.
 - It watches the task list file and listens to herdr-core events; either one triggers a re-read.
   There is no polling loop.
 - On open it paints the snapshot cache, then refreshes.
@@ -122,6 +129,38 @@ The goal is under 0.5 s on a warm start.
 
 A release build opened from Finder does not inherit your shell's PATH.
 Fathom asks your login shell for its PATH once at startup and uses it to find `hc` and `tasks-axi`.
+
+## Arranging cards and asking for moves
+
+- Drag a card by pressing on it and moving at least a few pixels; a plain click still opens the card.
+  Escape cancels a drag, and the board scrolls when the pointer nears its edge.
+- Moving a card within its cell or to another project column only changes Fathom's own layout, kept in the database.
+  Firstmate's task list is not touched.
+- Dropping a card in another row sends one note to Firstmate's inbox:
+
+  ```text
+  Fathom board request: move <task id> "<card title>" from <row> to <row>
+  ```
+
+  Rows use fixed keys (`surface`, `shallows`, `deep`, `seabed`, `landed`), whatever names the rows carry in Settings.
+  Each drop gets its own request id (`fathom-move-<task id>-<ms>`), passed as `--request-id`, so a resend of the same drop is not a second request.
+- The card waits in the new row marked "asked" until Firstmate's task list puts the task there.
+- If Firstmate replies to the note instead, the card goes back to the row its task state gives and shows the answer.
+  Dismiss in the card panel clears the answer.
+- If the note could not be saved, the card is marked "not sent" and the card panel offers "Send again" and "Cancel".
+- Replies are read with `bin/fm-inbox.sh receipts --all-replies` whenever the board is re-read, which happens when the task list or Firstmate's reply folder changes.
+
+## Crewmate indicator
+
+- Fathom reads `<firstmate home>/state/<task id>.meta` to find the herdr-core terminal of a task's crewmate.
+  Only records with `backend=hc` and exactly one `hc_session` and `hc_terminal` count.
+- The sailor shows when that session is the one set in Settings and herdr-core lists the terminal as live.
+- It blinks while herdr-core reports the terminal as `working` and stays steady for any other status.
+- Changes come from herdr-core events and from changes to the `.meta` files; there is no polling loop.
+- Clicking the sailor opens the crewmate's terminal in a large view, attached the same way as the chat panel, so you can watch and type.
+  The chat panel stays attached to Firstmate's terminal meanwhile.
+- Escape goes to the terminal; only the close button closes the view.
+  Closing only detaches Fathom; the crewmate and its terminal keep running.
 
 ## Settings
 

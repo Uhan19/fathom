@@ -9,7 +9,11 @@ use crate::tasks::{Card, Row};
 pub const FILE_NAME: &str = "fathom.sqlite";
 pub const DEFAULT_COLUMN_WIDTH: i64 = 240;
 
-const MIGRATIONS: [&str; 1] = [include_str!("../migrations/0001_init.sql")];
+const MIGRATIONS: [&str; 2] = [
+    include_str!("../migrations/0001_init.sql"),
+    include_str!("../migrations/0002_card_moves.sql"),
+];
+const OPEN_STATUSES: &str = "'sending', 'asked', 'failed', 'answered'";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,6 +38,73 @@ pub struct Snapshot {
     pub taken_at_ms: i64,
     pub home: String,
     pub cards: Vec<Card>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CardPlace {
+    pub card_id: String,
+    pub project: Option<String>,
+    pub row: Row,
+    pub position: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MoveStatus {
+    Sending,
+    Asked,
+    Failed,
+    Answered,
+    Landed,
+    Superseded,
+    Dismissed,
+}
+
+impl MoveStatus {
+    const ALL: [MoveStatus; 7] = [
+        MoveStatus::Sending,
+        MoveStatus::Asked,
+        MoveStatus::Failed,
+        MoveStatus::Answered,
+        MoveStatus::Landed,
+        MoveStatus::Superseded,
+        MoveStatus::Dismissed,
+    ];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            MoveStatus::Sending => "sending",
+            MoveStatus::Asked => "asked",
+            MoveStatus::Failed => "failed",
+            MoveStatus::Answered => "answered",
+            MoveStatus::Landed => "landed",
+            MoveStatus::Superseded => "superseded",
+            MoveStatus::Dismissed => "dismissed",
+        }
+    }
+
+    fn from_key(key: &str) -> MoveStatus {
+        MoveStatus::ALL
+            .into_iter()
+            .find(|s| s.key() == key)
+            .unwrap_or(MoveStatus::Failed)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveRequest {
+    pub request_id: String,
+    pub card_id: String,
+    pub title: String,
+    pub from_row: Row,
+    pub to_row: Row,
+    pub created_ms: i64,
+    pub status: MoveStatus,
+    pub note_id: Option<String>,
+    pub answer: Option<String>,
+    pub error: Option<String>,
 }
 
 pub struct Db {
@@ -232,6 +303,213 @@ impl Db {
         Ok(())
     }
 
+    pub fn places(&self) -> Result<Vec<CardPlace>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT card_id, project, row_key, position FROM card_places ORDER BY row_key, position")
+            .map_err(err)?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, Option<String>>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, i64>(3)?,
+                ))
+            })
+            .map_err(err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(err)?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|(card_id, project, row, position)| {
+                Some(CardPlace {
+                    card_id,
+                    project,
+                    row: Row::from_key(&row)?,
+                    position,
+                })
+            })
+            .collect())
+    }
+
+    pub fn place_cards(
+        &mut self,
+        moved: &str,
+        project: &str,
+        row: Row,
+        order: &[String],
+    ) -> Result<(), String> {
+        let tx = self.conn.transaction().map_err(err)?;
+        for (position, card_id) in order.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO card_places (card_id, project, row_key, position) VALUES (?1, NULL, ?2, ?3)
+                 ON CONFLICT(card_id) DO UPDATE SET row_key = excluded.row_key, position = excluded.position",
+                params![card_id, row.key(), position as i64],
+            )
+            .map_err(err)?;
+        }
+        tx.execute(
+            "INSERT INTO card_places (card_id, project, row_key, position) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(card_id) DO UPDATE SET project = excluded.project",
+            params![
+                moved,
+                project,
+                row.key(),
+                order
+                    .iter()
+                    .position(|id| id == moved)
+                    .unwrap_or(order.len()) as i64
+            ],
+        )
+        .map_err(err)?;
+        tx.commit().map_err(err)
+    }
+
+    pub fn open_requests(&self) -> Result<Vec<MoveRequest>, String> {
+        self.query_requests(
+            &format!("WHERE status IN ({OPEN_STATUSES}) ORDER BY created_ms"),
+            [],
+        )
+    }
+
+    pub fn request(&self, request_id: &str) -> Result<Option<MoveRequest>, String> {
+        Ok(self
+            .query_requests("WHERE request_id = ?1", params![request_id])?
+            .pop())
+    }
+
+    fn query_requests(
+        &self,
+        filter: &str,
+        args: impl rusqlite::Params,
+    ) -> Result<Vec<MoveRequest>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "SELECT request_id, card_id, title, from_row, to_row, created_ms, status, note_id, answer, error FROM move_requests {filter}"
+            ))
+            .map_err(err)?;
+        let rows = stmt
+            .query_map(args, |r| {
+                Ok((
+                    (
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                    ),
+                    (r.get::<_, String>(3)?, r.get::<_, String>(4)?),
+                    r.get::<_, i64>(5)?,
+                    r.get::<_, String>(6)?,
+                    (
+                        r.get::<_, Option<String>>(7)?,
+                        r.get::<_, Option<String>>(8)?,
+                        r.get::<_, Option<String>>(9)?,
+                    ),
+                ))
+            })
+            .map_err(err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(err)?;
+        Ok(rows
+            .into_iter()
+            .filter_map(
+                |(
+                    (request_id, card_id, title),
+                    (from, to),
+                    created_ms,
+                    status,
+                    (note_id, answer, error),
+                )| {
+                    Some(MoveRequest {
+                        request_id,
+                        card_id,
+                        title,
+                        from_row: Row::from_key(&from)?,
+                        to_row: Row::from_key(&to)?,
+                        created_ms,
+                        status: MoveStatus::from_key(&status),
+                        note_id,
+                        answer,
+                        error,
+                    })
+                },
+            )
+            .collect())
+    }
+
+    pub fn add_request(&mut self, request: &MoveRequest) -> Result<(), String> {
+        let tx = self.conn.transaction().map_err(err)?;
+        tx.execute(
+            &format!(
+                "UPDATE move_requests SET status = 'superseded' WHERE card_id = ?1 AND status IN ({OPEN_STATUSES})"
+            ),
+            params![request.card_id],
+        )
+        .map_err(err)?;
+        tx.execute(
+            "INSERT INTO move_requests (request_id, card_id, title, from_row, to_row, created_ms, status, note_id, answer, error)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                request.request_id,
+                request.card_id,
+                request.title,
+                request.from_row.key(),
+                request.to_row.key(),
+                request.created_ms,
+                request.status.key(),
+                request.note_id,
+                request.answer,
+                request.error,
+            ],
+        )
+        .map_err(err)?;
+        tx.commit().map_err(err)
+    }
+
+    pub fn finish_send(
+        &self,
+        request_id: &str,
+        outcome: &Result<String, String>,
+    ) -> Result<(), String> {
+        let (status, note_id, error) = match outcome {
+            Ok(note_id) => (MoveStatus::Asked, Some(note_id.as_str()), None),
+            Err(error) => (MoveStatus::Failed, None, Some(error.as_str())),
+        };
+        self.conn
+            .execute(
+                "UPDATE move_requests SET status = ?2, note_id = COALESCE(?3, note_id), error = ?4
+                 WHERE request_id = ?1 AND status IN ('sending', 'failed')",
+                params![request_id, status.key(), note_id, error],
+            )
+            .map_err(err)?;
+        Ok(())
+    }
+
+    pub fn set_request_status(&self, request_id: &str, status: MoveStatus) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE move_requests SET status = ?2 WHERE request_id = ?1",
+                params![request_id, status.key()],
+            )
+            .map_err(err)?;
+        Ok(())
+    }
+
+    pub fn answer_request(&self, request_id: &str, answer: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE move_requests SET status = 'answered', answer = ?2 WHERE request_id = ?1 AND status = 'asked'",
+                params![request_id, answer],
+            )
+            .map_err(err)?;
+        Ok(())
+    }
+
+    pub fn all_requests(&self) -> Result<Vec<MoveRequest>, String> {
+        self.query_requests("ORDER BY created_ms", [])
+    }
+
     pub fn data_size(&self) -> u64 {
         ["", "-wal", "-shm"]
             .iter()
@@ -334,5 +612,103 @@ mod tests {
         db.save_snapshot(&snapshot).unwrap();
         assert_eq!(db.snapshot().unwrap().unwrap(), snapshot);
         assert!(db.data_size() > 0);
+    }
+
+    fn request(id: &str, card: &str, to: Row) -> MoveRequest {
+        MoveRequest {
+            request_id: id.into(),
+            card_id: card.into(),
+            title: format!("Title of {card}"),
+            from_row: Row::Seabed,
+            to_row: to,
+            created_ms: 7,
+            status: MoveStatus::Sending,
+            note_id: None,
+            answer: None,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn placing_a_card_orders_its_cell_and_moves_only_that_card_across_columns() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Db::open(dir.path()).unwrap();
+        db.place_cards("b", "reef", Row::Seabed, &["a".into(), "b".into()])
+            .unwrap();
+        db.place_cards(
+            "c",
+            "harbor",
+            Row::Shallows,
+            &["c".into(), "a".into(), "d".into()],
+        )
+        .unwrap();
+        let places: Vec<(String, Option<String>, Row, i64)> = db
+            .places()
+            .unwrap()
+            .into_iter()
+            .map(|p| (p.card_id, p.project, p.row, p.position))
+            .collect();
+        assert_eq!(
+            places,
+            [
+                ("b".into(), Some("reef".into()), Row::Seabed, 1),
+                ("c".into(), Some("harbor".into()), Row::Shallows, 0),
+                ("a".into(), None, Row::Shallows, 1),
+                ("d".into(), None, Row::Shallows, 2),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_new_request_supersedes_the_open_one_for_the_same_card() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Db::open(dir.path()).unwrap();
+        db.add_request(&request("r1", "a", Row::Shallows)).unwrap();
+        db.finish_send("r1", &Ok("n-1".into())).unwrap();
+        db.add_request(&request("r2", "b", Row::Deep)).unwrap();
+        db.finish_send("r2", &Err("no inbox".into())).unwrap();
+        let open = db.open_requests().unwrap();
+        assert_eq!(open[0].status, MoveStatus::Asked);
+        assert_eq!(open[0].note_id.as_deref(), Some("n-1"));
+        assert_eq!(open[1].status, MoveStatus::Failed);
+        assert_eq!(open[1].error.as_deref(), Some("no inbox"));
+
+        db.add_request(&request("r3", "a", Row::Surface)).unwrap();
+        assert_eq!(
+            db.request("r1").unwrap().unwrap().status,
+            MoveStatus::Superseded
+        );
+        let ids: Vec<String> = db
+            .open_requests()
+            .unwrap()
+            .into_iter()
+            .map(|r| r.request_id)
+            .collect();
+        assert_eq!(ids, ["r2", "r3"]);
+    }
+
+    #[test]
+    fn answers_only_apply_to_asked_requests_and_resends_keep_the_note() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Db::open(dir.path()).unwrap();
+        db.add_request(&request("r1", "a", Row::Shallows)).unwrap();
+        db.answer_request("r1", "too early").unwrap();
+        assert_eq!(
+            db.request("r1").unwrap().unwrap().status,
+            MoveStatus::Sending
+        );
+        db.finish_send("r1", &Err("busy".into())).unwrap();
+        db.finish_send("r1", &Ok("n-9".into())).unwrap();
+        let sent = db.request("r1").unwrap().unwrap();
+        assert_eq!(sent.status, MoveStatus::Asked);
+        assert_eq!(sent.error, None);
+        db.finish_send("r1", &Err("late".into())).unwrap();
+        db.answer_request("r1", "Not until Friday.").unwrap();
+        let answered = db.request("r1").unwrap().unwrap();
+        assert_eq!(answered.status, MoveStatus::Answered);
+        assert_eq!(answered.answer.as_deref(), Some("Not until Friday."));
+        db.set_request_status("r1", MoveStatus::Dismissed).unwrap();
+        assert!(db.open_requests().unwrap().is_empty());
+        assert_eq!(db.all_requests().unwrap().len(), 1);
     }
 }

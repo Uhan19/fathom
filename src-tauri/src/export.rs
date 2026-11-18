@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::db::{Column, Db, RowName, Snapshot};
+use crate::db::{CardPlace, Column, Db, MoveRequest, RowName, Snapshot};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,6 +13,8 @@ struct Everything {
     row_names: Vec<RowName>,
     settings: Vec<(String, String)>,
     snapshot: Option<Snapshot>,
+    card_places: Vec<CardPlace>,
+    move_requests: Vec<MoveRequest>,
 }
 
 pub fn export(db: &Db, parent: &Path, now_ms: i64) -> Result<PathBuf, String> {
@@ -27,6 +29,8 @@ pub fn export(db: &Db, parent: &Path, now_ms: i64) -> Result<PathBuf, String> {
         row_names: db.row_names()?,
         settings,
         snapshot: db.snapshot()?,
+        card_places: db.places()?,
+        move_requests: db.all_requests()?,
     };
     let json = serde_json::to_string_pretty(&everything).map_err(|e| e.to_string())?;
     std::fs::write(out.join("fathom.json"), json).map_err(|e| e.to_string())?;
@@ -98,6 +102,53 @@ pub fn export(db: &Db, parent: &Path, now_ms: i64) -> Result<PathBuf, String> {
             Ok(())
         },
     )?;
+    write_csv(
+        &out.join("card_places.csv"),
+        &["card_id", "project", "row", "position"],
+        |w| {
+            for p in &everything.card_places {
+                w.write_record([
+                    &p.card_id,
+                    p.project.as_deref().unwrap_or_default(),
+                    p.row.key(),
+                    &p.position.to_string(),
+                ])?;
+            }
+            Ok(())
+        },
+    )?;
+    write_csv(
+        &out.join("move_requests.csv"),
+        &[
+            "request_id",
+            "card_id",
+            "title",
+            "from_row",
+            "to_row",
+            "created_ms",
+            "status",
+            "note_id",
+            "answer",
+            "error",
+        ],
+        |w| {
+            for r in &everything.move_requests {
+                w.write_record([
+                    &r.request_id,
+                    &r.card_id,
+                    &r.title,
+                    r.from_row.key(),
+                    r.to_row.key(),
+                    &r.created_ms.to_string(),
+                    r.status.key(),
+                    r.note_id.as_deref().unwrap_or_default(),
+                    r.answer.as_deref().unwrap_or_default(),
+                    r.error.as_deref().unwrap_or_default(),
+                ])?;
+            }
+            Ok(())
+        },
+    )?;
     Ok(out)
 }
 
@@ -147,6 +198,26 @@ mod tests {
             cards: vec![card],
         })
         .unwrap();
+        db.place_cards(
+            "harbor-lights",
+            "harbor",
+            Row::Deep,
+            &["harbor-lights".into()],
+        )
+        .unwrap();
+        db.add_request(&MoveRequest {
+            request_id: "fathom-move-harbor-lights-5".into(),
+            card_id: "harbor-lights".into(),
+            title: "Fix the harbor lights".into(),
+            from_row: Row::Shallows,
+            to_row: Row::Deep,
+            created_ms: 5,
+            status: crate::db::MoveStatus::Asked,
+            note_id: Some("n-1".into()),
+            answer: None,
+            error: None,
+        })
+        .unwrap();
 
         let target = tempfile::tempdir().unwrap();
         let out = export(&db, target.path(), 99).unwrap();
@@ -156,10 +227,19 @@ mod tests {
         assert_eq!(json["columns"][0]["project"], "harbor");
         assert_eq!(json["rowNames"][3]["name"], "Not started");
         assert_eq!(json["snapshot"]["cards"][0]["id"], "harbor-lights");
+        assert_eq!(json["cardPlaces"][0]["row"], "deep");
+        assert_eq!(json["moveRequests"][0]["status"], "asked");
         let cards = std::fs::read_to_string(out.join("snapshot_cards.csv")).unwrap();
         assert!(cards.contains("\"Fix the harbor lights, \"\"soon\"\"\""));
         assert!(cards.contains("pr:https://example.com/pull/7"));
-        for name in ["columns.csv", "row_names.csv", "settings.csv"] {
+        let requests = std::fs::read_to_string(out.join("move_requests.csv")).unwrap();
+        assert!(requests.contains("fathom-move-harbor-lights-5,harbor-lights"));
+        for name in [
+            "columns.csv",
+            "row_names.csv",
+            "settings.csv",
+            "card_places.csv",
+        ] {
             assert!(out.join(name).is_file());
         }
     }

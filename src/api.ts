@@ -46,7 +46,51 @@ export interface RowName {
   name: string;
 }
 
-export interface BoardView {
+export type MoveStatus = "sending" | "asked" | "failed" | "answered" | "landed" | "superseded" | "dismissed";
+
+export interface CardPlace {
+  cardId: string;
+  project: string | null;
+  row: RowKey;
+  position: number;
+}
+
+export interface MoveRequest {
+  requestId: string;
+  cardId: string;
+  title: string;
+  fromRow: RowKey;
+  toRow: RowKey;
+  createdMs: number;
+  status: MoveStatus;
+  noteId: string | null;
+  answer: string | null;
+  error: string | null;
+}
+
+export interface Overlay {
+  places: CardPlace[];
+  requests: MoveRequest[];
+}
+
+export interface Placement {
+  cardId: string;
+  title: string;
+  project: string;
+  fromRow: RowKey;
+  toRow: RowKey;
+  order: string[];
+}
+
+export type WorkerStatus = "working" | "idle";
+
+export interface Worker {
+  taskId: string;
+  terminal: string;
+  status: WorkerStatus;
+}
+
+export interface BoardView extends Overlay {
   columns: Column[];
   rowNames: RowName[];
   cards: Card[];
@@ -86,7 +130,14 @@ export interface Size {
   rows: number;
 }
 
-export interface ChatSize extends Size {
+export type View = "chat" | "worker";
+
+export interface AttachedSize extends Size {
+  terminal: string;
+}
+
+export interface EndedView {
+  view: View;
   terminal: string;
 }
 
@@ -108,6 +159,10 @@ export const api = {
   updateColumn: (project: string, change: { width?: number; collapsed?: boolean }) =>
     invoke<void>("update_column", { project, width: change.width ?? null, collapsed: change.collapsed ?? null }),
   setRowName: (row: RowKey, name: string) => invoke<void>("set_row_name", { row, name }),
+  placeCard: (placement: Placement) => invoke<Overlay>("place_card", { placement }),
+  resendRequest: (requestId: string) => invoke<Overlay>("resend_request", { requestId }),
+  dismissRequest: (requestId: string) => invoke<Overlay>("dismiss_request", { requestId }),
+  workers: () => invoke<Worker[]>("workers"),
   getSettings: () => invoke<Settings>("get_settings"),
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
   dataInfo: () => invoke<DataInfo>("data_info"),
@@ -117,17 +172,17 @@ export const api = {
   herdrStatus: () => invoke<HerdrStatus>("herdr_status"),
   findChatTerminal: () => invoke<Terminal | null>("find_chat_terminal"),
   listTerminals: () => invoke<Terminal[]>("list_terminals"),
-  attachChat: (terminal: string, size: Size, onOutput: (bytes: Uint8Array) => void, onSize: (size: Size) => void) => {
+  attachTerminal: (view: View, terminal: string, size: Size, onOutput: (bytes: Uint8Array) => void, onSize: (size: Size) => void) => {
     const output = new Channel<ArrayBuffer | number[] | Size>((message) => {
       if (message instanceof ArrayBuffer) onOutput(new Uint8Array(message));
       else if (Array.isArray(message)) onOutput(Uint8Array.from(message));
       else onSize(message);
     });
-    return invoke<ChatSize>("attach_chat", { terminal, cols: size.cols, rows: size.rows, output });
+    return invoke<AttachedSize>("attach_terminal", { view, terminal, cols: size.cols, rows: size.rows, output });
   },
-  resizeChat: (size: Size) => invoke<void>("resize_chat", { cols: size.cols, rows: size.rows }),
-  chatInput: (data: string) => invoke<void>("chat_input", { data }),
-  detachChat: () => invoke<void>("detach_chat"),
+  resizeTerminal: (view: View, size: Size) => invoke<void>("resize_terminal", { view, cols: size.cols, rows: size.rows }),
+  terminalInput: (view: View, data: string) => invoke<void>("terminal_input", { view, data }),
+  detachTerminal: (view: View) => invoke<void>("detach_terminal", { view }),
   sendToTerminal: (terminal: string, text: string) => invoke<void>("send_to_terminal", { terminal, text }),
 };
 
@@ -137,8 +192,10 @@ export const events = {
   herdr: (handler: (status: HerdrStatus) => void): Promise<UnlistenFn> =>
     listen<HerdrStatus>("herdr://status", (e) => handler(e.payload)),
   terminals: (handler: () => void): Promise<UnlistenFn> => listen("herdr://terminals", () => handler()),
-  chatEnded: (handler: (terminal: string) => void): Promise<UnlistenFn> =>
-    listen<string>("chat://ended", (e) => handler(e.payload)),
+  workers: (handler: (workers: Worker[]) => void): Promise<UnlistenFn> =>
+    listen<Worker[]>("workers://updated", (e) => handler(e.payload)),
+  terminalEnded: (handler: (ended: EndedView) => void): Promise<UnlistenFn> =>
+    listen<EndedView>("terminal://ended", (e) => handler(e.payload)),
 };
 
 export function errorText(error: unknown): string {

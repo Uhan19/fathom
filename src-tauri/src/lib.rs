@@ -3,11 +3,14 @@ mod db;
 mod export;
 mod fonts;
 mod herdr;
+mod moves;
+mod requests;
 mod shell_path;
 mod state;
 mod tasks;
 mod toon;
 mod watch;
+mod workers;
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -44,6 +47,10 @@ pub fn run() {
             commands::card_detail,
             commands::update_column,
             commands::set_row_name,
+            commands::place_card,
+            commands::resend_request,
+            commands::dismiss_request,
+            commands::workers,
             commands::get_settings,
             commands::save_settings,
             commands::installed_fonts,
@@ -53,10 +60,10 @@ pub fn run() {
             commands::herdr_status,
             commands::find_chat_terminal,
             commands::list_terminals,
-            commands::attach_chat,
-            commands::resize_chat,
-            commands::chat_input,
-            commands::detach_chat,
+            commands::attach_terminal,
+            commands::resize_terminal,
+            commands::terminal_input,
+            commands::detach_terminal,
             commands::send_to_terminal,
         ])
         .build(context)
@@ -66,7 +73,7 @@ pub fn run() {
         if let RunEvent::Exit = event
             && let Some(state) = handle.try_state::<std::sync::Arc<state::AppState>>()
         {
-            state.herdr.detach();
+            state.herdr.detach_all();
             state.herdr.stop_events();
         }
     });

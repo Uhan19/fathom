@@ -10,20 +10,24 @@ use serde_json::json;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter};
 
-use crate::db::{Column, Db, RowName, Snapshot};
-use crate::herdr::{self, Frame, Herdr, Notice};
+use crate::db::{CardPlace, Column, Db, MoveRequest, MoveStatus, RowName, Snapshot};
+use crate::herdr::{self, Frame, Herdr, Notice, View};
+use crate::moves::{self, Placement};
 use crate::tasks::{self, Card};
-use crate::watch;
+use crate::watch::{self, StateChange};
+use crate::workers::{self, Worker};
 
 pub const DEFAULT_LABEL: &str = "firstmate.role=primary";
 const DEFAULT_HOME_RELATIVE: &str = "Documents/firstmate";
 const REFRESH_DEBOUNCE: Duration = Duration::from_millis(250);
+const WORKERS_DEBOUNCE: Duration = Duration::from_millis(80);
 const LAUNCH_LOG: &str = "launch.log";
 
 pub const EVENT_BOARD: &str = "board://updated";
 pub const EVENT_HERDR: &str = "herdr://status";
 pub const EVENT_TERMINALS: &str = "herdr://terminals";
-pub const EVENT_CHAT_ENDED: &str = "chat://ended";
+pub const EVENT_VIEW_ENDED: &str = "terminal://ended";
+pub const EVENT_WORKERS: &str = "workers://updated";
 
 const KEY_HOME: &str = "home";
 const KEY_LABEL: &str = "terminalLabel";
@@ -66,6 +70,15 @@ pub struct BoardView {
     pub home: String,
     pub from_cache: bool,
     pub error: Option<String>,
+    #[serde(flatten)]
+    pub overlay: Overlay,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Overlay {
+    pub places: Vec<CardPlace>,
+    pub requests: Vec<MoveRequest>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -77,7 +90,7 @@ pub struct HerdrStatus {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ChatSize {
+pub struct AttachedSize {
     pub terminal: String,
     pub cols: u16,
     pub rows: u16,
@@ -89,7 +102,9 @@ pub struct AppState {
     pub herdr_status: Arc<Mutex<HerdrStatus>>,
     pub settings: Mutex<Settings>,
     refresh: Sender<()>,
-    watcher: Mutex<Option<RecommendedWatcher>>,
+    workers_tick: Sender<()>,
+    published_workers: Mutex<Option<Vec<Worker>>>,
+    watchers: Mutex<Vec<RecommendedWatcher>>,
     started: Instant,
     launch_logged: AtomicBool,
     log_dir: PathBuf,
@@ -176,17 +191,25 @@ impl AppState {
     ) -> Result<Arc<AppState>, String> {
         let settings = load_settings(&db)?;
         let (refresh, requests) = mpsc::channel();
+        let (workers_tick, worker_ticks) = mpsc::channel();
         let herdr_status = Arc::new(Mutex::new(HerdrStatus {
             connected: false,
             message: "connecting".into(),
         }));
         let notify_app = app.clone();
         let notify_refresh = refresh.clone();
+        let notify_workers = workers_tick.clone();
         let notify_status = Arc::clone(&herdr_status);
         let herdr = Herdr::new(
             connection_of(&settings),
             Arc::new(move |notice| {
-                on_herdr_notice(&notify_app, &notify_refresh, &notify_status, notice)
+                on_herdr_notice(
+                    &notify_app,
+                    &notify_refresh,
+                    &notify_workers,
+                    &notify_status,
+                    notice,
+                )
             }),
         );
         let state = Arc::new(AppState {
@@ -195,12 +218,15 @@ impl AppState {
             herdr_status,
             settings: Mutex::new(settings),
             refresh,
-            watcher: Mutex::new(None),
+            workers_tick,
+            published_workers: Mutex::new(None),
+            watchers: Mutex::new(Vec::new()),
             started,
             launch_logged: AtomicBool::new(false),
             log_dir,
         });
         spawn_refresher(app.clone(), Arc::clone(&state), requests);
+        spawn_worker_publisher(app.clone(), Arc::clone(&state), worker_ticks);
         state.restart_watcher();
         state.herdr.start_events();
         Ok(state)
@@ -226,13 +252,19 @@ impl AppState {
             home,
             from_cache: true,
             error: None,
+            overlay: overlay_of(&db)?,
         })
+    }
+
+    pub fn overlay(&self) -> Result<Overlay, String> {
+        overlay_of(&self.db.lock().unwrap())
     }
 
     pub fn read_board(&self) -> Result<BoardView, String> {
         let home = self.home();
         match tasks::read_board(&home) {
             Ok(cards) => {
+                moves::reconcile(&self.db, &home, &cards)?;
                 let mut db = self.db.lock().unwrap();
                 let projects: Vec<String> = cards.iter().map(|c| c.project.clone()).collect();
                 let columns = db.ensure_columns(&projects)?;
@@ -250,6 +282,7 @@ impl AppState {
                     home: snapshot.home,
                     from_cache: false,
                     error: None,
+                    overlay: overlay_of(&db)?,
                 })
             }
             Err(error) => {
@@ -283,6 +316,7 @@ impl AppState {
         if saved.home != previous.home {
             self.restart_watcher();
             self.request_refresh();
+            self.request_workers();
         }
         if connection_of(&saved) != connection_of(&previous) {
             self.herdr.set_connection(connection_of(&saved));
@@ -291,14 +325,61 @@ impl AppState {
     }
 
     pub fn restart_watcher(&self) {
+        let home = self.home();
         let refresh = self.refresh.clone();
-        let watcher = watch::watch_task_list(&self.home(), move || {
+        let task_list = watch::watch_task_list(&home, move || {
             let _ = refresh.send(());
         });
-        if let Err(error) = &watcher {
-            eprintln!("fathom: {error}");
+        let refresh = self.refresh.clone();
+        let workers = self.workers_tick.clone();
+        let state = watch::watch_state(&home, move |change| {
+            let _ = match change {
+                StateChange::Workers => workers.send(()),
+                StateChange::Replies => refresh.send(()),
+            };
+        });
+        let mut watchers = self.watchers.lock().unwrap();
+        watchers.clear();
+        for watcher in [task_list, state] {
+            match watcher {
+                Ok(watcher) => watchers.push(watcher),
+                Err(error) => eprintln!("fathom: {error}"),
+            }
         }
-        *self.watcher.lock().unwrap() = watcher.ok();
+    }
+
+    pub fn request_workers(&self) {
+        let _ = self.workers_tick.send(());
+    }
+
+    pub fn workers(&self) -> Vec<Worker> {
+        if !self.herdr_status.lock().unwrap().connected {
+            return vec![];
+        }
+        let session = self.settings.lock().unwrap().hc_session.clone();
+        workers::live_workers(
+            &workers::read_bindings(&self.home()),
+            &session,
+            &self.herdr.terminals(),
+        )
+    }
+
+    pub fn place_card(&self, placement: Placement) -> Result<Overlay, String> {
+        moves::place(&self.db, &self.home(), placement, now_ms())?;
+        self.overlay()
+    }
+
+    pub fn resend_request(&self, request_id: &str) -> Result<Overlay, String> {
+        moves::resend(&self.db, &self.home(), request_id)?;
+        self.overlay()
+    }
+
+    pub fn dismiss_request(&self, request_id: &str) -> Result<Overlay, String> {
+        self.db
+            .lock()
+            .unwrap()
+            .set_request_status(request_id, MoveStatus::Dismissed)?;
+        self.overlay()
     }
 
     pub fn log_launch(&self, source: &str, cards: usize) -> Option<u128> {
@@ -315,14 +396,16 @@ impl AppState {
         Some(elapsed)
     }
 
-    pub fn attach_chat(
+    pub fn attach_view(
         &self,
+        view: View,
         terminal: &str,
         cols: u16,
         rows: u16,
         channel: Channel<InvokeResponseBody>,
-    ) -> Result<ChatSize, String> {
+    ) -> Result<AttachedSize, String> {
         self.herdr.attach(
+            view,
             terminal,
             cols,
             rows,
@@ -336,7 +419,7 @@ impl AppState {
                 let _ = channel.send(body);
             }),
         )?;
-        Ok(ChatSize {
+        Ok(AttachedSize {
             terminal: terminal.to_string(),
             cols,
             rows,
@@ -358,6 +441,27 @@ fn append(path: &Path, line: &str) {
     }
 }
 
+fn overlay_of(db: &Db) -> Result<Overlay, String> {
+    Ok(Overlay {
+        places: db.places()?,
+        requests: db.open_requests()?,
+    })
+}
+
+fn spawn_worker_publisher(app: AppHandle, state: Arc<AppState>, ticks: Receiver<()>) {
+    std::thread::spawn(move || {
+        while ticks.recv().is_ok() {
+            while ticks.recv_timeout(WORKERS_DEBOUNCE).is_ok() {}
+            let workers = state.workers();
+            let mut published = state.published_workers.lock().unwrap();
+            if published.as_ref() != Some(&workers) {
+                let _ = app.emit(EVENT_WORKERS, &workers);
+                *published = Some(workers);
+            }
+        }
+    });
+}
+
 fn spawn_refresher(app: AppHandle, state: Arc<AppState>, requests: Receiver<()>) {
     std::thread::spawn(move || {
         while requests.recv().is_ok() {
@@ -375,6 +479,7 @@ fn spawn_refresher(app: AppHandle, state: Arc<AppState>, requests: Receiver<()>)
 fn on_herdr_notice(
     app: &AppHandle,
     refresh: &Sender<()>,
+    workers: &Sender<()>,
     status: &Mutex<HerdrStatus>,
     notice: Notice,
 ) {
@@ -387,18 +492,27 @@ fn on_herdr_notice(
             connected: true,
             message: String::new(),
         }),
-        Notice::EventsDown(message) => publish(HerdrStatus {
-            connected: false,
-            message,
-        }),
+        Notice::EventsDown(message) => {
+            publish(HerdrStatus {
+                connected: false,
+                message,
+            });
+            let _ = workers.send(());
+        }
+        Notice::WorkersChanged => {
+            let _ = workers.send(());
+        }
         Notice::Activity => {
             let _ = refresh.send(());
         }
         Notice::TerminalsChanged => {
             let _ = app.emit(EVENT_TERMINALS, ());
         }
-        Notice::AttachEnded { terminal } => {
-            let _ = app.emit(EVENT_CHAT_ENDED, terminal);
+        Notice::AttachEnded { view, terminal } => {
+            let _ = app.emit(
+                EVENT_VIEW_ENDED,
+                json!({ "view": view, "terminal": terminal }),
+            );
         }
     }
 }

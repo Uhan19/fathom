@@ -9,7 +9,14 @@ use crate::toon::{self, Record};
 const WRAPPER: &str = "bin/fm-tasks-axi.sh";
 const LIST_FIELDS: &str = "hold_kind,hold_until,hold_reason,blocked_by,links,priority,closed";
 const TRUNCATION_MARK: &str = "\n... (truncated";
-const ENV_TO_CLEAR: [&str; 3] = ["FM_DATA_OVERRIDE", "FM_ROOT_OVERRIDE", "TASKS_AXI_FILE"];
+const ENV_TO_CLEAR: [&str; 6] = [
+    "FM_DATA_OVERRIDE",
+    "FM_ROOT_OVERRIDE",
+    "FM_STATE_OVERRIDE",
+    "FM_WAKE_QUEUE",
+    "FM_WAKE_QUEUE_LOCK",
+    "TASKS_AXI_FILE",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -38,6 +45,10 @@ impl Row {
             Row::Seabed => "seabed",
             Row::Landed => "landed",
         }
+    }
+
+    pub fn from_key(key: &str) -> Option<Row> {
+        Row::ALL.into_iter().find(|row| row.key() == key)
     }
 
     pub fn default_name(self) -> &'static str {
@@ -119,26 +130,30 @@ pub fn wrapper_path(home: &Path) -> PathBuf {
     home.join(WRAPPER)
 }
 
-fn run(home: &Path, args: &[&str]) -> Result<String, String> {
-    let wrapper = wrapper_path(home);
-    if !wrapper.is_file() {
+pub fn firstmate_command(home: &Path, script: &str) -> Result<Command, String> {
+    let path = home.join(script);
+    if !path.is_file() {
         return Err(format!(
             "{} not found; check the Firstmate home setting",
-            wrapper.display()
+            path.display()
         ));
     }
-    let mut command = Command::new(&wrapper);
+    let mut command = Command::new(&path);
     command
-        .args(args)
         .current_dir(home)
         .env("FM_HOME", home)
         .env("PATH", shell_path::get());
     for name in ENV_TO_CLEAR {
         command.env_remove(name);
     }
-    let output = command
+    Ok(command)
+}
+
+fn run(home: &Path, args: &[&str]) -> Result<String, String> {
+    let output = firstmate_command(home, WRAPPER)?
+        .args(args)
         .output()
-        .map_err(|e| format!("cannot run {}: {e}", wrapper.display()))?;
+        .map_err(|e| format!("cannot run {}: {e}", wrapper_path(home).display()))?;
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     if output.status.success() {
         Ok(stdout)
