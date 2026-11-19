@@ -6,6 +6,7 @@ import "@xterm/xterm/css/xterm.css";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { api, type Size, type View } from "./api";
 import { TERMINAL_OPTIONS, TERMINAL_THEMES } from "./terminalOptions";
+import { symbolsFontReady } from "./terminalSymbols";
 import type { Theme } from "./theme";
 import { forwardClipboardWrites, isShiftEnter, shiftEnterSequence, trackKittyKeyboard } from "./terminalInput";
 
@@ -93,6 +94,7 @@ export function useLiveTerminal(view: View, fontFamily: string, fontSize: number
 
   const attach = useCallback(
     async (address: string): Promise<boolean> => {
+      await symbolsFontReady();
       dispose();
       const host = hostRef.current;
       if (!host) return false;

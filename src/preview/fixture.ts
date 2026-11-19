@@ -335,7 +335,7 @@ export const FIXTURE_ATTACHABLE: Terminal[] = [
 
 export const shellScreen = (tab: ShellTab) => {
   const place = tab.folder === FIXTURE_HOME ? "~" : tab.folder.split("/").pop();
-  const prompt = `${ESC}32mdemo@harbor${ESC}0m ${ESC}36m${place}${ESC}0m % `;
+  const prompt = `${ESC}97;44m  ${ESC}34;46m${ESC}30m ${place}  09:41 ${ESC}0;36m${ESC}0m `;
   return [
     `${prompt}git status --short`,
     ` M src/handlers/invoice.ts`,

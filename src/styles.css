@@ -1,3 +1,18 @@
+@font-face {
+  font-family: "Symbols Nerd Font Mono";
+  src: url("/fonts/symbols-nerd-font/SymbolsNerdFontMono-Regular.woff2") format("woff2");
+  font-display: block;
+  unicode-range: U+E0A0-E0A3, U+E0B0-E0D7;
+}
+
+@font-face {
+  font-family: "Symbols Nerd Font Mono";
+  src: url("/fonts/symbols-nerd-font/SymbolsNerdFontMono-Regular.woff2") format("woff2");
+  font-display: block;
+  size-adjust: 60%;
+  unicode-range: U+0-E09F, U+E0A4-E0AF, U+E0D8-10FFFF;
+}
+
 :root {
   --yellow: #f2c230;
   --yellow-hover: #ffd24a;
