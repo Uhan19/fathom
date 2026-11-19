@@ -68,6 +68,7 @@ export const FIXTURE_WORKERS: Worker[] = [
 
 const FIXTURE_UPDATE_MARKS: Record<string, string> = {
   "atl-09": "3 working [at=1795100000]: read and write paths split, running the invoice tests",
+  "atl-04": "2 paused [at=1795100700]: the queue migration slipped a week, waiting until it lands",
   "hrb-18": "4 needs-decision [at=1795100400]: the form kit has no date picker; keep the old one or wait for the kit?",
   "lan-31": "2 working [at=1795100600]: first draft of the v3 guide is up for review",
   "pil-08": "3 done [at=1795100800]: staging certificates rotated, PR ready",
@@ -77,6 +78,7 @@ const FIXTURE_UPDATE_MARKS: Record<string, string> = {
 const FIXTURE_SEEN_MARKS: Record<string, string> = {
   "atl-09": FIXTURE_UPDATE_MARKS["atl-09"],
   "lan-31": "1 working [at=1795090400]: setup done",
+  "atl-04": "1 paused [at=1795090200]: waiting for the queue migration",
   "led-37": FIXTURE_UPDATE_MARKS["led-37"],
 };
 

@@ -16,7 +16,7 @@ import {
   shownRequest,
 } from "../board";
 import { anyCard, keepCards, noMatchText, shownByAgent } from "../agentFilter";
-import { columnHasUnseen, isUnseen, type CardUpdates } from "../updates";
+import { columnHasUnseen, isUnseen, rowHasUnseen, type CardUpdates } from "../updates";
 import { projectTasks, sailorLabel } from "../source";
 import { deletePlan, moveTargets, NEW_COLUMN, nextDraft, startDraft } from "../columnDelete";
 import { useCardDrag, type CardDrag } from "../cardDrag";
@@ -177,10 +177,12 @@ export function Board(props: BoardProps) {
           const fill = row === lastOpenRow;
           const name = rowNames[row];
           const total = rowCount(cells, row);
+          const unseen = folded && rowHasUnseen(cells, row, updates);
+          const cardsText = total === 1 ? "1 card" : `${total} cards`;
           return (
             <section
               key={row}
-              className={`row row-${row}${folded ? " row-collapsed" : ""}${fill ? " row-fill" : ""}`}
+              className={`row row-${row}${folded ? " row-collapsed" : ""}${unseen ? " unseen" : ""}${fill ? " row-fill" : ""}`}
               data-row={row}
               aria-label={name}
               style={{ gridTemplateColumns: template }}
@@ -189,8 +191,8 @@ export function Board(props: BoardProps) {
                 <button
                   className="row-toggle"
                   aria-expanded={!folded}
-                  aria-label={folded ? `Expand ${name}, ${total === 1 ? "1 card" : `${total} cards`}` : `Collapse ${name}`}
-                  title={folded ? `Expand ${name}` : `Collapse ${name}`}
+                  aria-label={folded ? `Expand ${name}, ${cardsText}${unseen ? ", it has a new update" : ""}` : `Collapse ${name}`}
+                  title={folded ? `Expand ${name}${unseen ? ", it has a new update" : ""}` : `Collapse ${name}`}
                   onClick={() => props.onRowCollapse(row, !folded)}
                 >
                   {folded ? <ChevronRight /> : <ChevronDown />}

@@ -9,7 +9,7 @@ When no terminal is there yet, the chat panel opens Claude Code, Codex or Firstm
 Cards can be dragged to arrange them, and a drag to another row asks the agent to move the task.
 A small sailor on a card shows that a crewmate is on the task: its red visor glows and blinks while it works and dims while idle.
 Clicking the sailor opens that crewmate's live terminal.
-When an agent reports something new on a card you have not read yet, the card lights up: its colored bar blinks and its border glows until you open the card and close it again.
+When an agent reports something new on a card you have not read yet, its colored bar turns yellow and blinks until you open the card and close it again.
 
 ## Requirements
 
@@ -56,7 +56,7 @@ Add `?backlog` to see a board of Fathom's own backlog, with one pending and one 
 Add `?late` to have a card arrive in a column at the moment you confirm deleting it, or `?deletefail` to see a delete fail.
 Add `?theme=dark` to start in the dark theme, `?nochat` to start with the chat panel closed, and `?filter=harbor-web,keel-cli` to start with a project filter.
 Add `?agents=withAgent` or `?agents=withActiveAgent` to start with that agent filter, and `?rows=deep,landed` to start with those rows collapsed.
-Add `?unseen` to light the cards that have an update you have not read, and `?folded=pilot-infra,keel-cli` to start with those columns collapsed.
+Add `?unseen` to light the cards that have an update you have not read, and `?folded=pilot-infra,keel-cli` to start with those columns collapsed; `?unseen&folded=pilot-infra&rows=deep` shows a lit card, a lit column header and a lit row band at once.
 Add `?bosun=` with `notstarted`, `dormant`, `starting`, `ready`, `working`, `asking`, `signedout`, `missing`, `failed` or `stopped` to see that Bosun state; open the drawer with the Bosun button.
 
 ## Run the checks
@@ -376,9 +376,10 @@ Fathom asks your login shell for its PATH once at startup and uses it to find he
 ## Unread updates
 
 - A card lights up when its agent has reported something you have not read yet.
-  Its colored bar blinks and its border glows in the lamp yellow.
+  Its colored bar turns lamp yellow, glows and blinks; the rest of the card looks as usual.
   With reduced motion turned on in the system settings, the bar glows steadily instead of blinking.
-- A collapsed column's header lights up the same way while it holds at least one such card, and goes dark once you have read every one of them.
+- A collapsed column's header and a collapsed row's band light up the same way, through their card count, while they hold at least one such card.
+  Each goes dark once you have read every one of them.
 - Opening a card and then closing it, or opening another card, marks its updates read and the light goes out.
   The light stays on while the card panel is open, and an update that arrives meanwhile counts as read when you close it.
 - With a Firstmate home, an update is a new line in the task's status log, `<firstmate home>/state/<task id>.status`.
@@ -388,7 +389,7 @@ Fathom asks your login shell for its PATH once at startup and uses it to find he
 - Your own changes in Fathom, such as dragging cards or renaming and collapsing columns, never count as an update.
 - What you have read is saved in Fathom's database, so it survives a restart, and updates that arrive while Fathom is closed light up at the next launch.
 - The first time Fathom looks at a task source, everything already reported counts as read, so the board does not light up every card at once.
-- A card hidden by the project or agent filter, or sitting in a collapsed row of an open column, is not marked anywhere else.
+- A card hidden by the project or agent filter is not marked anywhere.
 
 ## Settings
 

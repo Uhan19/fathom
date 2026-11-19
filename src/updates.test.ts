@@ -5,14 +5,14 @@ import { ROW_ORDER, type Card, type Column, type RowKey } from "./api";
 import { groupCards } from "./board";
 import { Board } from "./components/Board";
 import { FIXTURE_CARDS, FIXTURE_COLUMNS, fixtureUpdates } from "./preview/fixture";
-import { columnHasUnseen, isUnseen, leftCard, NO_UPDATES, seenLocally, type CardUpdates } from "./updates";
+import { columnHasUnseen, isUnseen, leftCard, NO_UPDATES, rowHasUnseen, seenLocally, type CardUpdates } from "./updates";
 
 const ignore = () => undefined;
 const rowNames = Object.fromEntries(ROW_ORDER.map((row) => [row, row])) as Record<RowKey, string>;
 const PILOT = FIXTURE_COLUMNS.find((c) => c.project === "pilot-infra")!;
 const KEEL = FIXTURE_COLUMNS.find((c) => c.project === "keel-cli")!;
 
-function board(updates: CardUpdates, folded: string[] = [], cards: Card[] = FIXTURE_CARDS) {
+function board(updates: CardUpdates, folded: string[] = [], collapsedRows: RowKey[] = [], cards: Card[] = FIXTURE_CARDS) {
   const columns: Column[] = FIXTURE_COLUMNS.map((c) => ({ ...c, collapsed: folded.includes(c.name) }));
   return renderToStaticMarkup(
     createElement(Board, {
@@ -23,7 +23,7 @@ function board(updates: CardUpdates, folded: string[] = [], cards: Card[] = FIXT
       workers: {},
       updates,
       rowNames,
-      collapsedRows: [],
+      collapsedRows,
       agentFilter: "all",
       projectsFiltered: false,
       selectedId: null,
@@ -42,6 +42,7 @@ function board(updates: CardUpdates, folded: string[] = [], cards: Card[] = FIXT
 }
 
 const litCards = (html: string) => [...html.matchAll(/<div class="card [^"]*\bunseen\b[^"]*" data-id="([^"]+)"/g)].map((m) => m[1]).sort();
+const litRows = (html: string) => [...html.matchAll(/<section class="row row-(\w+) row-collapsed unseen/g)].map((m) => m[1]);
 const litHeads = (html: string) => [...html.matchAll(/<div class="column-head collapsed unseen[^"]*" data-column="(\d+)"/g)].map((m) => Number(m[1]));
 
 describe("isUnseen", () => {
@@ -86,7 +87,7 @@ describe("leftCard", () => {
 
 describe("the board", () => {
   it("lights only the cards with an unseen update", () => {
-    expect(litCards(board(fixtureUpdates(true)))).toEqual(["hrb-18", "lan-31", "pil-08"]);
+    expect(litCards(board(fixtureUpdates(true)))).toEqual(["atl-04", "hrb-18", "lan-31", "pil-08"]);
     expect(litCards(board(NO_UPDATES))).toEqual([]);
   });
 
@@ -119,6 +120,36 @@ describe("the board", () => {
     expect(litHeads(board(oneSeen, folded))).toEqual([harbor.id, lan.id]);
     const bothSeen = seenLocally(oneSeen, "hrb-16");
     expect(litHeads(board(bothSeen, folded))).toEqual([lan.id]);
-    expect(litCards(board(bothSeen))).toEqual(["lan-31", "pil-08"]);
+    expect(litCards(board(bothSeen))).toEqual(["atl-04", "lan-31", "pil-08"]);
+  });
+
+  it("lights a collapsed row's band while it holds an unseen card", () => {
+    const updates = fixtureUpdates(true);
+    const html = board(updates, [], ["shallows", "landed"]);
+    expect(litRows(html)).toEqual(["shallows"]);
+    expect(html).toContain(`aria-label="Expand shallows, 6 cards, it has a new update"`);
+    expect(html).toContain(`aria-label="Expand landed, 9 cards"`);
+    expect(rowHasUnseen(groupCards(FIXTURE_CARDS, FIXTURE_COLUMNS), "landed", updates)).toBe(false);
+  });
+
+  it("does not light an open row", () => {
+    expect(litRows(board(fixtureUpdates(true)))).toEqual([]);
+  });
+
+  it("counts a card in a collapsed column toward its collapsed row", () => {
+    const html = board(fixtureUpdates(true), ["pilot-infra"], ["shallows"]);
+    expect(litRows(html)).toEqual(["shallows"]);
+    expect(litHeads(html)).toEqual([PILOT.id]);
+  });
+
+  it("turns the collapsed row's band dark once every unseen card in it is seen", () => {
+    const rows: RowKey[] = ["shallows"];
+    let updates = fixtureUpdates(true);
+    for (const id of ["hrb-18", "lan-31"]) {
+      updates = seenLocally(updates, id);
+      expect(litRows(board(updates, [], rows))).toEqual(["shallows"]);
+    }
+    updates = seenLocally(updates, "pil-08");
+    expect(litRows(board(updates, [], rows))).toEqual([]);
   });
 });

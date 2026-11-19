@@ -1130,21 +1130,14 @@ button.column-name:focus-visible,
   background: #7f8791;
 }
 
-.card.unseen {
-  border-color: var(--lamp-line);
-  box-shadow:
-    0 0 0 1px var(--lamp-line),
-    0 0 16px 2px var(--lamp-glow),
-    0 2px 6px var(--card-shadow);
-}
-
 .card.unseen .bar {
   background: var(--yellow);
-  box-shadow: 0 0 8px 1px var(--lamp-glow);
+  box-shadow: 0 0 6px 2px var(--lamp-glow);
   animation: lamp-blink 1.6s ease-in-out infinite;
 }
 
-.column-head.unseen .count-badge {
+.column-head.unseen .count-badge,
+.row-collapsed.unseen .row-count {
   background: var(--yellow);
   border-color: var(--lamp-line);
   color: var(--abyss);
@@ -1167,7 +1160,8 @@ button.column-name:focus-visible,
 
 @media (prefers-reduced-motion: reduce) {
   .card.unseen .bar,
-  .column-head.unseen .count-badge {
+  .column-head.unseen .count-badge,
+  .row-collapsed.unseen .row-count {
     animation: none;
   }
 }
