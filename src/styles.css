@@ -2313,6 +2313,10 @@ button.sailor:focus-visible {
   color: var(--muted);
 }
 
+.shortcut-note.error-text {
+  color: var(--error-ink);
+}
+
 .row-names {
   align-self: stretch;
   display: grid;

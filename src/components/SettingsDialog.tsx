@@ -37,6 +37,7 @@ const DEFAULT_ROW_NAMES: Record<RowKey, string> = {
 
 export function SettingsDialog({ settings, mac, rowNames, onPreview, onSaved, onClose }: SettingsDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const homeRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(settings);
   const [names, setNames] = useState(rowNames);
   const [data, setData] = useState<DataInfo | null>(null);
@@ -47,6 +48,7 @@ export function SettingsDialog({ settings, mac, rowNames, onPreview, onSaved, on
 
   useEffect(() => {
     dialogRef.current?.showModal();
+    homeRef.current?.focus();
     api.dataInfo().then(setData).catch(() => setData(null));
   }, []);
 
@@ -147,7 +149,7 @@ export function SettingsDialog({ settings, mac, rowNames, onPreview, onSaved, on
             <legend>Firstmate</legend>
             <label className="field">
               <span>Firstmate home</span>
-              <input className="text-input mono" {...field("home")} spellCheck={false} autoFocus />
+              <input className="text-input mono" {...field("home")} ref={homeRef} spellCheck={false} />
               <small>
                 Fathom reads tasks through bin/fm-tasks-axi.sh in this folder and never writes there. Leave it empty to use Fathom's own
                 backlog.

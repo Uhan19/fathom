@@ -90,7 +90,7 @@ describe("refusals", () => {
   it("refuses another action's shortcut but not the action's own", () => {
     const refusal = refusalOf("Meta+Comma", "toggleChat", shortcuts, MAC);
     expect(refusal).toEqual({ kind: "taken", doing: "opens Settings" });
-    expect(refusalText(refusal!, "Meta+Comma", MAC)).toBe("⌘, already opens Settings.");
+    expect(refusalText(refusal!, "Meta+Comma", MAC)).toBe("\"⌘,\" already opens Settings.");
     expect(refusalOf("Meta+Comma", "openSettings", shortcuts, MAC)).toBeNull();
   });
 
@@ -100,7 +100,7 @@ describe("refusals", () => {
         expect(refusalOf(fixed.combo, "toggleTheme", defaultShortcuts(mac), mac)).toEqual({ kind: "taken", doing: fixed.doing });
       }
     }
-    expect(refusalText({ kind: "taken", doing: "opens Bosun" }, "Ctrl+KeyJ", LINUX)).toBe("Ctrl+J already opens Bosun.");
+    expect(refusalText({ kind: "taken", doing: "opens Bosun" }, "Ctrl+KeyJ", LINUX)).toBe("\"Ctrl+J\" already opens Bosun.");
   });
 
   it("refuses the macOS menu's keys only on macOS", () => {
@@ -227,7 +227,7 @@ describe("the shortcut row", () => {
     expect(row({ recording: startRecording("toggleChat") })).toContain("Esc cancels, Delete clears.");
     const refused = row({ recording: { action: "toggleChat", held: [], refused: { combo: "Meta+KeyJ", refusal: { kind: "taken", doing: "opens Bosun" } } } });
     expect(refused).toContain("shortcut-key recording refused");
-    expect(refused).toContain("⌘J already opens Bosun.");
+    expect(refused).toContain("&quot;⌘J&quot; already opens Bosun.");
   });
 });
 

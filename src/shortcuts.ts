@@ -145,7 +145,7 @@ export function refusalOf(combo: string, action: ShortcutAction, shortcuts: Shor
 
 export function refusalText(refusal: Refusal, combo: string, mac: boolean): string {
   if (refusal.kind === "noModifier") return mac ? "A shortcut needs ⌘, ⌥ or ⌃." : "A shortcut needs Ctrl, Alt or Super.";
-  return `${comboLabel(combo, mac)} already ${refusal.doing}.`;
+  return `"${comboLabel(combo, mac)}" already ${refusal.doing}.`;
 }
 
 export type RecordStep =
