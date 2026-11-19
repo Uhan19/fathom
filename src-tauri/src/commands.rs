@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::Serialize;
@@ -6,6 +6,7 @@ use tauri::State;
 use tauri::ipc::{Channel, InvokeResponseBody};
 
 use crate::control;
+use crate::db::shells::ShellTab;
 use crate::db::{Column, MoveTo};
 use crate::export;
 use crate::fonts;
@@ -13,6 +14,7 @@ use crate::herdr::{Terminal, View};
 use crate::launch::{Agent, LaunchError};
 use crate::moves::Placement;
 use crate::settings::{Settings, WindowChange};
+use crate::shell_tabs::LauncherFolders;
 use crate::source::Source;
 use crate::state::{
     AppState, AttachedSize, BoardView, HelperCheck, HelperStatus, HerdrStatus, Layout, Overlay,
@@ -265,17 +267,68 @@ pub fn attach_terminal(
 
 #[tauri::command]
 pub fn resize_terminal(state: AppStateRef, view: View, cols: u16, rows: u16) -> Result<(), String> {
-    state.herdr.resize(view, cols, rows)
+    state.herdr.resize(&view, cols, rows)
 }
 
 #[tauri::command]
 pub fn terminal_input(state: AppStateRef, view: View, data: String) -> Result<(), String> {
-    state.herdr.write_input(view, data.as_bytes())
+    state.herdr.write_input(&view, data.as_bytes())
 }
 
 #[tauri::command]
 pub fn detach_terminal(state: AppStateRef, view: View) {
-    state.herdr.detach(view);
+    state.herdr.detach(&view);
+}
+
+#[tauri::command]
+pub async fn shell_tabs(state: AppStateRef<'_>) -> Result<Vec<ShellTab>, String> {
+    let state = Arc::clone(&state);
+    blocking(move || state.shell_tabs()).await
+}
+
+#[tauri::command]
+pub async fn open_shell(state: AppStateRef<'_>, folder: String) -> Result<ShellTab, LaunchError> {
+    let state = Arc::clone(&state);
+    tauri::async_runtime::spawn_blocking(move || state.open_shell(Path::new(&folder)))
+        .await
+        .map_err(|e| LaunchError::Failed {
+            message: e.to_string(),
+        })?
+}
+
+#[tauri::command]
+pub async fn attach_shell_tab(
+    state: AppStateRef<'_>,
+    terminal: String,
+) -> Result<ShellTab, String> {
+    let state = Arc::clone(&state);
+    blocking(move || state.attach_shell_tab(&terminal)).await
+}
+
+#[tauri::command]
+pub fn close_shell_tab(state: AppStateRef, terminal: String) -> Result<(), String> {
+    state.close_shell_tab(&terminal)
+}
+
+#[tauri::command]
+pub async fn attachable_terminals(state: AppStateRef<'_>) -> Result<Vec<Terminal>, String> {
+    let state = Arc::clone(&state);
+    blocking(move || state.attachable_terminals()).await
+}
+
+#[tauri::command]
+pub async fn launcher_folders(state: AppStateRef<'_>) -> Result<LauncherFolders, String> {
+    let state = Arc::clone(&state);
+    blocking(move || state.launcher_folders()).await
+}
+
+#[tauri::command]
+pub fn remember_column_folder(
+    state: AppStateRef,
+    column: i64,
+    folder: String,
+) -> Result<(), String> {
+    state.remember_column_folder(column, &folder)
 }
 
 #[tauri::command]

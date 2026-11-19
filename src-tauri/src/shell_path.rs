@@ -3,6 +3,10 @@ use std::process::Command;
 use std::sync::OnceLock;
 
 const MARKER: &str = "__FATHOM_PATH__";
+#[cfg(target_os = "macos")]
+pub const DEFAULT_SHELL: &str = "/bin/zsh";
+#[cfg(not(target_os = "macos"))]
+pub const DEFAULT_SHELL: &str = "/bin/sh";
 
 static PATH: OnceLock<String> = OnceLock::new();
 
@@ -52,6 +56,19 @@ pub fn login_shell() -> Option<String> {
         .or_else(passwd_shell)
 }
 
+pub fn user_shell() -> std::path::PathBuf {
+    choose_shell(std::env::var("SHELL").ok(), passwd_shell())
+}
+
+pub(crate) fn choose_shell(env: Option<String>, passwd: Option<String>) -> std::path::PathBuf {
+    [env, passwd]
+        .into_iter()
+        .flatten()
+        .map(std::path::PathBuf::from)
+        .find(|shell| shell.is_absolute() && is_executable(shell))
+        .unwrap_or_else(|| std::path::PathBuf::from(DEFAULT_SHELL))
+}
+
 fn login_shell_path() -> Option<String> {
     let shell = login_shell()?;
     let script = format!("printf '%s%s%s' {MARKER} \"$PATH\" {MARKER}");
@@ -83,6 +100,7 @@ fn passwd_shell() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn merge_keeps_order_and_drops_duplicates() {
@@ -114,6 +132,29 @@ mod tests {
         assert_eq!(
             find_first_in(&path, &programs),
             Some(late.path().join("herdr-core"))
+        );
+    }
+
+    #[test]
+    fn the_shell_comes_from_shell_then_the_passwd_entry_then_the_system_default() {
+        let dir = tempfile::tempdir().unwrap();
+        executable(dir.path(), "fish");
+        executable(dir.path(), "bash");
+        let fish = dir.path().join("fish").display().to_string();
+        let bash = dir.path().join("bash").display().to_string();
+        let gone = dir.path().join("gone").display().to_string();
+        let chosen = |env: Option<&str>, passwd: Option<&str>| {
+            choose_shell(env.map(String::from), passwd.map(String::from))
+        };
+        assert_eq!(chosen(Some(&fish), Some(&bash)), PathBuf::from(&fish));
+        assert_eq!(chosen(None, Some(&bash)), PathBuf::from(&bash));
+        assert_eq!(chosen(Some(""), Some(&bash)), PathBuf::from(&bash));
+        assert_eq!(chosen(Some(&gone), Some(&bash)), PathBuf::from(&bash));
+        assert_eq!(chosen(Some("fish"), None), PathBuf::from(DEFAULT_SHELL));
+        assert_eq!(chosen(None, None), PathBuf::from(DEFAULT_SHELL));
+        assert_eq!(
+            chosen(Some(&gone), Some(&gone)),
+            PathBuf::from(DEFAULT_SHELL)
         );
     }
 

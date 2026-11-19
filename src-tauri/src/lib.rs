@@ -10,6 +10,7 @@ mod moves;
 mod requests;
 mod settings;
 mod shell_path;
+mod shell_tabs;
 mod source;
 mod state;
 mod tasks;
@@ -88,6 +89,13 @@ pub fn run() {
             commands::terminal_input,
             commands::detach_terminal,
             commands::send_to_terminal,
+            commands::shell_tabs,
+            commands::open_shell,
+            commands::attach_shell_tab,
+            commands::close_shell_tab,
+            commands::attachable_terminals,
+            commands::launcher_folders,
+            commands::remember_column_folder,
         ])
         .build(context)
         .expect("error while building Fathom");

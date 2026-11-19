@@ -1,5 +1,6 @@
 import type { Settings } from "./api";
 import fonts from "./fontPresets.json";
+import { SYMBOLS_FAMILY } from "./terminalSymbols";
 
 export interface FontChoice {
   key: string;
@@ -70,7 +71,7 @@ export function fontChoice(fonts: FontChoice[], key: string): FontChoice {
 }
 
 export function chatFontStack(appearance: Appearance, platform: Platform = PLATFORM): string {
-  return fontChoice(surfaceFonts(appearance, "chat", platform), appearance.chatFont).stack;
+  return `${fontChoice(surfaceFonts(appearance, "chat", platform), appearance.chatFont).stack}, ${cssFamily(SYMBOLS_FAMILY)}`;
 }
 
 export function addFont(appearance: Appearance, surface: Surface, family: string): Appearance {

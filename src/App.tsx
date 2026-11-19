@@ -29,7 +29,7 @@ import { CardDetail } from "./components/CardDetail";
 import { ChatPanel } from "./components/ChatPanel";
 import { chatTitle, initialAgent, type AgentKey } from "./agents";
 import { WorkerTerminal, type Watched } from "./components/WorkerTerminal";
-import { ChevronLeft } from "./components/Icons";
+import { ChatRail } from "./components/TabStrip";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { BosunDrawer } from "./components/BosunDrawer";
 import { BOSUN, DRAWER_HEIGHT, dotOf, isMac, isToggleShortcut, shortcutLabel, summaryOf, type BosunState } from "./bosun";
@@ -61,6 +61,7 @@ export default function App() {
   const [bosunOpen, setBosunOpen] = useState(false);
   const [bosunHeight, setBosunHeight] = useState(DRAWER_HEIGHT.initial);
   const [bosunState, setBosunState] = useState<BosunState>("finding");
+  const [activeTabName, setActiveTabName] = useState<string | null>(null);
   const launchLogged = useRef(false);
   const mainRef = useRef<HTMLElement>(null);
   const boardColumnRef = useRef<HTMLDivElement>(null);
@@ -419,17 +420,16 @@ export default function App() {
               fontSize={(appearance ?? settings).chatFontSize}
               theme={theme}
               connectionKey={connectionKey}
+              mac={MAC}
+              open={chatOpen}
               onTerminal={setChatTerminal}
+              onActiveTab={setActiveTabName}
+              onShow={() => changeWindow({ chatOpen: true })}
               onCollapse={() => changeWindow({ chatOpen: false })}
             />
           </div>
         )}
-        {settings && !chatOpen && (
-          <button className="chat-rail" onClick={() => changeWindow({ chatOpen: true })} aria-label={`Open ${chatName} chat`}>
-            <ChevronLeft />
-            <span className="vname">{chatName}</span>
-          </button>
-        )}
+        {settings && !chatOpen && <ChatRail name={activeTabName ?? chatName} onOpen={() => changeWindow({ chatOpen: true })} />}
       </main>
       {watched && settings && (
         <WorkerTerminal

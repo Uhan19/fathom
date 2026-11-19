@@ -36,7 +36,7 @@ describe("appearance", () => {
   it("offers Linux presets with the bundled JetBrains Mono first", () => {
     const chat = presetFonts("chat", "linux");
     expect(chat.map((f) => f.name)).toEqual(["JetBrains Mono", "DejaVu Sans Mono", "Liberation Mono", "Noto Sans Mono"]);
-    expect(chatFontStack({ ...base, chatFont: "sf-mono" }, "linux")).toBe('"JetBrains Mono", monospace');
+    expect(chatFontStack({ ...base, chatFont: "sf-mono" }, "linux")).toBe('"JetBrains Mono", monospace, "Symbols Nerd Font Mono"');
     expect(presetFonts("board", "linux").map((f) => f.name)).toEqual(["Inter + Saira", "Inter", "System UI", "DejaVu Sans"]);
     expect(presetFonts("board", "linux")[0]).toEqual(presetFonts("board", "macos")[0]);
   });
@@ -63,7 +63,7 @@ describe("appearance", () => {
     const twice = addFont(once, "chat", "Fira Code");
     expect(twice.chatAddedFonts).toEqual(["Fira Code"]);
     expect(twice.boardAddedFonts).toEqual([]);
-    expect(chatFontStack(twice)).toBe('"Fira Code", ui-monospace, monospace');
+    expect(chatFontStack(twice)).toBe('"Fira Code", ui-monospace, monospace, "Symbols Nerd Font Mono"');
     expect(surfaceFonts(twice, "chat").filter((f) => f.added).map((f) => f.name)).toEqual(["Fira Code"]);
   });
 

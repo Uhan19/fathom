@@ -11,12 +11,14 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter};
 
 use crate::control;
+use crate::db::shells::ShellTab;
 use crate::db::{CardPlace, Column, Db, MoveRequest, MoveStatus, MoveTo, RowName, Snapshot};
 use crate::herdr::{self, Frame, Herdr, Notice, Terminal, View};
 use crate::launch::{self, Agent, FathomServer, Launch, LaunchError, SignIn};
 use crate::moves::{self, Placement};
 use crate::settings::{self, Settings, WindowChange};
 use crate::shell_path;
+use crate::shell_tabs::{self, LauncherFolders};
 use crate::source::{Source, SourceKind};
 use crate::tasks::Card;
 use crate::watch::{self, StateChange};
@@ -373,7 +375,7 @@ impl AppState {
     }
 
     pub fn stop_helper(&self, terminal: &str) -> Result<(), String> {
-        self.herdr.detach(View::Helper);
+        self.herdr.detach(&View::Helper);
         self.herdr.kill(terminal)?;
         let _ = self.herdr.run(&["rm", terminal]);
         self.request_workers();
@@ -519,6 +521,61 @@ impl AppState {
         eprint!("fathom: {line}");
         append(&self.log_dir.join(LAUNCH_LOG), &line);
         Some(elapsed)
+    }
+
+    pub fn shell_tabs(&self) -> Result<Vec<ShellTab>, String> {
+        shell_tabs::restore(&self.herdr, &self.db.lock().unwrap())
+    }
+
+    pub fn open_shell(&self, folder: &Path) -> Result<ShellTab, LaunchError> {
+        let shell = shell_path::user_shell();
+        let terminal = launch::open_shell(&self.herdr, folder, &shell)?;
+        let home = std::env::home_dir();
+        let tab = shell_tabs::shell_tab(&terminal, &shell, folder, home.as_deref());
+        self.db
+            .lock()
+            .unwrap()
+            .add_shell_tab(&tab)
+            .map_err(|message| LaunchError::Failed { message })?;
+        Ok(tab)
+    }
+
+    pub fn attach_shell_tab(&self, terminal: &str) -> Result<ShellTab, String> {
+        let terminal = self.herdr.get(terminal)?;
+        let home = std::env::home_dir();
+        let tab = shell_tabs::attached_tab(&terminal, home.as_deref());
+        self.db.lock().unwrap().add_shell_tab(&tab)?;
+        Ok(tab)
+    }
+
+    pub fn close_shell_tab(&self, terminal: &str) -> Result<(), String> {
+        self.herdr.detach(&View::Shell(terminal.to_string()));
+        self.db.lock().unwrap().remove_shell_tab(terminal)
+    }
+
+    pub fn attachable_terminals(&self) -> Result<Vec<Terminal>, String> {
+        let chat_label = self.settings.lock().unwrap().terminal_label.clone();
+        let session = self.settings.lock().unwrap().hc_session.clone();
+        let workers = workers::board_workers(&self.source(), &session, &self.herdr.terminals());
+        shell_tabs::attachable(&self.herdr, &chat_label, &workers)
+    }
+
+    pub fn launcher_folders(&self) -> Result<LauncherFolders, String> {
+        let db = self.db.lock().unwrap();
+        let columns = db.columns()?;
+        let projects = match self.source() {
+            Source::Firstmate { home } => shell_tabs::firstmate_folders(&home, &columns),
+            Source::Backlog => shell_tabs::backlog_folders(&columns, &db.column_folders()?),
+        };
+        let home = std::env::home_dir().ok_or("cannot find the home folder")?;
+        Ok(LauncherFolders {
+            projects,
+            home: home.display().to_string(),
+        })
+    }
+
+    pub fn remember_column_folder(&self, column: i64, folder: &str) -> Result<(), String> {
+        self.db.lock().unwrap().set_column_folder(column, folder)
     }
 
     pub fn attach_view(

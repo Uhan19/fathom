@@ -1,7 +1,7 @@
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import type { AgentKey } from "../agents";
-import { ROW_ORDER, type BoardView, type Card, type CardPlace, type Column, type HelperStatus, type Layout, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type Settings, type WindowChange } from "../api";
+import { ROW_ORDER, type BoardView, type Card, type CardPlace, type Column, type HelperStatus, type Layout, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type Settings, type ShellTab, type Terminal, type WindowChange } from "../api";
 import { presetFonts } from "../appearance";
 import { cellCount, groupCards, type Cells } from "../board";
 import { moveTo } from "../columnOrder";
@@ -12,12 +12,16 @@ import {
   FIXTURE_BACKLOG_WORKERS,
   FIXTURE_CARDS,
   FIXTURE_AGENT_ADDRESS,
+  FIXTURE_ATTACHABLE,
+  FIXTURE_HOME,
+  FIXTURE_SHELL_TABS,
   FIXTURE_COLUMNS, FIXTURE_HELPER, FIXTURE_LATE_CARD, FIXTURE_REQUESTS, FIXTURE_SCREEN, FIXTURE_TERMINALS, FIXTURE_WORKERS,
   agentScreen,
   agentTerminal,
   backlogWorkerScreen,
   fixtureDetail,
   helperScreen,
+  shellScreen,
   workerScreen,
 } from "./fixture";
 
@@ -77,7 +81,7 @@ let settings: Settings = {
   chatAgent: rememberedAgent,
   theme: params.get("theme") === "dark" ? "dark" : "light",
   chatOpen: !params.has("nochat"),
-  chatWidth: 600,
+  chatWidth: Number(params.get("chatwidth")) || 600,
   detailWidth: 460,
   projectFilter: params.get("filter")?.split(",").filter(Boolean) ?? [],
   helperStarted: bosun !== "notstarted",
@@ -197,6 +201,47 @@ const deleteColumn = (id: number, moveTo: MoveTo | null): Layout => {
   places = places.map((place) => (place.column === id ? { ...place, column: null } : place));
   columns = columns.filter((c) => c.id !== id);
   return { columns, overlay: overlay() };
+};
+
+const SHELL_TABS_SHOWN = 3;
+const shellEnded = params.has("shellended");
+let shellTabs: ShellTab[] = FIXTURE_SHELL_TABS.slice(0, params.has("tabs") ? Number(params.get("tabs")) || SHELL_TABS_SHOWN : 0);
+let runningShells: Terminal[] = [...FIXTURE_ATTACHABLE];
+let nextShell = 40;
+const endedShells = new Set<string>();
+const columnFolders = new Map<number, string>(backlog ? [[columns[0].id, "/home/demo/charts/reef-map"]] : []);
+const placeName = (folder: string) => (folder === FIXTURE_HOME ? "~" : (folder.split("/").pop() ?? folder));
+
+const launcherFolders = () => ({
+  projects: columns
+    .filter((c) => backlog || c.project)
+    .map((c) => ({ column: c.id, name: c.name, path: backlog ? (columnFolders.get(c.id) ?? null) : `${FIXTURE_HOME}/projects/${c.project}` })),
+  home: FIXTURE_HOME,
+});
+
+const openShell = (folder: string): ShellTab => {
+  const tab = { terminal: `t${nextShell++}`, name: `zsh · ${placeName(folder)}`, folder };
+  shellTabs = [...shellTabs, tab];
+  runningShells = [...runningShells, { ...FIXTURE_ATTACHABLE[0], address: tab.terminal, name: "", agent: "zsh", cwd: folder }];
+  console.info("open_shell", tab.terminal, folder);
+  return tab;
+};
+
+const attachShellTab = (terminal: string): ShellTab => {
+  const found = runningShells.find((t) => t.address === terminal);
+  if (!found) throw `the terminal ${terminal} is gone`;
+  const tab = { terminal, name: `${found.agent || found.name || terminal} · ${placeName(found.cwd)}`, folder: found.cwd };
+  shellTabs = [...shellTabs.filter((t) => t.terminal !== terminal), tab];
+  return tab;
+};
+
+const shellOutput = (terminal: string) => {
+  const tab = shellTabs.find((t) => t.terminal === terminal) ?? FIXTURE_SHELL_TABS[0];
+  if (shellEnded && terminal === FIXTURE_SHELL_TABS[1].terminal && !endedShells.has(terminal)) {
+    endedShells.add(terminal);
+    setTimeout(() => void emit("terminal://ended", { view: `shell:${terminal}`, terminal }), 300);
+  }
+  return shellScreen(tab);
 };
 
 const view = (fromCache: boolean): BoardView => ({
@@ -326,8 +371,9 @@ mockIPC(
       case "attach_terminal": {
         const output = args.output as Output;
         outputs.set(args.view, output);
-        const screen =
-          args.view === "worker"
+        const screen = String(args.view).startsWith("shell:")
+          ? shellOutput(args.terminal as string)
+          : args.view === "worker"
             ? (backlog ? backlogWorkerScreen : workerScreen)(args.terminal as string)
             : args.view === "helper"
               ? helperScreen(helperShown)
@@ -348,6 +394,24 @@ mockIPC(
       }
       case "plugin:dialog|open":
         return "/home/demo/exports";
+      case "shell_tabs":
+        return shellTabs;
+      case "open_shell":
+        return openShell(args.folder as string);
+      case "attach_shell_tab":
+        return attachShellTab(args.terminal as string);
+      case "close_shell_tab":
+        console.info("close_shell_tab", args.terminal);
+        shellTabs = shellTabs.filter((t) => t.terminal !== args.terminal);
+        outputs.delete(`shell:${args.terminal}`);
+        return null;
+      case "attachable_terminals":
+        return runningShells;
+      case "launcher_folders":
+        return launcherFolders();
+      case "remember_column_folder":
+        columnFolders.set(args.column as number, args.folder as string);
+        return null;
       default:
         throw new Error(`preview has no mock for ${cmd}`);
     }
@@ -360,3 +424,10 @@ const previewFeed = (view: string, text: string) => outputs.get(view)?.onmessage
 Object.assign(window, { previewEmit: emit, previewFeed });
 
 await import("../main");
+
+const pressLauncher = () => {
+  const add = document.querySelector<HTMLButtonElement>(".tab-add");
+  if (add) add.click();
+  else setTimeout(pressLauncher, 50);
+};
+if (params.has("launcher")) setTimeout(pressLauncher, 400);

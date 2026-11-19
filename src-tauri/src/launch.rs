@@ -12,6 +12,8 @@ pub const TASK_KEY: &str = "fathom.task";
 pub const CHAT_ROLE: &str = "chat";
 pub const WORKER_ROLE: &str = "worker";
 pub const HELPER_ROLE: &str = "helper";
+pub const SHELL_ROLE: &str = "shell";
+pub const FOLDER_KEY: &str = "fathom.folder";
 pub const HELPER_DIR: &str = "bosun";
 const HELPER_MCP_FILE: &str = "mcp.json";
 const HELPER_SETTINGS_FILE: &str = "settings.json";
@@ -161,23 +163,54 @@ pub fn open(
 }
 
 fn start(herdr: &Herdr, launch: &Launch, command: Vec<String>) -> Result<Terminal, LaunchError> {
+    let mut labels = vec![
+        label(ROLE_KEY, launch.role),
+        label(AGENT_KEY, launch.agent.key()),
+    ];
+    labels.extend(launch.task.map(task_label));
+    run_terminal(
+        herdr,
+        launch.cwd,
+        &labels,
+        through_login_shell(launch.shell, command),
+    )
+}
+
+pub fn open_shell(herdr: &Herdr, folder: &Path, shell: &Path) -> Result<Terminal, LaunchError> {
+    require_herdr_core()?;
+    if !folder.is_absolute() || !folder.is_dir() {
+        return Err(failed(format!(
+            "the folder {} does not exist",
+            folder.display()
+        )));
+    }
+    let labels = [
+        label(ROLE_KEY, SHELL_ROLE),
+        label(FOLDER_KEY, &folder.display().to_string()),
+    ];
+    let command = vec![shell.display().to_string(), "-l".into()];
+    run_terminal(herdr, folder, &labels, command)
+}
+
+fn run_terminal(
+    herdr: &Herdr,
+    cwd: &Path,
+    labels: &[String],
+    command: Vec<String>,
+) -> Result<Terminal, LaunchError> {
     let mut args = vec![
         "run".to_string(),
         "--bg".into(),
         "--json".into(),
         "--no-parent".into(),
         "--cwd".into(),
-        launch.cwd.display().to_string(),
-        "--label".into(),
-        label(ROLE_KEY, launch.role),
-        "--label".into(),
-        label(AGENT_KEY, launch.agent.key()),
+        cwd.display().to_string(),
     ];
-    if let Some(task) = launch.task {
-        args.extend(["--label".into(), task_label(task)]);
+    for label in labels {
+        args.extend(["--label".into(), label.clone()]);
     }
     args.push("--".into());
-    args.extend(through_login_shell(launch.shell, command));
+    args.extend(command);
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     let started = herdr::parse_terminal(&herdr.run(&args).map_err(failed)?).map_err(failed)?;
     Ok(herdr.get(&started.address).unwrap_or(started))
@@ -757,6 +790,76 @@ esac
     }
 
     #[test]
+    fn a_shell_starts_as_a_login_shell_in_its_folder_with_both_labels() {
+        let lab = Lab::new(&["hc"]);
+        let herdr = Herdr::new(Connection::default(), Arc::new(|_| {}));
+        let folder = lab.folder.path().join(SPACED_FOLDER);
+        std::fs::create_dir_all(&folder).unwrap();
+        let terminal = open_shell(&herdr, &folder, &lab.shell()).unwrap();
+        assert_eq!(terminal.address, "t9");
+        let folder = folder.display().to_string();
+        let expected: Vec<String> = [
+            "run",
+            "--bg",
+            "--json",
+            "--no-parent",
+            "--cwd",
+            &folder,
+            "--label",
+            "fathom.role=shell",
+            "--label",
+            &format!("fathom.folder={folder}"),
+            "--",
+            &lab.shell().display().to_string(),
+            "-l",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(lab.calls()[0], expected);
+        assert_eq!(lab.calls()[1], ["get", "t9", "--json"]);
+    }
+
+    #[test]
+    fn each_shell_fallback_reaches_hc_run() {
+        let lab = Lab::new(&["hc", "bash"]);
+        let herdr = Herdr::new(Connection::default(), Arc::new(|_| {}));
+        let bash = lab.bin.path().join("bash").display().to_string();
+        let zsh = lab.shell().display().to_string();
+        let gone = lab.bin.path().join("gone").display().to_string();
+        let started_with = |env: Option<&str>, passwd: Option<&str>| {
+            let shell =
+                crate::shell_path::choose_shell(env.map(String::from), passwd.map(String::from));
+            open_shell(&herdr, lab.folder.path(), &shell).unwrap();
+            let call = lab.calls().into_iter().rev().nth(1).unwrap();
+            call[call.len() - 2..].to_vec()
+        };
+        assert_eq!(started_with(Some(&zsh), Some(&bash)), [zsh.as_str(), "-l"]);
+        assert_eq!(started_with(None, Some(&bash)), [bash.as_str(), "-l"]);
+        assert_eq!(
+            started_with(Some(&gone), Some(&bash)),
+            [bash.as_str(), "-l"]
+        );
+        assert_eq!(
+            started_with(None, None),
+            [crate::shell_path::DEFAULT_SHELL, "-l"]
+        );
+    }
+
+    #[test]
+    fn a_shell_needs_an_existing_absolute_folder() {
+        let lab = Lab::new(&["hc"]);
+        let herdr = Herdr::new(Connection::default(), Arc::new(|_| {}));
+        for folder in [Path::new("relative"), &lab.folder.path().join("gone")] {
+            assert!(matches!(
+                open_shell(&herdr, folder, &lab.shell()),
+                Err(LaunchError::Failed { message }) if message.contains("does not exist")
+            ));
+        }
+        assert!(!lab.bin.path().join("hc.args").exists());
+    }
+
+    #[test]
     fn a_missing_agent_cli_or_herdr_core_is_named() {
         let lab = Lab::new(&["hc", "claude"]);
         assert_eq!(
@@ -981,7 +1084,9 @@ while IFS= read -r line; do printf 'GOT:%s\n' "$line"; done
                 |text: &str| String::from_utf8_lossy(&screen.lock().unwrap().bytes).contains(text);
             wait_for("the stub's greeting", || seen("stub "));
             wait_for("the marker from the scratch rc file", || seen("RC:from-rc"));
-            herdr.write_input(View::Chat, b"typed-in-fathom\r").unwrap();
+            herdr
+                .write_input(&View::Chat, b"typed-in-fathom\r")
+                .unwrap();
             wait_for("the typed line", || seen("GOT:typed-in-fathom"));
             herdr
                 .send(&terminal.address, "1 board request waiting")
@@ -1085,7 +1190,7 @@ while IFS= read -r line; do printf 'GOT:%s\n' "$line"; done
             |text: &str| String::from_utf8_lossy(&screen.lock().unwrap().bytes).contains(text);
         wait_for("the stub's greeting", || seen("stub claude"));
         herdr
-            .write_input(View::Helper, b"typed-by-the-user\r")
+            .write_input(&View::Helper, b"typed-by-the-user\r")
             .unwrap();
         wait_for("the typed line", || seen("GOT:typed-by-the-user"));
 

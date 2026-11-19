@@ -172,7 +172,24 @@ export interface Size {
   rows: number;
 }
 
-export type View = "chat" | "worker" | "helper";
+export type View = "chat" | "worker" | "helper" | `shell:${string}`;
+
+export interface ShellTab {
+  terminal: string;
+  name: string;
+  folder: string;
+}
+
+export interface ProjectFolder {
+  column: number;
+  name: string;
+  path: string | null;
+}
+
+export interface LauncherFolders {
+  projects: ProjectFolder[];
+  home: string;
+}
 
 export interface AttachedSize extends Size {
   terminal: string;
@@ -239,6 +256,13 @@ export const api = {
   terminalInput: (view: View, data: string) => invoke<void>("terminal_input", { view, data }),
   detachTerminal: (view: View) => invoke<void>("detach_terminal", { view }),
   sendToTerminal: (terminal: string, text: string) => invoke<void>("send_to_terminal", { terminal, text }),
+  shellTabs: () => invoke<ShellTab[]>("shell_tabs"),
+  openShell: (folder: string) => invoke<ShellTab>("open_shell", { folder }),
+  attachShellTab: (terminal: string) => invoke<ShellTab>("attach_shell_tab", { terminal }),
+  closeShellTab: (terminal: string) => invoke<void>("close_shell_tab", { terminal }),
+  attachableTerminals: () => invoke<Terminal[]>("attachable_terminals"),
+  launcherFolders: () => invoke<LauncherFolders>("launcher_folders"),
+  rememberColumnFolder: (column: number, folder: string) => invoke<void>("remember_column_folder", { column, folder }),
 };
 
 export const events = {
