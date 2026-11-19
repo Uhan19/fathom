@@ -94,6 +94,14 @@ const columnsFor = (cards: Card[]): Column[] =>
 
 export const FIXTURE_COLUMNS: Column[] = columnsFor(FIXTURE_CARDS);
 
+export const FIXTURE_UNFILED_CARDS: Card[] = [
+  ...FIXTURE_CARDS,
+  seeded(["gen-02", "", "shallows", "Tidy the shared notes folder", { state: "in_flight" }]),
+  seeded(["gen-01", "", "deep", "Sort the inbox of half-written ideas", { holdKind: "parked" }]),
+];
+
+export const FIXTURE_UNFILED_COLUMNS: Column[] = columnsFor(FIXTURE_UNFILED_CARDS);
+
 type BacklogSeed = [id: number, project: string, row: RowKey, title: string];
 
 const BACKLOG_SEEDS: BacklogSeed[] = [

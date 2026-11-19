@@ -9,6 +9,7 @@ import {
   groupCards,
   headTemplate,
   insertAt,
+  isUnnamed,
   outcomeTag,
   renamedColumn,
   shownRequest,
@@ -392,14 +393,21 @@ function ColumnGhost({ drag }: { drag: ColumnDrag }) {
   );
 }
 
+const UNNAMED_COLUMN = "Unnamed";
+
 function ColumnName({ column, onRename }: { column: Column; onRename: (name: string) => void }) {
   const [editing, setEditing] = useState(false);
   const cancelled = useRef(false);
+  const unnamed = isUnnamed(column);
 
   if (!editing) {
     return (
-      <button className="column-name" title={`Rename ${column.name}`} onClick={() => setEditing(true)}>
-        {column.name}
+      <button
+        className={unnamed ? "column-name unnamed" : "column-name"}
+        title={unnamed ? "Rename this unnamed column" : `Rename ${column.name}`}
+        onClick={() => setEditing(true)}
+      >
+        {unnamed ? UNNAMED_COLUMN : column.name}
       </button>
     );
   }
@@ -407,7 +415,8 @@ function ColumnName({ column, onRename }: { column: Column; onRename: (name: str
   return (
     <input
       className="column-name column-name-input"
-      aria-label={`Name of ${column.name}`}
+      aria-label={unnamed ? "Name of this unnamed column" : `Name of ${column.name}`}
+      placeholder="Column name"
       defaultValue={column.name}
       autoFocus
       spellCheck={false}

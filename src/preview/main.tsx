@@ -15,6 +15,8 @@ import {
   FIXTURE_ATTACHABLE,
   FIXTURE_HOME,
   FIXTURE_SHELL_TABS,
+  FIXTURE_UNFILED_CARDS,
+  FIXTURE_UNFILED_COLUMNS,
   FIXTURE_COLUMNS, FIXTURE_HELPER, FIXTURE_LATE_CARD, FIXTURE_REQUESTS, FIXTURE_SCREEN, FIXTURE_TERMINALS, FIXTURE_WORKERS,
   agentScreen,
   agentTerminal,
@@ -30,6 +32,7 @@ const noLabel = params.has("nolabel");
 const failing = params.has("error");
 const empty = params.has("empty");
 const backlog = params.has("backlog");
+const unfiled = params.has("unfiled");
 const otherClient = params.get("other")?.match(/^(\d+)x(\d+)$/);
 const sendFails = params.has("sendfail");
 const lateCard = params.has("late");
@@ -97,10 +100,10 @@ const openChatTerminal = (agent: AgentKey) => {
 
 const chatScreen = (terminal: string) => (terminal === FIXTURE_AGENT_ADDRESS && openedAgent ? agentScreen(openedAgent) : KITTY_PUSH + FIXTURE_SCREEN);
 const INSTALLED_FONTS = ["American Typewriter", "Andale Mono", "Avenir Next", "Courier New", "Georgia", "Helvetica Neue", "Menlo", "PT Mono", "Times New Roman", "Trebuchet MS"];
-let columns: Column[] = (backlog ? FIXTURE_BACKLOG_COLUMNS : FIXTURE_COLUMNS).map((c) => ({ ...c }));
+let columns: Column[] = (backlog ? FIXTURE_BACKLOG_COLUMNS : unfiled ? FIXTURE_UNFILED_COLUMNS : FIXTURE_COLUMNS).map((c) => ({ ...c }));
 let nextColumnId = columns.length + 1;
 const rowNames = new Map<string, string>();
-let cards: Card[] = empty ? [] : backlog ? FIXTURE_BACKLOG_CARDS : FIXTURE_CARDS;
+let cards: Card[] = empty ? [] : backlog ? FIXTURE_BACKLOG_CARDS : unfiled ? FIXTURE_UNFILED_CARDS : FIXTURE_CARDS;
 let places: CardPlace[] = [];
 let requests: MoveRequest[] = empty ? [] : (backlog ? FIXTURE_BACKLOG_REQUESTS : FIXTURE_REQUESTS).map((r) => ({ ...r }));
 const OPEN = ["sending", "asked", "failed", "answered"];

@@ -960,6 +960,19 @@ mod tests {
     }
 
     #[test]
+    fn cards_without_a_project_seed_a_nameless_column_that_takes_a_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Db::open(dir.path()).unwrap();
+        let seeded = db
+            .ensure_columns(&[card("a", ""), card("b", "harbor")])
+            .unwrap();
+        assert_eq!(projects(&seeded), [Some(""), Some("harbor")]);
+        assert_eq!(names(&seeded), ["", "harbor"]);
+        db.set_column_name(seeded[0].id, " Odd jobs ").unwrap();
+        assert_eq!(names(&db.columns().unwrap()), ["Odd jobs", "harbor"]);
+    }
+
+    #[test]
     fn added_columns_go_last_with_their_own_ids_and_keep_their_name() {
         let dir = tempfile::tempdir().unwrap();
         let mut db = Db::open(dir.path()).unwrap();
