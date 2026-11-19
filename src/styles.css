@@ -582,6 +582,7 @@ code,
 .board-column {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -1633,7 +1634,6 @@ button.sailor:focus-visible {
 .bosun {
   flex: none;
   min-height: 0;
-  max-height: calc(100% - 96px);
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--line);

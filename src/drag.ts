@@ -8,6 +8,21 @@ type Axis = "x" | "y";
 
 const along = (e: { clientX: number; clientY: number }, axis: Axis) => (axis === "x" ? e.clientX : e.clientY);
 
+export interface Range {
+  min: number;
+  max: number;
+}
+
+const clamp = (value: number, range: Range) => Math.max(range.min, Math.min(range.max, value));
+
+export function resizer(size: number, room: number, range: Range): (growth: number) => number {
+  const limit = { min: range.min, max: Math.max(range.min, Math.min(range.max, room)) };
+  const start = clamp(size, limit);
+  return (growth) => clamp(start + growth, limit);
+}
+
+const DRAG_ENDS = ["pointerup", "pointercancel", "lostpointercapture"] as const;
+
 export function startDrag(
   event: ReactPointerEvent,
   onMove: (delta: number) => void,
@@ -15,21 +30,26 @@ export function startDrag(
   axis: Axis = "x",
 ): void {
   event.preventDefault();
+  const pointer = event.pointerId;
   const start = along(event, axis);
+  const cursor = axis === "x" ? "dragging" : "dragging-y";
   let last = 0;
   const move = (e: PointerEvent) => {
+    if (e.pointerId !== pointer) return;
     last = along(e, axis) - start;
     onMove(last);
   };
-  const up = () => {
+  const end = (e: PointerEvent) => {
+    if (e.pointerId !== pointer) return;
     window.removeEventListener("pointermove", move);
-    window.removeEventListener("pointerup", up);
-    document.body.classList.remove(axis === "x" ? "dragging" : "dragging-y");
+    DRAG_ENDS.forEach((type) => window.removeEventListener(type, end));
+    document.body.classList.remove(cursor);
     onEnd?.(last);
   };
-  document.body.classList.add(axis === "x" ? "dragging" : "dragging-y");
+  (event.currentTarget as Element).setPointerCapture(pointer);
+  document.body.classList.add(cursor);
   window.addEventListener("pointermove", move);
-  window.addEventListener("pointerup", up);
+  DRAG_ENDS.forEach((type) => window.addEventListener(type, end));
 }
 
 export function scrollStep(board: HTMLElement | null, p: { x: number; y: number }): { x: number; y: number } | null {

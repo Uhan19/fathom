@@ -2,6 +2,7 @@ import type { HelperStatus, SignIn, Terminal } from "./api";
 
 export const BOSUN = "Bosun";
 export const DRAWER_HEIGHT = { initial: 330, min: 160, max: 900 };
+export const BOARD_ABOVE_DRAWER = 96;
 export const INSTALL_COMMAND = "curl -fsSL https://claude.ai/install.sh | bash";
 export const BREW_COMMAND = "brew install --cask claude-code";
 export const EXAMPLE_REQUESTS = [
@@ -100,6 +101,4 @@ export function isMac(platform: string): boolean {
   return /mac/i.test(platform);
 }
 
-export function clampDrawer(height: number): number {
-  return Math.max(DRAWER_HEIGHT.min, Math.min(DRAWER_HEIGHT.max, height));
-}
+export const drawerRoom = (columnHeight: number): number => columnHeight - BOARD_ABOVE_DRAWER;
