@@ -96,7 +96,7 @@
   --backdrop: rgba(11, 16, 34, 0.32);
   --shadow: rgba(17, 19, 21, 0.22);
   --lamp-line: #d9a514;
-  --lamp-glow: rgba(242, 194, 48, 0.55);
+  --lamp-glow: rgba(242, 194, 48, 0.6);
 }
 
 :root[data-theme="dark"] {
@@ -1134,7 +1134,7 @@ button.column-name:focus-visible,
   border-color: var(--lamp-line);
   box-shadow:
     0 0 0 1px var(--lamp-line),
-    0 0 14px var(--lamp-glow),
+    0 0 16px 2px var(--lamp-glow),
     0 2px 6px var(--card-shadow);
 }
 
