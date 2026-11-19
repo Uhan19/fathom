@@ -720,6 +720,10 @@ code,
   cursor: text;
 }
 
+.column-name.unnamed {
+  color: var(--strip-muted);
+}
+
 button.column-name:hover {
   border-color: rgba(127, 135, 145, 0.6);
 }

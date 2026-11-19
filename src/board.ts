@@ -114,6 +114,10 @@ export function headTemplate(columns: Column[]): string {
   return `${columnTemplate(columns)} ${ADD_COLUMN_WIDTH}px`;
 }
 
+export function isUnnamed(column: Pick<Column, "name">): boolean {
+  return column.name.trim() === "";
+}
+
 export function renamedColumn(column: Pick<Column, "project" | "name">, input: string): string | null {
   const name = input.trim() || column.project;
   return name === null || name === column.name ? null : name;

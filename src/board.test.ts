@@ -256,4 +256,10 @@ describe("renaming a column", () => {
     expect(renamedColumn(added, "  ")).toBeNull();
     expect(renamedColumn(added, " Next week ")).toBe("Next week");
   });
+
+  it("names a column that has no name", () => {
+    expect(renamedColumn({ project: "", name: "" }, " Odd jobs ")).toBe("Odd jobs");
+    expect(renamedColumn({ project: null, name: "  " }, "Odd jobs")).toBe("Odd jobs");
+    expect(renamedColumn({ project: "", name: "" }, "  ")).toBeNull();
+  });
 });
