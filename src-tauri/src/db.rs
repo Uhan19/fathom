@@ -15,12 +15,13 @@ pub const FILE_NAME: &str = "fathom.sqlite";
 pub const DEFAULT_COLUMN_WIDTH: i64 = 240;
 pub const COLUMN_WIDTHS: std::ops::RangeInclusive<i64> = 180..=640;
 
-const MIGRATIONS: [&str; 5] = [
+const MIGRATIONS: [&str; 6] = [
     include_str!("../migrations/0001_init.sql"),
     include_str!("../migrations/0002_card_moves.sql"),
     include_str!("../migrations/0003_column_ids.sql"),
     include_str!("../migrations/0004_backlog.sql"),
     include_str!("../migrations/0005_shell_tabs.sql"),
+    include_str!("../migrations/0006_collapsed_rows.sql"),
 ];
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const COLUMN_FIELDS: &str = "id, project, name, position, width, collapsed";
@@ -41,9 +42,10 @@ pub struct Column {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RowName {
+pub struct RowView {
     pub row: Row,
     pub name: String,
+    pub collapsed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -416,7 +418,7 @@ impl Db {
             .collect())
     }
 
-    pub fn row_names(&self) -> Result<Vec<RowName>, String> {
+    pub fn rows(&self) -> Result<Vec<RowView>, String> {
         let mut stmt = self
             .conn
             .prepare("SELECT row_key, name FROM row_names")
@@ -426,16 +428,39 @@ impl Db {
             .map_err(err)?
             .collect::<Result<_, _>>()
             .map_err(err)?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT row_key FROM collapsed_rows")
+            .map_err(err)?;
+        let collapsed: BTreeSet<String> = stmt
+            .query_map([], |r| r.get(0))
+            .map_err(err)?
+            .collect::<Result<_, _>>()
+            .map_err(err)?;
         Ok(Row::ALL
             .iter()
-            .map(|row| RowName {
+            .map(|row| RowView {
                 row: *row,
                 name: stored
                     .get(row.key())
                     .cloned()
                     .unwrap_or_else(|| row.default_name().to_string()),
+                collapsed: collapsed.contains(row.key()),
             })
             .collect())
+    }
+
+    pub fn set_rows_collapsed(&self, rows: &[Row], collapsed: bool) -> Result<(), String> {
+        let sql = if collapsed {
+            "INSERT OR IGNORE INTO collapsed_rows (row_key) VALUES (?1)"
+        } else {
+            "DELETE FROM collapsed_rows WHERE row_key = ?1"
+        };
+        let tx = self.conn.unchecked_transaction().map_err(err)?;
+        for row in rows {
+            tx.execute(sql, params![row.key()]).map_err(err)?;
+        }
+        tx.commit().map_err(err)
     }
 
     pub fn set_row_name(&self, row: Row, name: &str) -> Result<(), String> {
@@ -1347,11 +1372,59 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let db = Db::open(dir.path()).unwrap();
         db.set_row_name(Row::Deep, "Parked").unwrap();
-        let names = db.row_names().unwrap();
+        let names = db.rows().unwrap();
         assert_eq!(names[0].name, "Surface");
         assert_eq!(names[2].name, "Parked");
         db.set_row_name(Row::Deep, "  ").unwrap();
-        assert_eq!(db.row_names().unwrap()[2].name, "Deep");
+        assert_eq!(db.rows().unwrap()[2].name, "Deep");
+    }
+
+    #[test]
+    fn the_collapsed_rows_migration_upgrades_a_version_five_store() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let conn = Connection::open(dir.path().join(FILE_NAME)).unwrap();
+            conn.execute_batch(&MIGRATIONS[..5].concat()).unwrap();
+            conn.pragma_update(None, "user_version", 5).unwrap();
+            conn.execute(
+                "INSERT INTO row_names (row_key, name) VALUES ('deep', 'Parked')",
+                [],
+            )
+            .unwrap();
+        }
+        let db = Db::open(dir.path()).unwrap();
+        assert_eq!(db.schema_version().unwrap(), MIGRATIONS.len());
+        let rows = db.rows().unwrap();
+        assert_eq!(rows[2].name, "Parked");
+        assert!(rows.iter().all(|r| !r.collapsed));
+    }
+
+    #[test]
+    fn rows_collapse_and_expand_and_keep_their_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let collapsed = |db: &Db| -> Vec<Row> {
+            db.rows()
+                .unwrap()
+                .into_iter()
+                .filter(|r| r.collapsed)
+                .map(|r| r.row)
+                .collect()
+        };
+        {
+            let db = Db::open(dir.path()).unwrap();
+            assert!(collapsed(&db).is_empty());
+            db.set_row_name(Row::Deep, "Parked").unwrap();
+            db.set_rows_collapsed(&[Row::Deep, Row::Landed, Row::Deep], true)
+                .unwrap();
+            assert_eq!(collapsed(&db), [Row::Deep, Row::Landed]);
+        }
+        let reopened = Db::open(dir.path()).unwrap();
+        assert_eq!(collapsed(&reopened), [Row::Deep, Row::Landed]);
+        assert_eq!(reopened.rows().unwrap()[2].name, "Parked");
+        reopened
+            .set_rows_collapsed(&[Row::Landed, Row::Surface], false)
+            .unwrap();
+        assert_eq!(collapsed(&reopened), [Row::Deep]);
     }
 
     #[test]

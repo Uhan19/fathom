@@ -1,7 +1,7 @@
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import type { AgentKey } from "../agents";
-import { ROW_ORDER, type BoardView, type Card, type CardPlace, type Column, type HelperStatus, type Layout, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type Settings, type ShellTab, type Terminal, type WindowChange } from "../api";
+import { ROW_ORDER, type AgentFilter, type BoardView, type Card, type CardPlace, type Column, type HelperStatus, type Layout, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type Settings, type ShellTab, type Terminal, type WindowChange } from "../api";
 import { presetFonts } from "../appearance";
 import { cellCount, groupCards, type Cells } from "../board";
 import { moveTo } from "../columnOrder";
@@ -92,6 +92,7 @@ let settings: Settings = {
   chatWidth: Number(params.get("chatwidth")) || 600,
   detailWidth: 460,
   projectFilter: params.get("filter")?.split(",").filter(Boolean) ?? [],
+  agentFilter: (params.get("agents") as AgentFilter | null) ?? "all",
   helperStarted: bosun !== "notstarted",
   shortcuts: params.get("shortcuts") === "custom" ? customShortcuts() : defaultShortcuts(mac),
 };
@@ -109,6 +110,7 @@ const INSTALLED_FONTS = ["American Typewriter", "Andale Mono", "Avenir Next", "C
 let columns: Column[] = (backlog ? FIXTURE_BACKLOG_COLUMNS : unfiled ? FIXTURE_UNFILED_COLUMNS : FIXTURE_COLUMNS).map((c) => ({ ...c }));
 let nextColumnId = columns.length + 1;
 const rowNames = new Map<string, string>();
+const collapsedRows = new Set(params.get("rows")?.split(",").filter(Boolean) ?? []);
 let cards: Card[] = empty ? [] : backlog ? FIXTURE_BACKLOG_CARDS : unfiled ? FIXTURE_UNFILED_CARDS : FIXTURE_CARDS;
 let places: CardPlace[] = [];
 let requests: MoveRequest[] = empty ? [] : (backlog ? FIXTURE_BACKLOG_REQUESTS : FIXTURE_REQUESTS).map((r) => ({ ...r }));
@@ -255,9 +257,10 @@ const shellOutput = (terminal: string) => {
 
 const view = (fromCache: boolean): BoardView => ({
   columns: empty ? [] : columns,
-  rowNames: ["surface", "shallows", "deep", "seabed", "landed"].map((row) => ({
-    row: row as BoardView["rowNames"][number]["row"],
+  rows: ROW_ORDER.map((row) => ({
+    row,
     name: rowNames.get(row) ?? row[0].toUpperCase() + row.slice(1),
+    collapsed: collapsedRows.has(row),
   })),
   cards,
   takenAtMs: Date.now(),
@@ -307,6 +310,9 @@ mockIPC(
       case "set_row_name":
         rowNames.set(args.row as string, args.name as string);
         return null;
+      case "set_rows_collapsed":
+        (args.rows as RowKey[]).forEach((row) => (args.collapsed ? collapsedRows.add(row) : collapsedRows.delete(row)));
+        return null;
       case "place_card":
         placeCard(args.placement as Placement, (args.chatTerminal as string | null) ?? null);
         return overlay();
@@ -330,6 +336,9 @@ mockIPC(
         return settings;
       case "show_all_projects":
         settings = { ...settings, projectFilter: [] };
+        return settings;
+      case "set_agent_filter":
+        settings = { ...settings, agentFilter: args.filter as AgentFilter };
         return settings;
       case "find_helper":
         return helperStatus.terminal ? FIXTURE_HELPER : null;

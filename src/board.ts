@@ -99,6 +99,19 @@ export function insertAt(ids: string[], id: string, index: number): string[] {
   return [...rest.slice(0, at), id, ...rest.slice(at)];
 }
 
+export function insertAmongShown(all: string[], shown: string[], id: string, index: number): string[] {
+  const rest = all.filter((other) => other !== id);
+  const visible = shown.filter((other) => other !== id);
+  const at = index < visible.length ? rest.indexOf(visible[Math.max(0, index)]) : rest.length;
+  return insertAt(rest, id, at);
+}
+
+export function rowCount(cells: Cells, row: RowKey): number {
+  let n = 0;
+  for (const rows of cells.values()) n += rows.get(row)?.length ?? 0;
+  return n;
+}
+
 export function rowCounts(cards: Card[]): Record<RowKey, number> {
   const counts = Object.fromEntries(ROW_ORDER.map((row) => [row, 0])) as Record<RowKey, number>;
   for (const card of cards) counts[card.row] += 1;

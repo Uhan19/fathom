@@ -46,9 +46,10 @@ export interface Column {
   collapsed: boolean;
 }
 
-export interface RowName {
+export interface RowView {
   row: RowKey;
   name: string;
+  collapsed: boolean;
 }
 
 export type MoveStatus = "sending" | "asked" | "failed" | "answered" | "landed" | "superseded" | "dismissed";
@@ -104,9 +105,11 @@ export interface Worker {
 
 export type SourceKind = "firstmate" | "fathom";
 
+export type AgentFilter = "all" | "withAgent" | "withActiveAgent";
+
 export interface BoardView extends Overlay {
   columns: Column[];
-  rowNames: RowName[];
+  rows: RowView[];
   cards: Card[];
   takenAtMs: number | null;
   home: string;
@@ -133,6 +136,7 @@ export interface Settings {
   chatWidth: number;
   detailWidth: number;
   projectFilter: string[];
+  agentFilter: AgentFilter;
   helperStarted: boolean;
   shortcuts: Shortcuts;
 }
@@ -224,6 +228,7 @@ export const api = {
   addColumn: (name: string) => invoke<Column[]>("add_column", { name }),
   deleteColumn: (id: number, moveTo?: MoveTo) => invoke<Layout>("delete_column", { id, moveTo: moveTo ?? null }),
   setRowName: (row: RowKey, name: string) => invoke<void>("set_row_name", { row, name }),
+  setRowsCollapsed: (rows: RowKey[], collapsed: boolean) => invoke<void>("set_rows_collapsed", { rows, collapsed }),
   placeCard: (placement: Placement, chatTerminal: string | null) =>
     invoke<Overlay>("place_card", { placement, chatTerminal }),
   resendRequest: (requestId: string) => invoke<Overlay>("resend_request", { requestId }),
@@ -233,6 +238,7 @@ export const api = {
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
   changeWindow: (change: WindowChange) => invoke<Settings>("change_window", { change }),
   showAllProjects: () => invoke<Settings>("show_all_projects"),
+  setAgentFilter: (filter: AgentFilter) => invoke<Settings>("set_agent_filter", { filter }),
   dataInfo: () => invoke<DataInfo>("data_info"),
   installedFonts: () => invoke<string[]>("installed_fonts"),
   exportData: (directory: string) => invoke<string>("export_data", { directory }),

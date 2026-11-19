@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::db::backlog::Task;
-use crate::db::{CardPlace, Column, Db, MoveRequest, RowName, Snapshot};
+use crate::db::{CardPlace, Column, Db, MoveRequest, RowView, Snapshot};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -12,7 +12,7 @@ struct Everything {
     exported_at_ms: i64,
     columns: Vec<Column>,
     deleted_columns: Vec<Column>,
-    row_names: Vec<RowName>,
+    row_names: Vec<RowView>,
     settings: Vec<(String, String)>,
     snapshot: Option<Snapshot>,
     card_places: Vec<CardPlace>,
@@ -30,7 +30,7 @@ pub fn export(db: &Db, parent: &Path, now_ms: i64) -> Result<PathBuf, String> {
         exported_at_ms: now_ms,
         columns: db.columns()?,
         deleted_columns: db.deleted_columns()?,
-        row_names: db.row_names()?,
+        row_names: db.rows()?,
         settings,
         snapshot: db.snapshot()?,
         card_places: db.places()?,

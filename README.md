@@ -54,6 +54,7 @@ Add `?kitty` to have the mocked terminal turn on kitty keyboard mode, so Shift+E
 Add `?backlog` to see a board of Fathom's own backlog, with one pending and one declined board request.
 Add `?late` to have a card arrive in a column at the moment you confirm deleting it, or `?deletefail` to see a delete fail.
 Add `?theme=dark` to start in the dark theme, `?nochat` to start with the chat panel closed, and `?filter=harbor-web,keel-cli` to start with a project filter.
+Add `?agents=withAgent` or `?agents=withActiveAgent` to start with that agent filter, and `?rows=deep,landed` to start with those rows collapsed.
 Add `?bosun=` with `notstarted`, `dormant`, `starting`, `ready`, `working`, `asking`, `signedout`, `missing`, `failed` or `stopped` to see that Bosun state; open the drawer with the Bosun button.
 
 ## Run the checks
@@ -146,8 +147,8 @@ The database holds Fathom's own backlog and what Fathom adds on top of either ta
 
 - backlog tasks (generated id, title, detail, project, row, created and updated times), used when no Firstmate home is set,
 - columns (generated id, project or none for an added column, name, order, width, collapsed, deleted),
-- row names,
-- settings, including the theme, whether the chat panel is open, the panel widths and the project filter,
+- row names and which rows are collapsed,
+- settings, including the theme, whether the chat panel is open, the panel widths, the project filter and the agent filter,
 - card places: a card's order within its cell and the column the user put it in (by column id),
 - move requests (board requests) and what became of them,
 - a disposable snapshot of the last board, used to paint the next launch at once.
@@ -197,6 +198,9 @@ With the home left empty it reads its own backlog; see [Fathom's own backlog](#f
 
 - A finished scout (a task of kind `scout`) also lands, and its card carries a "Reported" tag.
 - Columns are seeded one per project the first time a project appears; collapse and width are saved per column.
+- Clicking a row's name collapses the row to a thin band that still shows its name and how many cards it holds; clicking it again expands the row.
+  Which rows are collapsed is saved, and the last open row stretches to the bottom of the board.
+  "Expand all" in the header opens every folded column and collapsed row.
 - Every column has a generated numeric id, so an added column can never clash with a project name.
 - Clicking a column's name in its header renames the column in Fathom.
   Enter or a click elsewhere saves, Escape cancels, and an empty name returns to the project's name.
@@ -265,8 +269,8 @@ The tools write through the same code as the window's own controls and never cha
 
 | Tool | What it does |
 | --- | --- |
-| `get_board_layout` | Reads the columns in order, the row names, the project names and the project filter. |
-| `get_settings` | Reads the theme, fonts and sizes, panel widths, the project filter and the connection settings. |
+| `get_board_layout` | Reads the columns in order, the rows with their names and whether each is collapsed, the project names, the project filter and the agent filter. |
+| `get_settings` | Reads the theme, fonts and sizes, panel widths, the project filter, the agent filter and the connection settings. |
 | `list_fonts` | Lists the font choices for the chat and the board, their size ranges and the installed font families. |
 | `rename_column` | Renames a column. |
 | `move_column` | Moves a column to a new position. |
@@ -274,8 +278,10 @@ The tools write through the same code as the window's own controls and never cha
 | `add_column` | Adds an empty custom column at the right end. |
 | `delete_column` | Deletes a column; one that still has cards needs `move_to_column`. |
 | `rename_row` | Renames a row, or brings back its default name. |
+| `set_row_view` | Collapses one or more rows to a thin band, or expands them again. |
 | `show_projects` | Shows only the named projects' columns. |
 | `show_all_projects` | Shows every column again. |
+| `set_agent_filter` | Shows every card (`all`), only cards with an agent (`withAgent`), or only cards with an active agent (`withActiveAgent`). |
 | `set_theme` | Switches between the light and dark theme. |
 | `set_fonts` | Changes the chat and board fonts and sizes. |
 | `set_panels` | Opens or closes the chat panel and changes the chat and card detail widths. |
@@ -332,6 +338,8 @@ Fathom asks your login shell for its PATH once at startup and uses it to find he
 
 - Drag a card by pressing on it and moving at least a few pixels; a plain click still opens the card.
   Escape cancels a drag, and the board scrolls when the pointer nears its edge.
+- Dropping a card on a collapsed row puts it at the end of that row in the column under the pointer, the same as dropping on a folded column; the row stays collapsed.
+- While the agent filter hides some cards, a dropped card lands beside the shown card it was dropped next to, and the hidden cards keep their places.
 - Moving a card within its cell or to another column only changes Fathom's own layout, kept in the database.
   Firstmate's task list is not touched.
 - Dropping a card in another row sends one note to Firstmate's inbox:
@@ -380,7 +388,7 @@ Fathom asks your login shell for its PATH once at startup and uses it to find he
 
 The "Dark mode" button in the header switches the panels, cards and terminals to dark colors, and "Light mode" switches back.
 The board rows keep their light bands in both themes.
-Fathom remembers the theme, whether the chat panel is open, and the chat and card panel widths across launches.
+Fathom remembers the theme, whether the chat panel is open, the chat and card panel widths, which rows are collapsed and the agent filter across launches.
 The selected card and the crewmate view you are watching are not remembered.
 
 ## Showing only some projects
@@ -390,9 +398,26 @@ A strip above the board names them, and its "Show all" button brings every colum
 The counts in the header keep counting every project.
 "Add column" is hidden while the filter is on, so a new column never lands out of sight.
 
+## Showing only cards with an agent
+
+The All, Agent and Active switch in the header chooses which cards the board shows:
+
+- All shows every card.
+- Agent shows only the cards that show a [sailor](#crewmate-indicator), idle or working.
+- Active shows only the cards whose sailor's visor glows, because herdr-core reports the terminal as working.
+
+Both kinds of board use the sailor's own signals, so the filter never disagrees with the indicator.
+Cards come and go as agents start, stop and change status, from the same events that move the sailors.
+While the filter is on, a strip above the board says so and its "Show every card" button turns it off.
+It combines with the project filter, and the strip then names both.
+Column totals and the counts on collapsed rows count only the cards the filters show, while the counts in the header keep counting every card.
+When no card matches, the board says so and offers "Show every card".
+Fathom remembers the filter across launches, and [Bosun](#bosun) can set it too.
+
 ## Bosun
 
-Bosun is a helper you ask in plain words to change Fathom: columns, rows, which projects show, the theme, fonts and panels.
+Bosun is a helper you ask in plain words to change Fathom: columns, rows, which projects and cards show, the theme, fonts and panels.
+Asked to show only some rows, such as only what is in progress, it collapses the other rows; asked for only the cards with an agent or an active agent, it sets the agent filter; asked to show everything again, it expands every row and turns both filters off.
 It is Claude Code running in a terminal Fathom opens, with only the [helper tools](#the-helper-tools).
 Fathom never types into Bosun's terminal and never reads answers from it; Bosun changes Fathom only through the tools.
 

@@ -13,7 +13,7 @@ use crate::fonts;
 use crate::herdr::{Terminal, View};
 use crate::launch::{Agent, LaunchError};
 use crate::moves::Placement;
-use crate::settings::{Settings, WindowChange};
+use crate::settings::{AgentFilter, Settings, WindowChange};
 use crate::shell_tabs::LauncherFolders;
 use crate::source::Source;
 use crate::state::{
@@ -102,6 +102,15 @@ pub fn set_row_name(state: AppStateRef, row: Row, name: String) -> Result<(), St
 }
 
 #[tauri::command]
+pub fn set_rows_collapsed(
+    state: AppStateRef,
+    rows: Vec<Row>,
+    collapsed: bool,
+) -> Result<(), String> {
+    control::set_row_view(&state.db.lock().unwrap(), &rows, collapsed).map(|_| ())
+}
+
+#[tauri::command]
 pub async fn place_card(
     state: AppStateRef<'_>,
     placement: Placement,
@@ -145,6 +154,11 @@ pub fn change_window(state: AppStateRef, change: WindowChange) -> Result<Setting
 #[tauri::command]
 pub fn show_all_projects(state: AppStateRef) -> Result<Settings, String> {
     state.show_all_projects()
+}
+
+#[tauri::command]
+pub fn set_agent_filter(state: AppStateRef, filter: AgentFilter) -> Result<Settings, String> {
+    state.set_agent_filter(filter)
 }
 
 #[tauri::command]

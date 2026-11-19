@@ -21,6 +21,7 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
   chatWidth: 600,
   detailWidth: 460,
   projectFilter: [],
+  agentFilter: "all",
   helperStarted: false,
   shortcuts: defaultShortcuts(true),
   ...over,
@@ -30,7 +31,7 @@ describe("withLatestWindow", () => {
   it("keeps what Bosun wrote while the settings dialog was open", () => {
     const opened = settings();
     const draft = { ...opened, chatFontSize: 15 };
-    const latest = settings({ theme: "dark", projectFilter: ["keel-cli"], chatOpen: false, chatWidth: 720, detailWidth: 500, helperStarted: true });
+    const latest = settings({ theme: "dark", projectFilter: ["keel-cli"], agentFilter: "withActiveAgent", chatOpen: false, chatWidth: 720, detailWidth: 500, helperStarted: true });
     expect(withLatestWindow(draft, latest)).toEqual({ ...latest, chatFontSize: 15 });
   });
 
