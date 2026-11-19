@@ -289,15 +289,19 @@ export default function App() {
       <header className="top">
         <Brand />
         <span className="count">
-          <span className="count-label">At the surface</span>
+          <span className="count-label">
+            <span className="count-lead">At the </span>surface
+          </span>
           <b className="count-surface">{counts.surface}</b>
         </span>
         <span className="count">
-          <span className="count-label">In the shallows</span>
+          <span className="count-label">
+            <span className="count-lead">In the </span>shallows
+          </span>
           <b className="count-shallows">{counts.shallows}</b>
         </span>
         <span className={`herdr-dot${herdr.connected ? " up" : ""}`} title={herdr.connected ? "herdr-core connected" : herdr.message}>
-          herdr-core
+          <span className="herdr-label">herdr-core</span>
         </span>
         <AgentFilterToggle filter={agentFilter} disabled={!settings} onChange={changeAgentFilter} />
         {anyCollapsed && (
