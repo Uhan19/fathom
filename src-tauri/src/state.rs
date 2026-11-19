@@ -465,14 +465,8 @@ impl AppState {
         if !self.herdr_status.lock().unwrap().connected {
             return vec![];
         }
-        let terminals = self.herdr.terminals();
-        match self.source() {
-            Source::Firstmate { home } => {
-                let session = self.settings.lock().unwrap().hc_session.clone();
-                workers::live_workers(&workers::read_bindings(&home), &session, &terminals)
-            }
-            Source::Backlog => workers::task_workers(&terminals),
-        }
+        let session = self.settings.lock().unwrap().hc_session.clone();
+        workers::board_workers(&self.source(), &session, &self.herdr.terminals())
     }
 
     pub fn delete_column(&self, id: i64, move_to: Option<MoveTo>) -> Result<Layout, String> {

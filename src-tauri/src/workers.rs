@@ -5,6 +5,7 @@ use serde::Serialize;
 
 use crate::herdr::Terminal;
 use crate::launch::TASK_KEY;
+use crate::source::Source;
 
 const META_EXTENSION: &str = "meta";
 const HC_BACKEND: &str = "hc";
@@ -18,6 +19,25 @@ const REQUIRED_KEYS: [&str; 3] = ["backend", "hc_session", "hc_terminal"];
 pub enum WorkerStatus {
     Working,
     Idle,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentState {
+    #[serde(rename = "none")]
+    NoAgent,
+    Inactive,
+    Active,
+}
+
+impl AgentState {
+    pub fn has_agent(self) -> bool {
+        self != AgentState::NoAgent
+    }
+
+    pub fn is_active(self) -> bool {
+        self == AgentState::Active
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -93,6 +113,30 @@ fn is_atom(value: &str) -> bool {
         && value
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || "._@%+-".contains(c))
+}
+
+pub fn board_workers(
+    source: &Source,
+    session: &str,
+    terminals: &BTreeMap<String, Terminal>,
+) -> Vec<Worker> {
+    match source {
+        Source::Firstmate { home } => live_workers(&read_bindings(home), session, terminals),
+        Source::Backlog => task_workers(terminals),
+    }
+}
+
+pub fn agent_states(workers: &[Worker]) -> HashMap<String, AgentState> {
+    let mut states: HashMap<String, AgentState> = HashMap::new();
+    for worker in workers {
+        let state = match worker.status {
+            WorkerStatus::Working => AgentState::Active,
+            WorkerStatus::Idle => AgentState::Inactive,
+        };
+        let known = states.entry(worker.task_id.clone()).or_insert(state);
+        *known = (*known).max(state);
+    }
+    states
 }
 
 pub fn live_workers(
@@ -275,6 +319,25 @@ mod tests {
                 ("9".into(), "t3".into(), WorkerStatus::Idle),
             ]
         );
+    }
+
+    #[test]
+    fn a_working_worker_makes_the_agent_active_and_an_idle_one_inactive() {
+        let worker = |task: &str, status: WorkerStatus| Worker {
+            task_id: task.into(),
+            terminal: "t1".into(),
+            status,
+        };
+        let states = agent_states(&[
+            worker("7", WorkerStatus::Idle),
+            worker("7", WorkerStatus::Working),
+            worker("8", WorkerStatus::Idle),
+        ]);
+        assert_eq!(states["7"], AgentState::Active);
+        assert_eq!(states["8"], AgentState::Inactive);
+        assert!(!states.contains_key("9"));
+        assert!(AgentState::Inactive.has_agent());
+        assert!(!AgentState::NoAgent.has_agent());
     }
 
     #[test]
