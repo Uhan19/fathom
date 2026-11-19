@@ -2216,6 +2216,103 @@ button.sailor:focus-visible {
   color: var(--panel-ink);
 }
 
+.shortcuts {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shortcut-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 4px;
+}
+
+.shortcut-name {
+  font-size: calc(13px * var(--board-scale));
+  color: var(--panel-ink);
+}
+
+.shortcut-key {
+  min-width: 132px;
+  min-height: 30px;
+  padding: 3px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid var(--field-line);
+  border-radius: 6px;
+  background: var(--field-bg);
+  color: var(--field-ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.shortcut-key:hover {
+  border-color: var(--azure);
+}
+
+.shortcut-key kbd {
+  min-width: 22px;
+  padding: 2px 6px;
+  border: 1px solid var(--ctrl-line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--chip-bg);
+  color: var(--panel-ink);
+  font-family: var(--body-font);
+  font-size: calc(12px * var(--board-scale));
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.shortcut-empty {
+  font-size: calc(12px * var(--board-scale));
+  color: var(--field-placeholder);
+}
+
+.shortcut-key.recording {
+  border-color: var(--azure);
+  box-shadow: 0 0 0 3px rgba(70, 175, 255, 0.3);
+}
+
+.shortcut-key.recording .shortcut-empty {
+  color: var(--link);
+  font-weight: 600;
+}
+
+.shortcut-key.refused {
+  border-color: var(--error-ink);
+  box-shadow: 0 0 0 3px rgba(220, 60, 50, 0.22);
+}
+
+.shortcut-key.refused kbd {
+  border-color: var(--error-ink);
+  color: var(--error-ink);
+}
+
+.shortcut-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.shortcut-tools .unused {
+  visibility: hidden;
+}
+
+.shortcut-note {
+  grid-column: 1 / -1;
+  justify-self: end;
+  font-size: calc(12px * var(--board-scale));
+  color: var(--muted);
+}
+
 .row-names {
   align-self: stretch;
   display: grid;

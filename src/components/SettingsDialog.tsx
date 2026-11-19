@@ -15,10 +15,12 @@ import {
 import { formatBytes } from "../board";
 import { FontPicker, useInstalledFonts } from "./FontPicker";
 import { Close } from "./Icons";
+import { ShortcutsSection } from "./ShortcutsSection";
 import { withLatestWindow } from "../windowSettings";
 
 interface SettingsDialogProps {
   settings: Settings;
+  mac: boolean;
   rowNames: Record<RowKey, string>;
   onPreview: (appearance: Appearance) => void;
   onSaved: (settings: Settings) => void;
@@ -33,7 +35,7 @@ const DEFAULT_ROW_NAMES: Record<RowKey, string> = {
   landed: "Landed",
 };
 
-export function SettingsDialog({ settings, rowNames, onPreview, onSaved, onClose }: SettingsDialogProps) {
+export function SettingsDialog({ settings, mac, rowNames, onPreview, onSaved, onClose }: SettingsDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [draft, setDraft] = useState(settings);
   const [names, setNames] = useState(rowNames);
@@ -180,6 +182,11 @@ export function SettingsDialog({ settings, rowNames, onPreview, onSaved, onClose
             {fontRow("chat")}
             {fontRow("board")}
             <small className="field-note">Changes show at once; Save keeps them, Cancel puts them back.</small>
+          </fieldset>
+          <fieldset>
+            <legend>Shortcuts</legend>
+            <ShortcutsSection shortcuts={draft.shortcuts} mac={mac} onChange={(shortcuts) => setDraft({ ...draft, shortcuts })} />
+            <small className="field-note">Click a shortcut and press the new keys. They work everywhere in Fathom, terminals included.</small>
           </fieldset>
           <fieldset>
             <legend>Row names</legend>

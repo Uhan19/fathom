@@ -32,6 +32,7 @@ const KEY_DETAIL_WIDTH: &str = "detailWidth";
 const KEY_PROJECT_FILTER: &str = "projectFilter";
 const KEY_HELPER_STARTED: &str = "helperStarted";
 const KEY_HELPER_ASKING: &str = "helperAsking";
+const KEY_SHORTCUTS: &str = "shortcuts";
 
 #[cfg(target_os = "macos")]
 const PLATFORM: &str = "macos";
@@ -42,6 +43,9 @@ const DEFAULT_CHAT_FONT_SIZE: u16 = 13;
 const DEFAULT_BOARD_FONT_SIZE: u16 = 14;
 pub const ADDED_FONT_PREFIX: &str = "family:";
 const FONT_PRESETS: &str = include_str!("../../src/fontPresets.json");
+const SHORTCUT_DEFAULTS: &str = include_str!("../../src/shortcutDefaults.json");
+const SHORTCUT_MODIFIERS: [&str; 4] = ["Ctrl", "Alt", "Shift", "Meta"];
+const COMMAND_MODIFIERS: [&str; 3] = ["Ctrl", "Alt", "Meta"];
 
 pub const CHAT_WIDTH: Span = Span {
     default: 600,
@@ -95,6 +99,33 @@ pub struct Settings {
     pub project_filter: Vec<String>,
     #[serde(default)]
     pub helper_started: bool,
+    pub shortcuts: Shortcuts,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Shortcuts {
+    pub toggle_chat: String,
+    pub toggle_theme: String,
+    pub open_settings: String,
+}
+
+impl Shortcuts {
+    fn named(&self) -> [(&'static str, &String); 3] {
+        [
+            ("show or hide the chat", &self.toggle_chat),
+            ("switch light and dark", &self.toggle_theme),
+            ("open Settings", &self.open_settings),
+        ]
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredShortcuts {
+    toggle_chat: Option<String>,
+    toggle_theme: Option<String>,
+    open_settings: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -131,6 +162,48 @@ impl<T> SurfaceOf<T> {
             Surface::Board => &self.board,
         }
     }
+}
+
+static SHORTCUTS: LazyLock<std::collections::HashMap<String, Shortcuts>> = LazyLock::new(|| {
+    serde_json::from_str(SHORTCUT_DEFAULTS).expect("shortcut defaults are valid JSON")
+});
+
+pub fn default_shortcuts() -> &'static Shortcuts {
+    &SHORTCUTS[PLATFORM]
+}
+
+pub fn is_shortcut(combo: &str) -> bool {
+    let mut tokens: Vec<&str> = combo.split('+').collect();
+    let Some(key) = tokens.pop() else {
+        return false;
+    };
+    let in_order = SHORTCUT_MODIFIERS
+        .iter()
+        .filter(|m| tokens.contains(m))
+        .eq(tokens.iter());
+    !key.is_empty()
+        && !SHORTCUT_MODIFIERS.contains(&key)
+        && in_order
+        && tokens.iter().any(|t| COMMAND_MODIFIERS.contains(t))
+}
+
+fn read_shortcuts(stored: Option<&String>) -> Shortcuts {
+    let defaults = default_shortcuts();
+    let stored = stored.and_then(|v| serde_json::from_str::<StoredShortcuts>(v).ok());
+    let pick = |value: Option<String>, fallback: &String| {
+        value
+            .map(|v| v.trim().to_string())
+            .filter(|v| v.is_empty() || is_shortcut(v))
+            .unwrap_or_else(|| fallback.clone())
+    };
+    stored
+        .map(|s| Shortcuts {
+            toggle_chat: pick(s.toggle_chat, &defaults.toggle_chat),
+            toggle_theme: pick(s.toggle_theme, &defaults.toggle_theme),
+            open_settings: pick(s.open_settings, &defaults.open_settings),
+        })
+        .filter(|s| check_shortcuts(s).is_ok())
+        .unwrap_or_else(|| defaults.clone())
 }
 
 static FONTS: LazyLock<FontTable> =
@@ -238,12 +311,14 @@ pub fn load(db: &Db) -> Result<Settings, String> {
         detail_width: width(KEY_DETAIL_WIDTH, &DETAIL_WIDTH),
         project_filter: list(KEY_PROJECT_FILTER),
         helper_started: flag(KEY_HELPER_STARTED, false),
+        shortcuts: read_shortcuts(stored.get(KEY_SHORTCUTS)),
     })
 }
 
 pub fn store(db: &Db, next: &Settings) -> Result<Settings, String> {
     check(next)?;
     let theme = serde_json::to_value(next.theme).map_err(|e| e.to_string())?;
+    let shortcuts = serde_json::to_string(&next.shortcuts).map_err(|e| e.to_string())?;
     let pairs = [
         (KEY_HOME, next.home.trim().to_string()),
         (KEY_LABEL, next.terminal_label.trim().to_string()),
@@ -261,6 +336,7 @@ pub fn store(db: &Db, next: &Settings) -> Result<Settings, String> {
         (KEY_CHAT_WIDTH, next.chat_width.to_string()),
         (KEY_DETAIL_WIDTH, next.detail_width.to_string()),
         (KEY_PROJECT_FILTER, names_json(&next.project_filter)),
+        (KEY_SHORTCUTS, shortcuts),
     ];
     db.set_settings(&pairs)?;
     load(db)
@@ -309,6 +385,26 @@ fn check(next: &Settings) -> Result<(), String> {
                 "the {name} must be between {} and {} pixels",
                 span.range.start(),
                 span.range.end()
+            ));
+        }
+    }
+    check_shortcuts(&next.shortcuts)
+}
+
+fn check_shortcuts(shortcuts: &Shortcuts) -> Result<(), String> {
+    let named = shortcuts.named();
+    for (i, (name, combo)) in named.iter().enumerate() {
+        if combo.is_empty() {
+            continue;
+        }
+        if !is_shortcut(combo) {
+            return Err(format!(
+                "the shortcut to {name} needs Ctrl, Alt or Meta and one key"
+            ));
+        }
+        if let Some((other, _)) = named[..i].iter().find(|(_, c)| c == combo) {
+            return Err(format!(
+                "the shortcuts to {other} and {name} use the same keys"
             ));
         }
     }
@@ -597,6 +693,112 @@ mod tests {
             set_font(&mut settings, Surface::Chat, "Comic Mono", installed),
             Err("no font named \"Comic Mono\" is installed".into())
         );
+    }
+
+    #[test]
+    fn shortcuts_start_at_the_platform_defaults_and_are_remembered() {
+        let (_dir, db) = fresh();
+        let first = load(&db).unwrap();
+        assert_eq!(&first.shortcuts, default_shortcuts());
+        #[cfg(target_os = "macos")]
+        assert_eq!(first.shortcuts.open_settings, "Meta+Comma");
+        #[cfg(not(target_os = "macos"))]
+        assert_eq!(first.shortcuts.open_settings, "Ctrl+Comma");
+
+        let saved = update(&db, |s| {
+            s.shortcuts.toggle_chat = "Alt+Meta+KeyB".into();
+            s.shortcuts.toggle_theme = String::new();
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(saved.shortcuts.toggle_chat, "Alt+Meta+KeyB");
+        assert_eq!(saved.shortcuts.toggle_theme, "");
+        assert_eq!(
+            saved.shortcuts.open_settings,
+            default_shortcuts().open_settings
+        );
+
+        let reopened = load(&Db::open_file(db.path()).unwrap()).unwrap();
+        assert_eq!(reopened.shortcuts, saved.shortcuts);
+        let window = change_window(
+            &db,
+            &WindowChange {
+                theme: Some(Theme::Dark),
+                ..WindowChange::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(window.shortcuts, saved.shortcuts);
+    }
+
+    #[test]
+    fn saving_refuses_shortcuts_without_a_modifier_or_used_twice() {
+        let (_dir, db) = fresh();
+        let bare = update(&db, |s| {
+            s.shortcuts.toggle_theme = "KeyL".into();
+            Ok(())
+        });
+        assert_eq!(
+            bare,
+            Err("the shortcut to switch light and dark needs Ctrl, Alt or Meta and one key".into())
+        );
+        let shifted = update(&db, |s| {
+            s.shortcuts.toggle_theme = "Shift+KeyL".into();
+            Ok(())
+        });
+        assert!(shifted.is_err());
+        let twice = update(&db, |s| {
+            s.shortcuts.open_settings = "Ctrl+Alt+KeyK".into();
+            s.shortcuts.toggle_chat = "Ctrl+Alt+KeyK".into();
+            Ok(())
+        });
+        assert_eq!(
+            twice,
+            Err(
+                "the shortcuts to show or hide the chat and open Settings use the same keys".into()
+            )
+        );
+        let both_cleared = update(&db, |s| {
+            s.shortcuts.toggle_chat = String::new();
+            s.shortcuts.toggle_theme = String::new();
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(both_cleared.shortcuts.toggle_chat, "");
+        assert_eq!(both_cleared.shortcuts.toggle_theme, "");
+    }
+
+    #[test]
+    fn stored_shortcuts_that_are_missing_or_malformed_fall_back_to_the_default() {
+        let (_dir, db) = fresh();
+        db.set_setting(
+            KEY_SHORTCUTS,
+            r#"{"toggleChat":"Meta+Ctrl+KeyB","toggleTheme":" Ctrl+Alt+KeyD ","extra":"Meta+KeyX"}"#,
+        )
+        .unwrap();
+        let loaded = load(&db).unwrap().shortcuts;
+        assert_eq!(loaded.toggle_chat, default_shortcuts().toggle_chat);
+        assert_eq!(loaded.toggle_theme, "Ctrl+Alt+KeyD");
+        assert_eq!(loaded.open_settings, default_shortcuts().open_settings);
+
+        let clash = format!(
+            r#"{{"toggleChat":"{}"}}"#,
+            default_shortcuts().open_settings
+        );
+        db.set_setting(KEY_SHORTCUTS, &clash).unwrap();
+        assert_eq!(&load(&db).unwrap().shortcuts, default_shortcuts());
+
+        db.set_setting(KEY_SHORTCUTS, "not json").unwrap();
+        assert_eq!(&load(&db).unwrap().shortcuts, default_shortcuts());
+    }
+
+    #[test]
+    fn both_platforms_have_valid_distinct_default_shortcuts() {
+        for platform in ["macos", "linux"] {
+            let defaults = &SHORTCUTS[platform];
+            assert!(check_shortcuts(defaults).is_ok(), "{platform}");
+            assert!(defaults.named().iter().all(|(_, c)| is_shortcut(c)));
+        }
     }
 
     #[test]

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Settings } from "./api";
+import { defaultShortcuts } from "./shortcuts";
 import { withLatestWindow } from "./windowSettings";
 
 const settings = (over: Partial<Settings> = {}): Settings => ({
@@ -21,6 +22,7 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
   detailWidth: 460,
   projectFilter: [],
   helperStarted: false,
+  shortcuts: defaultShortcuts(true),
   ...over,
 });
 
@@ -34,9 +36,10 @@ describe("withLatestWindow", () => {
 
   it("keeps the dialog's own fields over the latest ones", () => {
     const latest = settings({ boardFont: "Saira", theme: "dark" });
-    const draft = settings({ boardFont: "Inter", home: "/home/demo/other" });
+    const draft = settings({ boardFont: "Inter", home: "/home/demo/other", shortcuts: { ...defaultShortcuts(true), toggleChat: "" } });
     const saved = withLatestWindow(draft, latest);
     expect(saved.boardFont).toBe("Inter");
+    expect(saved.shortcuts.toggleChat).toBe("");
     expect(saved.home).toBe("/home/demo/other");
     expect(saved.theme).toBe("dark");
   });
