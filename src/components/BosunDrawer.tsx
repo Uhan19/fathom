@@ -3,25 +3,28 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { launchErrorText } from "../agents";
 import { api, errorText, events, type HelperStatus, type SignIn, type Terminal } from "../api";
 import {
+  BOARD_ABOVE_DRAWER,
   BOSUN,
   BREW_COMMAND,
+  DRAWER_HEIGHT,
   EXAMPLE_REQUESTS,
   INSTALL_COMMAND,
   bosunState,
-  clampDrawer,
   dotOf,
+  drawerRoom,
   hintOf,
   summaryOf,
   type BosunPhase,
   type BosunState,
 } from "../bosun";
-import { startDrag } from "../drag";
+import { resizer, startDrag } from "../drag";
 import { useLiveTerminal } from "../liveTerminal";
 import type { Theme } from "../theme";
 import { ChevronDown, ChevronUp } from "./Icons";
 
 const CLAUDE = "claude";
 const COPIED_MS = 1500;
+const MAX_HEIGHT = `calc(100% - ${BOARD_ABOVE_DRAWER}px)`;
 
 interface BosunDrawerProps {
   open: boolean;
@@ -50,6 +53,7 @@ export function BosunDrawer(props: BosunDrawerProps) {
   startedRef.current = helperStarted;
   const stoppedRef = useRef<string | null>(null);
   const soughtRef = useRef<string | null>(null);
+  const drawerRef = useRef<HTMLElement>(null);
 
   const attach = useCallback(
     async (terminal: Terminal, signIn: SignIn | null) => {
@@ -156,14 +160,15 @@ export function BosunDrawer(props: BosunDrawerProps) {
 
   return (
     <>
-      <section className={`bosun${open ? "" : " closed"}`} style={{ height: props.height }} aria-label={BOSUN}>
+      <section ref={drawerRef} className={`bosun${open ? "" : " closed"}`} style={{ height: props.height, maxHeight: MAX_HEIGHT }} aria-label={BOSUN}>
         <div
           className="bosun-handle"
           role="separator"
           aria-label="Resize Bosun"
           onPointerDown={(e) => {
-            const start = props.height;
-            startDrag(e, (dy) => props.onHeight(clampDrawer(start - dy)), undefined, "y");
+            const column = drawerRef.current?.parentElement;
+            const height = resizer(props.height, column ? drawerRoom(column.clientHeight) : props.height, DRAWER_HEIGHT);
+            startDrag(e, (dy) => props.onHeight(height(-dy)), (dy) => props.onHeight(height(-dy)), "y");
           }}
         >
           <span />

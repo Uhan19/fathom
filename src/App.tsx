@@ -22,7 +22,7 @@ import { appearanceOf, boardStyle, chatFontStack, type Appearance } from "./appe
 import { placeLocally, rowCounts, shownRequest } from "./board";
 import { emptyBoardText } from "./source";
 import { moveTo } from "./columnOrder";
-import { startDrag } from "./drag";
+import { resizer, startDrag } from "./drag";
 import { Board } from "./components/Board";
 import { Brand } from "./components/Brand";
 import { CardDetail } from "./components/CardDetail";
@@ -35,14 +35,11 @@ import { BosunDrawer } from "./components/BosunDrawer";
 import { BOSUN, DRAWER_HEIGHT, dotOf, isMac, isToggleShortcut, shortcutLabel, summaryOf, type BosunState } from "./bosun";
 import { filterText, indexAmongAll, shownColumns } from "./projectFilter";
 import { DEFAULT_THEME, otherTheme, themeToggleLabel } from "./theme";
+import { CHAT_WIDTH, DETAIL_WIDTH } from "./windowSettings";
 
-const DETAIL_WIDTH = { min: 340, max: 900 };
-const CHAT_WIDTH = { min: 300, max: 1400 };
 const NO_HELPER: HelperStatus = { terminal: null, status: "", asking: false };
 const MAC = isMac(navigator.platform);
 const SHORTCUT = shortcutLabel(MAC);
-
-const clamp = (value: number, range: { min: number; max: number }) => Math.max(range.min, Math.min(range.max, value));
 
 export default function App() {
   const [view, setView] = useState<BoardView | null>(null);
@@ -65,6 +62,8 @@ export default function App() {
   const [bosunHeight, setBosunHeight] = useState(DRAWER_HEIGHT.initial);
   const [bosunState, setBosunState] = useState<BosunState>("finding");
   const launchLogged = useRef(false);
+  const mainRef = useRef<HTMLElement>(null);
+  const boardColumnRef = useRef<HTMLDivElement>(null);
 
   const logLaunch = useCallback((board: BoardView) => {
     if (launchLogged.current || (board.fromCache && board.cards.length === 0)) return;
@@ -124,6 +123,14 @@ export default function App() {
   const chatWidth = chatDrag ?? settings?.chatWidth ?? 0;
   const detailWidth = detailDrag ?? settings?.detailWidth ?? 0;
   const projectFilter = settings?.projectFilter ?? [];
+
+  const panelRoom = (width: number) => {
+    const main = mainRef.current;
+    const board = boardColumnRef.current;
+    if (!main || !board) return width;
+    const hidden = main.scrollWidth - main.clientWidth;
+    return width + board.getBoundingClientRect().width - hidden;
+  };
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -294,8 +301,8 @@ export default function App() {
           Could not change the columns: {columnError}
         </div>
       )}
-      <main className="main">
-        <div className="board-column">
+      <main className="main" ref={mainRef}>
+        <div className="board-column" ref={boardColumnRef}>
           {projectFilter.length > 0 && (
             <div className="filter-strip" role="status">
               <span>{filterText(projectFilter)}</span>
@@ -354,13 +361,13 @@ export default function App() {
               role="separator"
               aria-label="Resize card panel"
               onPointerDown={(e) => {
-                const start = detailWidth;
+                const width = resizer(detailWidth, panelRoom(detailWidth), DETAIL_WIDTH);
                 startDrag(
                   e,
-                  (dx) => setDetailDrag(clamp(start - dx, DETAIL_WIDTH)),
+                  (dx) => setDetailDrag(width(-dx)),
                   (dx) => {
                     setDetailDrag(null);
-                    changeWindow({ detailWidth: clamp(start - dx, DETAIL_WIDTH) });
+                    changeWindow({ detailWidth: width(-dx) });
                   },
                 );
               }}
@@ -388,13 +395,13 @@ export default function App() {
               role="separator"
               aria-label="Resize chat"
               onPointerDown={(e) => {
-                const start = chatWidth;
+                const width = resizer(chatWidth, panelRoom(chatWidth), CHAT_WIDTH);
                 startDrag(
                   e,
-                  (dx) => setChatDrag(clamp(start - dx, CHAT_WIDTH)),
+                  (dx) => setChatDrag(width(-dx)),
                   (dx) => {
                     setChatDrag(null);
-                    changeWindow({ chatWidth: clamp(start - dx, CHAT_WIDTH) });
+                    changeWindow({ chatWidth: width(-dx) });
                   },
                 );
               }}

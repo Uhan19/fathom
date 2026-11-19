@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { HelperStatus } from "./api";
+import { resizer } from "./drag";
 import {
+  BOARD_ABOVE_DRAWER,
   DRAWER_HEIGHT,
   bosunState,
-  clampDrawer,
   dotOf,
+  drawerRoom,
   hintOf,
   isMac,
   isToggleShortcut,
@@ -111,10 +113,30 @@ describe("shortcut", () => {
   });
 });
 
-describe("clampDrawer", () => {
-  it("keeps the drawer between its smallest and largest height", () => {
-    expect(clampDrawer(DRAWER_HEIGHT.initial)).toBe(330);
-    expect(clampDrawer(20)).toBe(DRAWER_HEIGHT.min);
-    expect(clampDrawer(5000)).toBe(DRAWER_HEIGHT.max);
+describe("drawer resizing", () => {
+  const LAPTOP_COLUMN = 833;
+  const shownMax = LAPTOP_COLUMN - BOARD_ABOVE_DRAWER;
+
+  it("keeps the drawer between its smallest height and what the column can show", () => {
+    const height = resizer(DRAWER_HEIGHT.initial, drawerRoom(LAPTOP_COLUMN), DRAWER_HEIGHT);
+    expect(height(0)).toBe(DRAWER_HEIGHT.initial);
+    expect(height(-1000)).toBe(DRAWER_HEIGHT.min);
+    expect(height(5000)).toBe(shownMax);
+  });
+
+  it("shrinks from the first pixel after a drag that ended past the top", () => {
+    const released = resizer(DRAWER_HEIGHT.initial, drawerRoom(LAPTOP_COLUMN), DRAWER_HEIGHT)(700);
+    const next = resizer(released, drawerRoom(LAPTOP_COLUMN), DRAWER_HEIGHT);
+    expect(next(-1)).toBe(shownMax - 1);
+  });
+
+  it("starts from the shown height when the window got shorter than the stored height", () => {
+    const next = resizer(DRAWER_HEIGHT.max, drawerRoom(LAPTOP_COLUMN), DRAWER_HEIGHT);
+    expect(next(0)).toBe(shownMax);
+    expect(next(-10)).toBe(shownMax - 10);
+  });
+
+  it("allows the largest height only on a tall enough column", () => {
+    expect(resizer(DRAWER_HEIGHT.initial, drawerRoom(2000), DRAWER_HEIGHT)(5000)).toBe(DRAWER_HEIGHT.max);
   });
 });
