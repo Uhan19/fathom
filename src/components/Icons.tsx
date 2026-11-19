@@ -14,6 +14,22 @@ export function ChevronRight() {
   );
 }
 
+export function ChevronUp() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M3 8.5l4-4 4 4" />
+    </svg>
+  );
+}
+
+export function ChevronDown() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M3 5.5l4 4 4-4" />
+    </svg>
+  );
+}
+
 export function Close() {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">

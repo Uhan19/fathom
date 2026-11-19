@@ -1,0 +1,108 @@
+{
+  "sizes": {
+    "chat": [
+      10,
+      20
+    ],
+    "board": [
+      11,
+      20
+    ]
+  },
+  "presets": {
+    "macos": {
+      "chat": [
+        {
+          "key": "sf-mono",
+          "name": "SF Mono",
+          "stack": "ui-monospace, \"SF Mono\", Menlo, monospace"
+        },
+        {
+          "key": "menlo",
+          "name": "Menlo",
+          "stack": "Menlo, monospace"
+        },
+        {
+          "key": "monaco",
+          "name": "Monaco",
+          "stack": "Monaco, monospace"
+        },
+        {
+          "key": "courier",
+          "name": "Courier New",
+          "stack": "\"Courier New\", Courier, monospace"
+        }
+      ],
+      "board": [
+        {
+          "key": "default",
+          "name": "Inter + Saira",
+          "stack": "Inter, system-ui, sans-serif",
+          "heading": "\"Saira\", Inter, system-ui, sans-serif"
+        },
+        {
+          "key": "inter",
+          "name": "Inter",
+          "stack": "Inter, system-ui, sans-serif"
+        },
+        {
+          "key": "system",
+          "name": "SF Pro (system)",
+          "stack": "system-ui, -apple-system, sans-serif"
+        },
+        {
+          "key": "avenir",
+          "name": "Avenir Next",
+          "stack": "\"Avenir Next\", Avenir, system-ui, sans-serif"
+        }
+      ]
+    },
+    "linux": {
+      "chat": [
+        {
+          "key": "jetbrains-mono",
+          "name": "JetBrains Mono",
+          "stack": "\"JetBrains Mono\", monospace"
+        },
+        {
+          "key": "dejavu-sans-mono",
+          "name": "DejaVu Sans Mono",
+          "stack": "\"DejaVu Sans Mono\", monospace"
+        },
+        {
+          "key": "liberation-mono",
+          "name": "Liberation Mono",
+          "stack": "\"Liberation Mono\", monospace"
+        },
+        {
+          "key": "noto-sans-mono",
+          "name": "Noto Sans Mono",
+          "stack": "\"Noto Sans Mono\", monospace"
+        }
+      ],
+      "board": [
+        {
+          "key": "default",
+          "name": "Inter + Saira",
+          "stack": "Inter, system-ui, sans-serif",
+          "heading": "\"Saira\", Inter, system-ui, sans-serif"
+        },
+        {
+          "key": "inter",
+          "name": "Inter",
+          "stack": "Inter, system-ui, sans-serif"
+        },
+        {
+          "key": "system",
+          "name": "System UI",
+          "stack": "system-ui, sans-serif"
+        },
+        {
+          "key": "dejavu-sans",
+          "name": "DejaVu Sans",
+          "stack": "\"DejaVu Sans\", system-ui, sans-serif"
+        }
+      ]
+    }
+  }
+}

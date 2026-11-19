@@ -12,6 +12,7 @@ use crate::tasks::{Card, Row};
 
 pub const FILE_NAME: &str = "fathom.sqlite";
 pub const DEFAULT_COLUMN_WIDTH: i64 = 240;
+pub const COLUMN_WIDTHS: std::ops::RangeInclusive<i64> = 180..=640;
 
 const MIGRATIONS: [&str; 4] = [
     include_str!("../migrations/0001_init.sql"),
@@ -350,6 +351,13 @@ impl Db {
         width: Option<i64>,
         collapsed: Option<bool>,
     ) -> Result<(), String> {
+        if let Some(width) = width.filter(|w| !COLUMN_WIDTHS.contains(w)) {
+            return Err(format!(
+                "a column width must be between {} and {} pixels, got {width}",
+                COLUMN_WIDTHS.start(),
+                COLUMN_WIDTHS.end()
+            ));
+        }
         self.conn
             .execute(
                 "UPDATE columns SET width = COALESCE(?2, width), collapsed = COALESCE(?3, collapsed) WHERE id = ?1",
@@ -457,6 +465,18 @@ impl Db {
             )
             .map_err(err)?;
         Ok(())
+    }
+
+    pub fn set_settings(&self, pairs: &[(&str, String)]) -> Result<(), String> {
+        let tx = self.conn.unchecked_transaction().map_err(err)?;
+        for (key, value) in pairs {
+            tx.execute(
+                "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![key, value],
+            )
+            .map_err(err)?;
+        }
+        tx.commit().map_err(err)
     }
 
     pub fn snapshot(&self) -> Result<Option<Snapshot>, String> {

@@ -247,3 +247,59 @@ export const agentScreen = (agent: AgentKey) =>
     "",
     ` > `,
   ].join("\r\n");
+
+export const FIXTURE_HELPER: Terminal = {
+  address: "t9",
+  name: "",
+  title: "",
+  state: "live",
+  cwd: "/home/demo/.local/share/app.fathom.board/bosun",
+  agent: "claude",
+  labels: { "fathom.role": "helper" },
+  cols: 120,
+  rows: 16,
+};
+
+const HELPER_SCREENS: Record<string, string[]> = {
+  starting: [
+    ` ${ESC}1mDo you trust the files in this folder?${ESC}0m ${ESC}2m- preview screen with invented text${ESC}0m`,
+    "",
+    ` ${FIXTURE_HELPER.cwd}`,
+    "",
+    ` ${ESC}36m❯ 1. Yes, proceed${ESC}0m`,
+    "   2. No, exit",
+  ],
+  signedOut: [
+    ` ${ESC}1mSelect login method:${ESC}0m ${ESC}2m- preview screen with invented text${ESC}0m`,
+    "",
+    ` ${ESC}36m❯ 1. Claude account with subscription${ESC}0m`,
+    "   2. Anthropic Console account",
+  ],
+  ready: [
+    ` ${ESC}1mBosun${ESC}0m ${ESC}2m- preview screen with invented text${ESC}0m`,
+    "",
+    ` > show me only the harbor-web tasks`,
+    ` ${ESC}36m●${ESC}0m fathom - show_projects (projects: ["harbor-web"])`,
+    ` ${ESC}32m✓${ESC}0m Only harbor-web shows now. Show all brings the rest back.`,
+    "",
+    ` > `,
+  ],
+  working: [
+    ` ${ESC}1mBosun${ESC}0m ${ESC}2m- preview screen with invented text${ESC}0m`,
+    "",
+    ` > collapse every column except atlas-api`,
+    ` ${ESC}36m●${ESC}0m fathom - get_board_layout`,
+    ` ${ESC}33m✻${ESC}0m Collapsing 6 columns…`,
+  ],
+  asking: [
+    ` ${ESC}1mBosun${ESC}0m ${ESC}2m- preview screen with invented text${ESC}0m`,
+    "",
+    ` > drop the scratch column into keel-cli`,
+    ` ${ESC}1mTool use${ESC}0m  fathom - delete_column (id: 8, move_to_column: 3)`,
+    ` Do you want to proceed?`,
+    ` ${ESC}36m❯ 1. Yes${ESC}0m`,
+    "   2. No, and tell Claude what to do differently",
+  ],
+};
+
+export const helperScreen = (state: string) => (HELPER_SCREENS[state] ?? HELPER_SCREENS.ready).join("\r\n");

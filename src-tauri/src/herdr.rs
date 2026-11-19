@@ -105,15 +105,17 @@ pub enum Notice {
 pub enum View {
     Chat,
     Worker,
+    Helper,
 }
 
 impl View {
-    const ALL: [View; 2] = [View::Chat, View::Worker];
+    const ALL: [View; 3] = [View::Chat, View::Worker, View::Helper];
 
     fn name(self) -> &'static str {
         match self {
             View::Chat => "chat",
             View::Worker => "worker",
+            View::Helper => "helper",
         }
     }
 }
@@ -237,6 +239,10 @@ impl Herdr {
 
     pub fn send(&self, terminal: &str, text: &str) -> Result<(), String> {
         self.run(&["send", terminal, text]).map(|_| ())
+    }
+
+    pub fn kill(&self, terminal: &str) -> Result<(), String> {
+        self.run(&["kill", terminal]).map(|_| ())
     }
 
     pub fn start_events(&self) {

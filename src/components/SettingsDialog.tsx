@@ -15,6 +15,7 @@ import {
 import { formatBytes } from "../board";
 import { FontPicker, useInstalledFonts } from "./FontPicker";
 import { Close } from "./Icons";
+import { withLatestWindow } from "../windowSettings";
 
 interface SettingsDialogProps {
   settings: Settings;
@@ -106,7 +107,7 @@ export function SettingsDialog({ settings, rowNames, onPreview, onSaved, onClose
       for (const row of ROW_ORDER) {
         if (names[row] !== rowNames[row]) await api.setRowName(row, names[row]);
       }
-      onSaved(await api.saveSettings(draft));
+      onSaved(await api.saveSettings(withLatestWindow(draft, settings)));
     } catch (e) {
       setNote({ text: errorText(e), error: true });
       setSaving(false);

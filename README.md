@@ -53,6 +53,8 @@ Add `?other=120x45` to see the chat while another client owns a 120 by 45 termin
 Add `?kitty` to have the mocked terminal turn on kitty keyboard mode, so Shift+Enter sends the kitty form.
 Add `?backlog` to see a board of Fathom's own backlog, with one pending and one declined board request.
 Add `?late` to have a card arrive in a column at the moment you confirm deleting it, or `?deletefail` to see a delete fail.
+Add `?theme=dark` to start in the dark theme, `?nochat` to start with the chat panel closed, and `?filter=harbor-web,keel-cli` to start with a project filter.
+Add `?bosun=` with `notstarted`, `dormant`, `starting`, `ready`, `working`, `asking`, `signedout`, `missing`, `failed` or `stopped` to see that Bosun state; open the drawer with the Bosun button.
 
 ## Run the checks
 
@@ -63,7 +65,7 @@ pnpm check
 This runs the TypeScript compiler, the vitest suite, `cargo fmt --check`, `cargo clippy -D warnings`, and `cargo test`.
 GitHub Actions runs the same checks on Ubuntu 24.04 for every pull request and every push to `main`.
 
-Three Rust tests are ignored by default because they need outside state:
+Four Rust tests are ignored by default because they need outside state:
 
 - `tasks::home_tests::reads_a_real_home` reads a Firstmate home copy set in `FATHOM_TEST_HOME`.
 - `herdr::tests::sizes_types_and_sends_into_a_lab_terminal` attaches to a throwaway herdr-core session set in `FATHOM_LAB_SESSION` and `FATHOM_LAB_SOCKET`.
@@ -72,12 +74,16 @@ Three Rust tests are ignored by default because they need outside state:
   Never point it at a session you use.
 - `launch::tests::opens_each_agent_in_a_lab` opens Claude Code, Codex and Firstmate in the same throwaway session through the launch module.
   It starts stub `claude` and `codex` scripts from a temporary folder, never the real tools, and checks each terminal's labels, folder, command line and MCP config file, that the chat lookup finds it, and that a board-request nudge reaches it.
+- `launch::tests::opens_bosun_in_a_lab` opens [Bosun](#bosun) in a throwaway session with a stub `claude`.
+  It checks the helper label, the Bosun folder and the command line, that the helper lookup finds the terminal, and that a typed line reaches it.
 
 ```sh
 FATHOM_LAB_SESSION=<lab session> FATHOM_LAB_SOCKET=<lab socket> FATHOM_LAB_LABEL=<label> \
   cargo test --manifest-path src-tauri/Cargo.toml --lib -- --ignored types_and_sends
 FATHOM_LAB_SESSION=<lab session> FATHOM_LAB_SOCKET=<lab socket> \
   cargo test --manifest-path src-tauri/Cargo.toml --lib -- --ignored opens_each_agent
+FATHOM_LAB_SESSION=<lab session> FATHOM_LAB_SOCKET=<lab socket> \
+  cargo test --manifest-path src-tauri/Cargo.toml --lib -- --ignored opens_bosun
 ```
 
 ## Build a release
@@ -140,7 +146,7 @@ The database holds Fathom's own backlog and what Fathom adds on top of either ta
 - backlog tasks (generated id, title, detail, project, row, created and updated times), used when no Firstmate home is set,
 - columns (generated id, project or none for an added column, name, order, width, collapsed, deleted),
 - row names,
-- settings,
+- settings, including the theme, whether the chat panel is open, the panel widths and the project filter,
 - card places: a card's order within its cell and the column the user put it in (by column id),
 - move requests (board requests) and what became of them,
 - a disposable snapshot of the last board, used to paint the next launch at once.
@@ -156,6 +162,8 @@ release/<version>/Fathom.app/Contents/MacOS/fathom --export <directory>
 ```
 
 On Linux, run `fathom --export <directory>` after installing the Debian package, or pass `--export` to the AppImage.
+
+[Bosun](#bosun) keeps its own folder, `bosun`, beside the database.
 
 Deleting the database resets Fathom; nothing in Firstmate's home is affected.
 
@@ -215,6 +223,7 @@ Its tools show up in Claude Code as `mcp__fathom__*`:
 | `move_task` | Moves a task to a `row`; this also answers any board request asking for that row. |
 | `list_requests` | Lists pending board requests, oldest first. |
 | `answer_request` | Accepts a request, which moves the task, or declines it with a short `reason`. |
+| `start_worker` | Starts a Claude Code worker on a task in its own terminal, optionally in a given `folder`. |
 
 The server's instructions tell the agent to keep its task list in Fathom and to answer board requests.
 Rows use the fixed keys `surface` (needs the user), `shallows` (in progress), `deep` (parked or waiting), `seabed` (queued) and `landed` (done).
@@ -246,6 +255,31 @@ On Linux, the command is `/usr/bin/fathom` once the Debian package is installed,
 
 Release builds live in versioned folders, so point the command at the new build after an upgrade.
 
+### The helper tools
+
+`fathom --mcp --helper` adds tools that change Fathom itself, and swaps in instructions about them.
+[Bosun](#bosun) starts the server this way; without `--helper` the server is the one above.
+The helper server leaves out `start_worker`, because a worker is a new Claude Code session that works in a repo and Bosun's tools run without asking.
+The tools write through the same code as the window's own controls and never change tasks.
+
+| Tool | What it does |
+| --- | --- |
+| `get_board_layout` | Reads the columns in order, the row names, the project names and the project filter. |
+| `get_settings` | Reads the theme, fonts and sizes, panel widths, the project filter and the connection settings. |
+| `list_fonts` | Lists the font choices for the chat and the board, their size ranges and the installed font families. |
+| `rename_column` | Renames a column. |
+| `move_column` | Moves a column to a new position. |
+| `set_column_view` | Changes a column's width or folds it. |
+| `add_column` | Adds an empty custom column at the right end. |
+| `delete_column` | Deletes a column; one that still has cards needs `move_to_column`. |
+| `rename_row` | Renames a row, or brings back its default name. |
+| `show_projects` | Shows only the named projects' columns. |
+| `show_all_projects` | Shows every column again. |
+| `set_theme` | Switches between the light and dark theme. |
+| `set_fonts` | Changes the chat and board fonts and sizes. |
+| `set_panels` | Opens or closes the chat panel and changes the chat and card detail widths. |
+| `set_connection` | Changes the Firstmate home, the chat terminal label, the herdr-core session and socket, and the agent folder. |
+
 ### Board requests and the nudge
 
 - Dragging a backlog card to another row stores a board request instead of moving the task.
@@ -263,6 +297,7 @@ Release builds live in versioned folders, so point the command at the new build 
 The MCP server runs as its own process and writes to the same database.
 Fathom checks SQLite's `data_version` every 250 ms, a cheap check that changes only when another connection commits.
 A change triggers the same debounced re-read the Firstmate watchers use, so the window follows the agent's edits on its own.
+The same check re-reads the settings, so a theme, filter or column change from [Bosun](#bosun) shows within a moment.
 
 ## Adding, reordering and deleting columns
 
@@ -342,9 +377,43 @@ Fathom asks your login shell for its PATH once at startup and uses it to find he
   An added font joins that menu and is selected; the same list removes it again.
   Changes show at once while the dialog is open; Save keeps them across launches and Cancel puts them back.
 
-Fathom opens in light mode.
 The "Dark mode" button in the header switches the panels, cards and terminals to dark colors, and "Light mode" switches back.
 The board rows keep their light bands in both themes.
+Fathom remembers the theme, whether the chat panel is open, and the chat and card panel widths across launches.
+The selected card and the crewmate view you are watching are not remembered.
+
+## Showing only some projects
+
+Ask [Bosun](#bosun) to show only some projects, and the board keeps only their columns.
+A strip above the board names them, and its "Show all" button brings every column back.
+The counts in the header keep counting every project.
+"Add column" is hidden while the filter is on, so a new column never lands out of sight.
+
+## Bosun
+
+Bosun is a helper you ask in plain words to change Fathom: columns, rows, which projects show, the theme, fonts and panels.
+It is Claude Code running in a terminal Fathom opens, with only the [helper tools](#the-helper-tools).
+Fathom never types into Bosun's terminal and never reads answers from it; Bosun changes Fathom only through the tools.
+
+The "Bosun" button in the header, or ⌘J on macOS and Ctrl+J on Linux, opens and closes a drawer under the board.
+Drag the drawer's top edge to change its height.
+While the drawer is closed, a rail under the board shows Bosun's state.
+The dot beside Bosun's name is green when it is ready, blue while it works, and yellow while Claude Code asks before a change.
+
+- The first time, the drawer explains Bosun and offers "Start Bosun".
+  After that first start, Bosun starts by itself whenever you open the drawer.
+- When Claude Code first starts in Bosun's folder it may ask whether to trust the folder; the drawer says so.
+- If `claude` is not on your login shell's PATH, the drawer shows the install command and "Check again".
+  Claude Code needs a paid Claude plan or a Claude Console account.
+- If `claude auth status` says Claude Code is signed out, the drawer says so until the sign-in in the terminal finishes.
+- Restart and Stop sit in the drawer's header while Bosun runs.
+  After Stop, or when Claude Code exits, the last screen stays dimmed with "Start again".
+- Bosun keeps running when Fathom quits, and Fathom finds it again by its label next time.
+
+Fathom starts Bosun through herdr-core the same way as the [chat terminal](#opening-a-terminal), labeled `fathom.role=helper`, in a `bosun` folder beside the database.
+Claude Code starts with `--model haiku`, `--mcp-config` and `--strict-mcp-config` for `fathom --mcp --helper` alone, `--allowedTools mcp__fathom`, a `--settings` file and a short system prompt.
+The settings file asks before `delete_column` and `set_connection`, and its hooks tell Fathom when Claude Code is asking for permission.
+Fathom writes both files on every start and never changes Claude Code's own configuration.
 
 ## Chat panel and herdr-core
 

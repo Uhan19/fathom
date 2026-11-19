@@ -4,17 +4,39 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::herdr::{self, Herdr, Terminal};
-use crate::mcp::{DB_FLAG, MCP_FLAG};
+use crate::mcp::{DB_FLAG, HELPER_ASKING_FLAG, HELPER_FLAG, MCP_FLAG};
 
 pub const ROLE_KEY: &str = "fathom.role";
 pub const AGENT_KEY: &str = "fathom.agent";
 pub const TASK_KEY: &str = "fathom.task";
 pub const CHAT_ROLE: &str = "chat";
 pub const WORKER_ROLE: &str = "worker";
+pub const HELPER_ROLE: &str = "helper";
+pub const HELPER_DIR: &str = "bosun";
+const HELPER_MCP_FILE: &str = "mcp.json";
+const HELPER_SETTINGS_FILE: &str = "settings.json";
+const HELPER_MODEL: &str = "haiku";
+const HELPER_ASKS_FIRST: [&str; 2] = ["delete_column", "set_connection"];
+const HELPER_ASKING_SET: [(&str, Option<&str>); 1] = [("Notification", Some("permission_prompt"))];
+const HELPER_ASKING_CLEARED: [&str; 5] = [
+    "PostToolUse",
+    "PostToolUseFailure",
+    "Stop",
+    "StopFailure",
+    "UserPromptSubmit",
+];
+const HELPER_PROMPT: &str = "\
+You are Bosun, the helper inside Fathom, the user's task board app.
+You change Fathom's board layout and settings for the user with the fathom tools, and nothing else.
+Look at the current state with get_board_layout or get_settings before you change it, and name columns the way the board shows them.
+Make the change the user asks for, then say in one short line what changed.
+If a request is unclear, ask one short question instead of guessing.
+If a request is not about Fathom's board or settings, say that you only change Fathom.
+Do not read or write files and do not run commands.";
 pub const HERDR_CORE: &str = "herdr-core";
 const SERVER_NAME: &str = "fathom";
 const MCP_CONFIG_FILE: &str = "fathom-mcp.json";
-const CLAUDE: &str = "claude";
+pub const CLAUDE: &str = "claude";
 const CODEX: &str = "codex";
 const POSIX_SHELLS: &[&str] = &[
     "sh", "bash", "zsh", "dash", "ksh", "mksh", "oksh", "yash", "ash",
@@ -59,6 +81,10 @@ pub fn chat_label() -> String {
 
 pub fn task_label(task: i64) -> String {
     label(TASK_KEY, &task.to_string())
+}
+
+pub fn helper_label() -> String {
+    label(ROLE_KEY, HELPER_ROLE)
 }
 
 pub struct FathomServer {
@@ -117,12 +143,7 @@ pub fn open(
     launch: &Launch,
     find: impl Fn(&str) -> Option<PathBuf>,
 ) -> Result<Terminal, LaunchError> {
-    herdr::program()
-        .ok()
-        .filter(|hc| hc.is_file())
-        .ok_or_else(|| LaunchError::Missing {
-            tool: HERDR_CORE.into(),
-        })?;
+    require_herdr_core()?;
     let program = launch.agent.program();
     let program = find(program).ok_or_else(|| LaunchError::Missing {
         tool: program.into(),
@@ -133,6 +154,13 @@ pub fn open(
             launch.cwd.display()
         )));
     }
+    let mut command = vec![program.display().to_string()];
+    command.extend(launch.prompt.map(String::from));
+    command.extend(agent_args(launch.agent, launch.server)?);
+    start(herdr, launch, command)
+}
+
+fn start(herdr: &Herdr, launch: &Launch, command: Vec<String>) -> Result<Terminal, LaunchError> {
     let mut args = vec![
         "run".to_string(),
         "--bg".into(),
@@ -149,13 +177,133 @@ pub fn open(
         args.extend(["--label".into(), task_label(task)]);
     }
     args.push("--".into());
-    let mut command = vec![program.display().to_string()];
-    command.extend(launch.prompt.map(String::from));
-    command.extend(agent_args(launch.agent, launch.server)?);
     args.extend(through_login_shell(launch.shell, command));
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     let started = herdr::parse_terminal(&herdr.run(&args).map_err(failed)?).map_err(failed)?;
     Ok(herdr.get(&started.address).unwrap_or(started))
+}
+
+fn require_herdr_core() -> Result<(), LaunchError> {
+    herdr::program()
+        .ok()
+        .filter(|hc| hc.is_file())
+        .map(|_| ())
+        .ok_or_else(|| LaunchError::Missing {
+            tool: HERDR_CORE.into(),
+        })
+}
+
+pub fn helper_dir(server: &FathomServer) -> PathBuf {
+    server.db.with_file_name(HELPER_DIR)
+}
+
+pub fn open_helper(
+    herdr: &Herdr,
+    server: &FathomServer,
+    shell: Option<&Path>,
+    claude: &Path,
+) -> Result<Terminal, LaunchError> {
+    require_herdr_core()?;
+    let dir = helper_dir(server);
+    let mcp = dir.join(HELPER_MCP_FILE);
+    let settings = dir.join(HELPER_SETTINGS_FILE);
+    write_json(&mcp, &helper_mcp_config(server))?;
+    write_json(&settings, &helper_settings(server))?;
+    let command = [
+        claude.display().to_string(),
+        "--model".into(),
+        HELPER_MODEL.into(),
+        "--mcp-config".into(),
+        mcp.display().to_string(),
+        "--strict-mcp-config".into(),
+        "--allowedTools".into(),
+        format!("mcp__{SERVER_NAME}"),
+        "--settings".into(),
+        settings.display().to_string(),
+        "--append-system-prompt".into(),
+        HELPER_PROMPT.into(),
+    ];
+    let launch = Launch {
+        agent: Agent::Claude,
+        role: HELPER_ROLE,
+        task: None,
+        prompt: None,
+        cwd: &dir,
+        server,
+        shell,
+    };
+    start(herdr, &launch, command.to_vec())
+}
+
+fn helper_mcp_config(server: &FathomServer) -> serde_json::Value {
+    let mut args = server.args();
+    args.insert(1, HELPER_FLAG.to_string());
+    json!({
+        "mcpServers": {
+            SERVER_NAME: {
+                "command": server.program.display().to_string(),
+                "args": args,
+            }
+        }
+    })
+}
+
+fn helper_settings(server: &FathomServer) -> serde_json::Value {
+    let asking = |value: &str| {
+        let words = [
+            server.program.display().to_string(),
+            HELPER_ASKING_FLAG.to_string(),
+            value.to_string(),
+            DB_FLAG.to_string(),
+            server.db.display().to_string(),
+        ];
+        let command: Vec<String> = words.iter().map(|w| shell_quote(w)).collect();
+        json!([{ "type": "command", "command": command.join(" ") }])
+    };
+    let mut hooks = serde_json::Map::new();
+    for (event, matcher) in HELPER_ASKING_SET {
+        hooks.insert(
+            event.into(),
+            json!([{ "matcher": matcher.unwrap_or_default(), "hooks": asking("yes") }]),
+        );
+    }
+    for event in HELPER_ASKING_CLEARED {
+        hooks.insert(event.into(), json!([{ "hooks": asking("no") }]));
+    }
+    let ask: Vec<String> = HELPER_ASKS_FIRST
+        .iter()
+        .map(|tool| format!("mcp__{SERVER_NAME}__{tool}"))
+        .collect();
+    json!({ "permissions": { "ask": ask }, "hooks": hooks })
+}
+
+fn shell_quote(word: &str) -> String {
+    format!("'{}'", word.replace('\'', r"'\''"))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SignIn {
+    SignedIn,
+    SignedOut,
+    Unknown,
+}
+
+const SIGNED_OUT_EXIT: i32 = 1;
+
+pub fn claude_sign_in(claude: &Path, path: &str) -> SignIn {
+    let status = std::process::Command::new(claude)
+        .args(["auth", "status"])
+        .env("PATH", path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    match status.map(|s| s.code()) {
+        Ok(Some(0)) => SignIn::SignedIn,
+        Ok(Some(SIGNED_OUT_EXIT)) => SignIn::SignedOut,
+        _ => SignIn::Unknown,
+    }
 }
 
 fn through_login_shell(shell: Option<&Path>, command: Vec<String>) -> Vec<String> {
@@ -213,15 +361,17 @@ fn mcp_config(server: &FathomServer) -> serde_json::Value {
 
 fn write_mcp_config(server: &FathomServer) -> Result<PathBuf, LaunchError> {
     let path = server.config_file();
-    let text =
-        serde_json::to_string_pretty(&mcp_config(server)).map_err(|e| failed(e.to_string()))?;
+    write_json(&path, &mcp_config(server))?;
+    Ok(path)
+}
+
+fn write_json(path: &Path, value: &serde_json::Value) -> Result<(), LaunchError> {
+    let text = serde_json::to_string_pretty(value).map_err(|e| failed(e.to_string()))?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)
             .map_err(|e| failed(format!("cannot create {}: {e}", dir.display())))?;
     }
-    std::fs::write(&path, text)
-        .map_err(|e| failed(format!("cannot write {}: {e}", path.display())))?;
-    Ok(path)
+    std::fs::write(path, text).map_err(|e| failed(format!("cannot write {}: {e}", path.display())))
 }
 
 #[cfg(test)]
@@ -396,6 +546,165 @@ esac
         assert!(!lab.data_dir().join("fathom-mcp.json").exists());
     }
 
+    fn write_script(path: &Path, body: &str) {
+        std::fs::write(path, body).unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    fn read_json(path: &Path) -> serde_json::Value {
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn bosun_starts_claude_code_in_its_own_folder_with_only_the_helper_tools() {
+        let lab = Lab::new(&["hc", "claude"]);
+        let herdr = Herdr::new(Connection::default(), Arc::new(|_| {}));
+        let claude = lab.bin.path().join("claude");
+        let terminal = open_helper(&herdr, &lab.server(), Some(&lab.shell()), &claude).unwrap();
+        assert_eq!(terminal.address, "t9");
+
+        let dir = lab.data_dir().join("bosun");
+        let mcp = dir.join("mcp.json");
+        let settings = dir.join("settings.json");
+        let shown = |path: &Path| path.display().to_string();
+        let expected: Vec<String> = [
+            "run",
+            "--bg",
+            "--json",
+            "--no-parent",
+            "--cwd",
+            &shown(&dir),
+            "--label",
+            "fathom.role=helper",
+            "--label",
+            "fathom.agent=claude",
+            "--",
+            &shown(&lab.shell()),
+            "-l",
+            "-i",
+            "-c",
+            POSIX_EXEC,
+            &shown(&claude),
+            "--model",
+            "haiku",
+            "--mcp-config",
+            &shown(&mcp),
+            "--strict-mcp-config",
+            "--allowedTools",
+            "mcp__fathom",
+            "--settings",
+            &shown(&settings),
+            "--append-system-prompt",
+            HELPER_PROMPT,
+        ]
+        .iter()
+        .flat_map(|arg| arg.lines())
+        .map(String::from)
+        .collect();
+        assert_eq!(lab.calls()[0], expected);
+
+        let db = shown(&lab.data_dir().join("fathom.db"));
+        assert_eq!(
+            read_json(&mcp),
+            json!({"mcpServers": {"fathom": {
+                "command": "/Applications/Fathom.app/Contents/MacOS/fathom",
+                "args": ["--mcp", "--helper", "--db", db],
+            }}})
+        );
+        let written = read_json(&settings);
+        assert_eq!(
+            written["permissions"],
+            json!({"ask": ["mcp__fathom__delete_column", "mcp__fathom__set_connection"]})
+        );
+        let notification = &written["hooks"]["Notification"][0];
+        assert_eq!(notification["matcher"], "permission_prompt");
+        let asking = format!(
+            "'/Applications/Fathom.app/Contents/MacOS/fathom' '--helper-asking' 'yes' '--db' '{db}'"
+        );
+        assert_eq!(
+            notification["hooks"],
+            json!([{"type": "command", "command": asking}])
+        );
+        for event in HELPER_ASKING_CLEARED {
+            let command = written["hooks"][event][0]["hooks"][0]["command"]
+                .as_str()
+                .unwrap();
+            assert!(
+                command.contains("'--helper-asking' 'no'"),
+                "{event}: {command}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_permission_hooks_run_fathom_with_the_asking_flag() {
+        let lab = Lab::new(&["hc", "claude"]);
+        let program = lab.data_dir().join("it's fathom");
+        write_script(&program, "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$0.args\"\n");
+        let server = FathomServer {
+            program: program.clone(),
+            db: lab.data_dir().join("fathom.db"),
+        };
+        let herdr = Herdr::new(Connection::default(), Arc::new(|_| {}));
+        open_helper(&herdr, &server, None, &lab.bin.path().join("claude")).unwrap();
+        let written = read_json(&lab.data_dir().join("bosun/settings.json"));
+        let command = written["hooks"]["Notification"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap();
+        let status = std::process::Command::new(FALLBACK_SHELL)
+            .args(["-c", command])
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let args = std::fs::read_to_string(program.with_file_name("it's fathom.args")).unwrap();
+        assert_eq!(
+            args.lines().collect::<Vec<_>>(),
+            [
+                "--helper-asking",
+                "yes",
+                "--db",
+                &server.db.display().to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn bosun_needs_herdr_core() {
+        let lab = Lab::new(&["claude"]);
+        let herdr = Herdr::new(Connection::default(), Arc::new(|_| {}));
+        let missing = FAKE_HC.with(|fake| {
+            *fake.borrow_mut() = Some(lab.bin.path().join("hc"));
+            open_helper(&herdr, &lab.server(), None, &lab.bin.path().join("claude"))
+        });
+        assert_eq!(
+            missing,
+            Err(LaunchError::Missing {
+                tool: "herdr-core".into()
+            })
+        );
+        assert!(!lab.data_dir().join("bosun").exists());
+    }
+
+    #[test]
+    fn the_claude_code_sign_in_is_read_from_auth_status() {
+        let bin = tempfile::tempdir().unwrap();
+        let claude = bin.path().join("claude");
+        let check = |code: i32| {
+            write_script(
+                &claude,
+                &format!("#!/bin/sh\n[ \"$1 $2\" = 'auth status' ] || exit 9\nexit {code}\n"),
+            );
+            claude_sign_in(&claude, "/usr/bin:/bin")
+        };
+        assert_eq!(check(0), SignIn::SignedIn);
+        assert_eq!(check(1), SignIn::SignedOut);
+        assert_eq!(check(2), SignIn::Unknown);
+        assert_eq!(
+            claude_sign_in(&bin.path().join("gone"), "/usr/bin:/bin"),
+            SignIn::Unknown
+        );
+    }
+
     #[test]
     fn agents_start_through_the_login_shell_or_a_posix_fallback() {
         let lab = Lab::new(&[FISH, "nu"]);
@@ -497,7 +806,8 @@ esac
     }
 
     const STUB_AGENT: &str = r#"#!/bin/sh
-for arg in "$@"; do printf '%s\n' "$arg"; done > "$0.$$.args"
+for arg in "$@"; do printf '%s\n' "$arg"; done > "$0.$$.partial"
+mv "$0.$$.partial" "$0.$$.args"
 printf 'stub %s in %s\n' "$(basename "$0")" "$PWD"
 printf 'RC:%s\n' "${FATHOM_RC_MARKER:-missing}"
 while IFS= read -r line; do printf 'GOT:%s\n' "$line"; done
@@ -691,6 +1001,100 @@ while IFS= read -r line; do printf 'GOT:%s\n' "$line"; done
                     .is_none_or(|t| t.address != terminal.address)
             });
         }
+    }
+
+    #[test]
+    #[ignore = "needs FATHOM_LAB_SESSION and FATHOM_LAB_SOCKET pointing at a throwaway herdr-core session"]
+    fn opens_bosun_in_a_lab() {
+        use crate::herdr::View;
+        use crate::herdr::tests::{screen_sink, wait_for};
+
+        let connection = Connection {
+            session: std::env::var("FATHOM_LAB_SESSION").expect("FATHOM_LAB_SESSION"),
+            socket: std::env::var("FATHOM_LAB_SOCKET").expect("FATHOM_LAB_SOCKET"),
+        };
+        let herdr = Herdr::new(connection, Arc::new(|_| {}));
+        let bin = stub_bin();
+        let data = tempfile::tempdir().unwrap();
+        let data_dir = data.path().join(SPACED_FOLDER);
+        std::fs::create_dir_all(&data_dir).unwrap();
+        let rc = tempfile::tempdir().unwrap();
+        let shell = zsh_with_scratch_rc(rc.path());
+        let server = FathomServer {
+            program: PathBuf::from("/Applications/Fathom.app/Contents/MacOS/fathom"),
+            db: data_dir.join("fathom.db"),
+        };
+        let claude = bin.path().join(CLAUDE);
+        let folder = data_dir.join(HELPER_DIR);
+        let shown = |path: &Path| path.display().to_string();
+        let expected_args: Vec<String> = [
+            "--model",
+            "haiku",
+            "--mcp-config",
+            &shown(&folder.join(HELPER_MCP_FILE)),
+            "--strict-mcp-config",
+            "--allowedTools",
+            "mcp__fathom",
+            "--settings",
+            &shown(&folder.join(HELPER_SETTINGS_FILE)),
+            "--append-system-prompt",
+            HELPER_PROMPT,
+        ]
+        .iter()
+        .map(|arg| arg.to_string())
+        .collect();
+
+        assert!(herdr.find_by_label(&helper_label()).unwrap().is_none());
+        let terminal = open_helper(&herdr, &server, Some(&shell), &claude).unwrap();
+        assert_eq!(
+            terminal.labels.get(ROLE_KEY).map(String::as_str),
+            Some(HELPER_ROLE)
+        );
+        assert_eq!(
+            Path::new(&terminal.cwd).canonicalize().unwrap(),
+            folder.canonicalize().unwrap()
+        );
+        let logged: Vec<String> = received_args(bin.path(), CLAUDE, 0)
+            .join("\n")
+            .split('\n')
+            .map(String::from)
+            .collect();
+        let expected_lines: Vec<String> = expected_args
+            .iter()
+            .flat_map(|arg| arg.lines().map(String::from))
+            .collect();
+        assert_eq!(logged, expected_lines);
+        let got: serde_json::Value =
+            serde_json::from_str(&herdr.run(&["get", &terminal.address, "--json"]).unwrap())
+                .unwrap();
+        let argv: Vec<String> = serde_json::from_value(got["argv"].clone()).unwrap();
+        assert_eq!(argv[argv.len() - expected_args.len()..], expected_args[..]);
+
+        let found = herdr
+            .find_by_label(&helper_label())
+            .unwrap()
+            .expect("Bosun by its label");
+        assert_eq!(found.address, terminal.address);
+        assert!(herdr.find_by_label(&chat_label()).unwrap().is_none());
+
+        let (screen, sink) = screen_sink();
+        herdr
+            .attach(View::Helper, &terminal.address, 100, 30, sink)
+            .unwrap();
+        let seen =
+            |text: &str| String::from_utf8_lossy(&screen.lock().unwrap().bytes).contains(text);
+        wait_for("the stub's greeting", || seen("stub claude"));
+        herdr
+            .write_input(View::Helper, b"typed-by-the-user\r")
+            .unwrap();
+        wait_for("the typed line", || seen("GOT:typed-by-the-user"));
+
+        herdr.detach_all();
+        herdr.kill(&terminal.address).unwrap();
+        wait_for("Bosun to finish", || {
+            herdr.find_by_label(&helper_label()).unwrap().is_none()
+        });
+        herdr.run(&["rm", &terminal.address]).unwrap();
     }
 
     #[test]

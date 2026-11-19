@@ -1,7 +1,7 @@
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import type { AgentKey } from "../agents";
-import { ROW_ORDER, type BoardView, type Card, type CardPlace, type Column, type Layout, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type Settings } from "../api";
+import { ROW_ORDER, type BoardView, type Card, type CardPlace, type Column, type HelperStatus, type Layout, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type Settings, type WindowChange } from "../api";
 import { presetFonts } from "../appearance";
 import { cellCount, groupCards, type Cells } from "../board";
 import { moveTo } from "../columnOrder";
@@ -12,11 +12,12 @@ import {
   FIXTURE_BACKLOG_WORKERS,
   FIXTURE_CARDS,
   FIXTURE_AGENT_ADDRESS,
-  FIXTURE_COLUMNS, FIXTURE_LATE_CARD, FIXTURE_REQUESTS, FIXTURE_SCREEN, FIXTURE_TERMINALS, FIXTURE_WORKERS,
+  FIXTURE_COLUMNS, FIXTURE_HELPER, FIXTURE_LATE_CARD, FIXTURE_REQUESTS, FIXTURE_SCREEN, FIXTURE_TERMINALS, FIXTURE_WORKERS,
   agentScreen,
   agentTerminal,
   backlogWorkerScreen,
   fixtureDetail,
+  helperScreen,
   workerScreen,
 } from "./fixture";
 
@@ -33,6 +34,33 @@ const KITTY_PUSH = params.has("kitty") ? "\x1b[>1u" : "";
 const rememberedAgent = (params.get("agent") as AgentKey | null) ?? null;
 const missingTool = params.get("missing");
 let openedAgent: AgentKey | null = rememberedAgent;
+const bosun = params.get("bosun") ?? "ready";
+const NO_HELPER: HelperStatus = { terminal: null, status: "", asking: false };
+const HELPER_STATUS: Record<string, Omit<HelperStatus, "terminal">> = {
+  starting: { status: "", asking: false },
+  ready: { status: "idle", asking: false },
+  working: { status: "working", asking: false },
+  asking: { status: "idle", asking: true },
+  stopped: { status: "idle", asking: false },
+};
+let helperStatus: HelperStatus = bosun in HELPER_STATUS ? { terminal: FIXTURE_HELPER.address, ...HELPER_STATUS[bosun] } : NO_HELPER;
+let helperShown = bosun === "stopped" ? "ready" : bosun;
+
+const publishHelper = (next: HelperStatus) => {
+  helperStatus = next;
+  setTimeout(() => void emit("helper://updated", helperStatus), 0);
+};
+
+const openHelper = () => {
+  if (bosun === "failed") throw { kind: "failed", message: "hc start failed: the herdr-core server is not answering" };
+  settings = { ...settings, helperStarted: true };
+  helperShown = bosun === "signedout" ? "signedOut" : "starting";
+  publishHelper({ terminal: FIXTURE_HELPER.address, status: bosun === "signedout" ? "idle" : "", asking: false });
+  return FIXTURE_HELPER;
+};
+
+const helperCheck = () =>
+  bosun === "missing" ? { claude: null, signIn: null } : { claude: "/home/demo/.local/bin/claude", signIn: bosun === "signedout" ? "signedOut" : "signedIn" };
 
 let settings: Settings = {
   home: backlog ? "" : "/home/demo/firstmate",
@@ -47,6 +75,12 @@ let settings: Settings = {
   boardAddedFonts: [],
   agentFolder: "/home/demo",
   chatAgent: rememberedAgent,
+  theme: params.get("theme") === "dark" ? "dark" : "light",
+  chatOpen: !params.has("nochat"),
+  chatWidth: 600,
+  detailWidth: 460,
+  projectFilter: params.get("filter")?.split(",").filter(Boolean) ?? [],
+  helperStarted: bosun !== "notstarted",
 };
 
 const openChatTerminal = (agent: AgentKey) => {
@@ -237,6 +271,24 @@ mockIPC(
       case "save_settings":
         settings = args.settings as Settings;
         return settings;
+      case "change_window":
+        settings = { ...settings, ...(args.change as WindowChange) };
+        return settings;
+      case "show_all_projects":
+        settings = { ...settings, projectFilter: [] };
+        return settings;
+      case "find_helper":
+        return helperStatus.terminal ? FIXTURE_HELPER : null;
+      case "helper_status":
+        return helperStatus;
+      case "helper_check":
+        return helperCheck();
+      case "open_helper":
+        return openHelper();
+      case "stop_helper":
+        console.info("stop_helper", args.terminal);
+        publishHelper(NO_HELPER);
+        return null;
       case "data_info":
         return { path: "/home/demo/Library/Application Support/app.fathom.board.dev/fathom.sqlite", bytes: 49152 };
       case "installed_fonts":
@@ -274,7 +326,18 @@ mockIPC(
       case "attach_terminal": {
         const output = args.output as Output;
         outputs.set(args.view, output);
-        const screen = args.view === "worker" ? (backlog ? backlogWorkerScreen : workerScreen)(args.terminal as string) : chatScreen(args.terminal as string);
+        const screen =
+          args.view === "worker"
+            ? (backlog ? backlogWorkerScreen : workerScreen)(args.terminal as string)
+            : args.view === "helper"
+              ? helperScreen(helperShown)
+              : chatScreen(args.terminal as string);
+        if (args.view === "helper" && bosun === "stopped") {
+          setTimeout(() => {
+            publishHelper(NO_HELPER);
+            void emit("terminal://ended", { view: "helper", terminal: FIXTURE_HELPER.address });
+          }, 300);
+        }
         console.info("attach_terminal", args.view, args.terminal, args.cols, args.rows);
         setTimeout(() => output.onmessage(bytes(screen)), 50);
         if (otherClient && args.view === "chat") {

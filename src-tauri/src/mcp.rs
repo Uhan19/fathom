@@ -1,23 +1,32 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{Implementation, ServerCapabilities, ServerConfig};
 use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::db::Db;
+use crate::control;
 use crate::db::backlog::{NewTask, TaskChange};
+use crate::db::{Db, MoveTo};
+use crate::fonts;
 use crate::herdr::Herdr;
 use crate::launch::{self, Agent, FathomServer, Launch};
+use crate::settings::{self, CHAT_WIDTH, DETAIL_WIDTH, Surface, Theme, WindowChange};
 use crate::shell_path;
-use crate::state::{connection_of, load_settings, now_ms};
+use crate::source::Source;
+use crate::state::{connection_of, now_ms};
 use crate::tasks::Row;
 use crate::workers::LIVE;
 
 pub const MCP_FLAG: &str = "--mcp";
 pub const DB_FLAG: &str = "--db";
+pub const HELPER_FLAG: &str = "--helper";
+pub const HELPER_ASKING_FLAG: &str = "--helper-asking";
+const YES: &str = "yes";
+const NO: &str = "no";
 const DB_ENV: &str = "FATHOM_DB";
 const SERVER_NAME: &str = "fathom";
 const INSTRUCTIONS: &str = "\
@@ -43,6 +52,14 @@ If you need the user, put the question in the detail and move the task to surfac
 When the work is done, write a short summary in the detail and move the task to landed."
     )
 }
+
+const HELPER_INSTRUCTIONS: &str = "\
+Fathom is the user's task board app. These tools change how Fathom shows the board and its settings; they never change tasks.
+Columns are projects (or custom columns the user added); rows are surface, shallows, seabed, deep and landed.
+Read get_board_layout before changing columns, rows or the project filter, and get_settings before changing settings.
+Refer to columns by the id from get_board_layout.
+show_projects hides every column except the named projects; show_all_projects shows every column again.
+Fathom shows each change within a moment, so there is nothing to refresh.";
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListTasks {
@@ -94,6 +111,125 @@ pub struct StartWorker {
     pub folder: Option<String>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RenameColumn {
+    pub id: i64,
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct MoveColumn {
+    pub id: i64,
+    #[schemars(description = "New position, 0 is the leftmost column")]
+    pub index: usize,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SetColumnView {
+    pub id: i64,
+    #[schemars(description = "Width in pixels, 180 to 640")]
+    pub width: Option<i64>,
+    #[schemars(description = "true folds the column to a narrow strip")]
+    pub collapsed: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct AddColumn {
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct DeleteColumn {
+    pub id: i64,
+    #[schemars(
+        description = "Id of the column that takes this column's cards. A column with cards needs this or move_to_new_column"
+    )]
+    pub move_to_column: Option<i64>,
+    #[schemars(description = "Name of a new column that takes this column's cards")]
+    pub move_to_new_column: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RenameRow {
+    pub row: Row,
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ShowProjects {
+    #[schemars(description = "Project names to keep on the board; every other column is hidden")]
+    pub projects: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SetTheme {
+    pub theme: Theme,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SetFonts {
+    #[schemars(
+        description = "Terminal font: a preset key or name from list_fonts, or an installed font family"
+    )]
+    pub chat_font: Option<String>,
+    pub chat_font_size: Option<u16>,
+    #[schemars(
+        description = "Board font: a preset key or name from list_fonts, or an installed font family"
+    )]
+    pub board_font: Option<String>,
+    pub board_font_size: Option<u16>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SetPanels {
+    #[schemars(description = "true shows the chat panel beside the board")]
+    pub chat_open: Option<bool>,
+    #[schemars(description = "Chat panel width in pixels, 300 to 1400")]
+    pub chat_width: Option<u32>,
+    #[schemars(description = "Card detail panel width in pixels, 340 to 900")]
+    pub detail_width: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SetConnection {
+    #[schemars(description = "Firstmate home folder; empty uses Fathom's own backlog")]
+    pub home: Option<String>,
+    #[schemars(description = "Label of the chat terminal, as key=value")]
+    pub terminal_label: Option<String>,
+    #[schemars(description = "herdr-core session name; empty uses the default")]
+    pub hc_session: Option<String>,
+    #[schemars(description = "herdr-core socket path; empty uses the default")]
+    pub hc_socket: Option<String>,
+    #[schemars(description = "Folder new Claude Code and Codex chats start in")]
+    pub agent_folder: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FontList {
+    chat: SurfaceFonts,
+    board: SurfaceFonts,
+    installed: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SurfaceFonts {
+    presets: Vec<settings::FontPreset>,
+    added: Vec<String>,
+    min_size: u16,
+    max_size: u16,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SettingsView {
+    #[serde(flatten)]
+    settings: settings::Settings,
+    chat_width_range: [u32; 2],
+    detail_width_range: [u32; 2],
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartedWorker {
@@ -124,6 +260,8 @@ impl Host {
 pub struct Fathom {
     db: Mutex<Db>,
     host: Host,
+    helper: bool,
+    router: ToolRouter<Fathom>,
 }
 
 impl Fathom {
@@ -131,11 +269,213 @@ impl Fathom {
         Fathom {
             db: Mutex::new(db),
             host,
+            helper: false,
+            router: Fathom::task_tools() + Fathom::start_tools(),
         }
+    }
+
+    pub fn helper(db: Db, host: Host) -> Fathom {
+        Fathom {
+            db: Mutex::new(db),
+            host,
+            helper: true,
+            router: Fathom::task_tools() + Fathom::helper_tools(),
+        }
+    }
+
+    fn change_settings(
+        &self,
+        change: impl FnOnce(&mut settings::Settings) -> Result<(), String>,
+    ) -> Result<String, String> {
+        reply(settings::update(&self.db.lock().unwrap(), change).map(settings_view))
     }
 }
 
-#[tool_router]
+fn settings_view(settings: settings::Settings) -> SettingsView {
+    let span = |range: &std::ops::RangeInclusive<u32>| [*range.start(), *range.end()];
+    SettingsView {
+        settings,
+        chat_width_range: span(&CHAT_WIDTH.range),
+        detail_width_range: span(&DETAIL_WIDTH.range),
+    }
+}
+
+fn surface_fonts(surface: Surface, added: Vec<String>) -> SurfaceFonts {
+    let sizes = settings::font_sizes(surface);
+    SurfaceFonts {
+        presets: settings::font_presets(surface).to_vec(),
+        added,
+        min_size: *sizes.start(),
+        max_size: *sizes.end(),
+    }
+}
+
+fn replace(target: &mut String, value: Option<String>) {
+    if let Some(value) = value {
+        *target = value.trim().to_string();
+    }
+}
+
+impl Fathom {
+    fn source(&self) -> Result<Source, String> {
+        Ok(Source::of(&settings::load(&self.db.lock().unwrap())?.home))
+    }
+}
+
+#[tool_router(router = helper_tools)]
+impl Fathom {
+    #[tool(
+        description = "Read the board layout: columns in order (id, name, project, width, collapsed), row names, the project names and the current project filter."
+    )]
+    fn get_board_layout(&self) -> Result<String, String> {
+        reply(control::board_layout(&self.db, &self.source()?))
+    }
+
+    #[tool(
+        description = "Read Fathom's settings: theme, fonts and sizes, panel widths, the project filter and the connection settings."
+    )]
+    fn get_settings(&self) -> Result<String, String> {
+        reply(settings::load(&self.db.lock().unwrap()).map(settings_view))
+    }
+
+    #[tool(
+        description = "List the font choices for the chat terminal and the board, their size ranges and the installed font families."
+    )]
+    fn list_fonts(&self) -> Result<String, String> {
+        let current = settings::load(&self.db.lock().unwrap())?;
+        reply(Ok(FontList {
+            chat: surface_fonts(Surface::Chat, current.chat_added_fonts),
+            board: surface_fonts(Surface::Board, current.board_added_fonts),
+            installed: fonts::installed_families(),
+        }))
+    }
+
+    #[tool(description = "Rename a column.")]
+    fn rename_column(&self, Parameters(p): Parameters<RenameColumn>) -> Result<String, String> {
+        reply(control::rename_column(
+            &self.db.lock().unwrap(),
+            p.id,
+            &p.name,
+        ))
+    }
+
+    #[tool(description = "Move a column to a new position.")]
+    fn move_column(&self, Parameters(p): Parameters<MoveColumn>) -> Result<String, String> {
+        reply(control::move_column(
+            &mut self.db.lock().unwrap(),
+            p.id,
+            p.index,
+        ))
+    }
+
+    #[tool(description = "Change a column's width or fold it. Leave out what stays the same.")]
+    fn set_column_view(&self, Parameters(p): Parameters<SetColumnView>) -> Result<String, String> {
+        reply(control::set_column_view(
+            &self.db.lock().unwrap(),
+            p.id,
+            p.width,
+            p.collapsed,
+        ))
+    }
+
+    #[tool(description = "Add an empty custom column at the right end of the board.")]
+    fn add_column(&self, Parameters(p): Parameters<AddColumn>) -> Result<String, String> {
+        reply(control::add_column(&self.db.lock().unwrap(), &p.name))
+    }
+
+    #[tool(
+        description = "Delete a column. A column that still has cards needs move_to_column, the column that takes them."
+    )]
+    fn delete_column(&self, Parameters(p): Parameters<DeleteColumn>) -> Result<String, String> {
+        let move_to = match (p.move_to_column, p.move_to_new_column) {
+            (Some(_), Some(_)) => {
+                return Err("give move_to_column or move_to_new_column, not both".into());
+            }
+            (Some(id), None) => Some(MoveTo::Column { id }),
+            (None, Some(name)) => Some(MoveTo::NewColumn { name }),
+            (None, None) => None,
+        };
+        reply(control::delete_column(
+            &self.db,
+            &self.source()?,
+            p.id,
+            move_to.as_ref(),
+        ))
+    }
+
+    #[tool(description = "Rename a row. An empty name brings back the row's default name.")]
+    fn rename_row(&self, Parameters(p): Parameters<RenameRow>) -> Result<String, String> {
+        reply(control::rename_row(
+            &self.db.lock().unwrap(),
+            p.row,
+            &p.name,
+        ))
+    }
+
+    #[tool(description = "Show only the named projects' columns and hide every other column.")]
+    fn show_projects(&self, Parameters(p): Parameters<ShowProjects>) -> Result<String, String> {
+        reply(control::show_projects(&self.db.lock().unwrap(), &p.projects).map(settings_view))
+    }
+
+    #[tool(description = "Show every project's column again.")]
+    fn show_all_projects(&self) -> Result<String, String> {
+        reply(control::show_all_projects(&self.db.lock().unwrap()).map(settings_view))
+    }
+
+    #[tool(description = "Switch between the light and dark theme.")]
+    fn set_theme(&self, Parameters(p): Parameters<SetTheme>) -> Result<String, String> {
+        let change = WindowChange {
+            theme: Some(p.theme),
+            ..WindowChange::default()
+        };
+        reply(settings::change_window(&self.db.lock().unwrap(), &change).map(settings_view))
+    }
+
+    #[tool(
+        description = "Change the chat and board fonts and sizes. Leave out what stays the same."
+    )]
+    fn set_fonts(&self, Parameters(p): Parameters<SetFonts>) -> Result<String, String> {
+        self.change_settings(|s| {
+            for (surface, font) in [(Surface::Chat, p.chat_font), (Surface::Board, p.board_font)] {
+                if let Some(font) = font {
+                    settings::set_font(s, surface, &font, fonts::installed_families)?;
+                }
+            }
+            s.chat_font_size = p.chat_font_size.unwrap_or(s.chat_font_size);
+            s.board_font_size = p.board_font_size.unwrap_or(s.board_font_size);
+            Ok(())
+        })
+    }
+
+    #[tool(
+        description = "Show or hide the chat panel and change the chat and card detail widths. Leave out what stays the same."
+    )]
+    fn set_panels(&self, Parameters(p): Parameters<SetPanels>) -> Result<String, String> {
+        let change = WindowChange {
+            theme: None,
+            chat_open: p.chat_open,
+            chat_width: p.chat_width,
+            detail_width: p.detail_width,
+        };
+        reply(settings::change_window(&self.db.lock().unwrap(), &change).map(settings_view))
+    }
+
+    #[tool(
+        description = "Change where Fathom reads tasks and finds terminals: the Firstmate home, the chat terminal label, the herdr-core session and socket, and the folder new chats start in. Leave out what stays the same."
+    )]
+    fn set_connection(&self, Parameters(p): Parameters<SetConnection>) -> Result<String, String> {
+        self.change_settings(|s| {
+            replace(&mut s.home, p.home);
+            replace(&mut s.terminal_label, p.terminal_label);
+            replace(&mut s.hc_session, p.hc_session);
+            replace(&mut s.hc_socket, p.hc_socket);
+            replace(&mut s.agent_folder, p.agent_folder);
+            Ok(())
+        })
+    }
+}
+
+#[tool_router(router = task_tools)]
 impl Fathom {
     #[tool(description = "List backlog tasks, optionally only one project or one row.")]
     fn list_tasks(&self, Parameters(p): Parameters<ListTasks>) -> Result<String, String> {
@@ -187,7 +527,10 @@ impl Fathom {
         }
         reply(db.decline_request(&p.request_id, p.reason.as_deref().unwrap_or_default()))
     }
+}
 
+#[tool_router(router = start_tools)]
+impl Fathom {
     #[tool(
         description = "Start a Claude Code worker on a task in its own terminal. The worker reads the task, does the work and reports by updating the task. Use this instead of your own subagents for work the user should see on the board."
     )]
@@ -200,7 +543,7 @@ impl Fathom {
     fn start(&self, id: i64, folder: Option<String>) -> Result<StartedWorker, String> {
         let (task, settings, store) = {
             let db = self.db.lock().unwrap();
-            (db.task(id)?, load_settings(&db)?, db.path().to_path_buf())
+            (db.task(id)?, settings::load(&db)?, db.path().to_path_buf())
         };
         if task.row == Row::Landed {
             return Err(format!("task {id} is already done"));
@@ -247,12 +590,17 @@ impl Fathom {
     }
 }
 
-#[tool_handler]
+#[tool_handler(router = self.router)]
 impl ServerHandler for Fathom {
     fn get_info(&self) -> ServerConfig {
+        let instructions = if self.helper {
+            HELPER_INSTRUCTIONS
+        } else {
+            INSTRUCTIONS
+        };
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new(SERVER_NAME, env!("CARGO_PKG_VERSION")))
-            .with_instructions(INSTRUCTIONS)
+            .with_instructions(instructions)
     }
 }
 
@@ -268,7 +616,9 @@ pub fn store_path(
     if let Some(index) = args.iter().position(|a| a == DB_FLAG) {
         return match args.get(index + 1) {
             Some(path) if !path.starts_with('-') => Ok(PathBuf::from(path)),
-            _ => Err(format!("usage: fathom {MCP_FLAG} [{DB_FLAG} <store file>]")),
+            _ => Err(format!(
+                "usage: fathom {MCP_FLAG} [{HELPER_FLAG}] [{DB_FLAG} <store file>]"
+            )),
         };
     }
     Ok(env
@@ -277,7 +627,30 @@ pub fn store_path(
         .unwrap_or(default))
 }
 
-pub fn serve_stdio(store: &Path) -> Result<(), String> {
+pub fn wants_helper(args: &[String]) -> bool {
+    args.iter().any(|a| a == HELPER_FLAG)
+}
+
+pub fn helper_asking(args: &[String]) -> Option<Result<bool, String>> {
+    let index = args.iter().position(|a| a == HELPER_ASKING_FLAG)?;
+    Some(match args.get(index + 1).map(String::as_str) {
+        Some(YES) => Ok(true),
+        Some(NO) => Ok(false),
+        _ => Err(format!(
+            "usage: fathom {HELPER_ASKING_FLAG} {YES}|{NO} [{DB_FLAG} <store file>]"
+        )),
+    })
+}
+
+pub fn record_helper_asking(store: &Path, asking: bool) -> Result<(), String> {
+    let db = Db::open_file(store)?;
+    if settings::helper_asking(&db)? != asking {
+        settings::set_helper_asking(&db, asking)?;
+    }
+    Ok(())
+}
+
+pub fn serve_stdio(store: &Path, helper: bool) -> Result<(), String> {
     let db = Db::open_file(store)?;
     let host = Host::current()?;
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -285,7 +658,12 @@ pub fn serve_stdio(store: &Path) -> Result<(), String> {
         .build()
         .map_err(|e| format!("cannot start the MCP runtime: {e}"))?;
     runtime.block_on(async {
-        let service = Fathom::new(db, host)
+        let server = if helper {
+            Fathom::helper(db, host)
+        } else {
+            Fathom::new(db, host)
+        };
+        let service = server
             .serve(rmcp::transport::stdio())
             .await
             .map_err(|e| e.to_string())?;
@@ -301,8 +679,8 @@ pub fn db_env() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::MoveStatus;
     use crate::db::backlog::Task;
+    use crate::db::{Column, MoveStatus};
     use crate::moves::Placement;
     use crate::source::Source;
     use serde_json::{Value, json};
@@ -771,6 +1149,387 @@ esac
         assert!(lab.calls().iter().all(|call| call[0] == "ls"));
     }
 
+    const START_TOOLS: [&str; 1] = ["start_worker"];
+    const TASK_TOOLS: [&str; 6] = [
+        "add_task",
+        "answer_request",
+        "list_requests",
+        "list_tasks",
+        "move_task",
+        "update_task",
+    ];
+    const HELPER_TOOLS: [&str; 15] = [
+        "add_column",
+        "delete_column",
+        "get_board_layout",
+        "get_settings",
+        "list_fonts",
+        "move_column",
+        "rename_column",
+        "rename_row",
+        "set_column_view",
+        "set_connection",
+        "set_fonts",
+        "set_panels",
+        "set_theme",
+        "show_all_projects",
+        "show_projects",
+    ];
+
+    fn helper_board() -> (tempfile::TempDir, PathBuf, Fathom, Vec<Column>) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join("board.sqlite");
+        let db = Db::open_file(&store).unwrap();
+        db.set_setting("home", "").unwrap();
+        let server = Fathom::helper(db, no_host());
+        add(&server, "Chart the reef", "reef-map", None);
+        add(&server, "Paint the hull", "dry-dock", Some(Row::Shallows));
+        add(&server, "Trim the sails", "rigging", None);
+        let cards = Source::Backlog.read_cards(&server.db).unwrap();
+        let columns = server.db.lock().unwrap().ensure_columns(&cards).unwrap();
+        (dir, store, server, columns)
+    }
+
+    fn column<'a>(columns: &'a [Column], project: &str) -> &'a Column {
+        columns
+            .iter()
+            .find(|c| c.project.as_deref() == Some(project))
+            .unwrap()
+    }
+
+    fn stored(store: &Path) -> settings::Settings {
+        settings::load(&Db::open_file(store).unwrap()).unwrap()
+    }
+
+    fn tool_names(server: &Fathom) -> Vec<String> {
+        let mut names: Vec<String> = server
+            .router
+            .list_all()
+            .into_iter()
+            .map(|t| t.name.to_string())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn the_chat_session_starts_workers_and_bosun_only_changes_the_app() {
+        let (_dir, _store, chat) = server();
+        let mut chat_tools: Vec<&str> = [TASK_TOOLS.as_slice(), START_TOOLS.as_slice()].concat();
+        chat_tools.sort();
+        assert_eq!(tool_names(&chat), chat_tools);
+        assert!(!chat.helper);
+
+        let (_dir, _store, helper, _) = helper_board();
+        let mut helper_tools: Vec<&str> = [TASK_TOOLS.as_slice(), HELPER_TOOLS.as_slice()].concat();
+        helper_tools.sort();
+        assert_eq!(tool_names(&helper), helper_tools);
+    }
+
+    #[test]
+    fn the_helper_switch_is_read_from_the_arguments() {
+        let args = |list: &[&str]| list.iter().map(|a| a.to_string()).collect::<Vec<_>>();
+        assert!(!wants_helper(&args(&["fathom", "--mcp", "--db", "/x"])));
+        assert!(wants_helper(&args(&[
+            "fathom", "--mcp", "--helper", "--db", "/x"
+        ])));
+        assert_eq!(helper_asking(&args(&["fathom", "--mcp"])), None);
+        assert_eq!(
+            helper_asking(&args(&["fathom", "--helper-asking", "yes"])),
+            Some(Ok(true))
+        );
+        assert_eq!(
+            helper_asking(&args(&["fathom", "--helper-asking", "no", "--db", "/x"])),
+            Some(Ok(false))
+        );
+        assert!(matches!(
+            helper_asking(&args(&["fathom", "--helper-asking", "maybe"])),
+            Some(Err(_))
+        ));
+    }
+
+    #[test]
+    fn the_permission_hook_flag_is_written_only_when_it_changes() {
+        let (_dir, store, _server) = server();
+        let db = Db::open_file(&store).unwrap();
+        db.changed_elsewhere().unwrap();
+        record_helper_asking(&store, false).unwrap();
+        assert!(!db.changed_elsewhere().unwrap());
+        record_helper_asking(&store, true).unwrap();
+        assert!(db.changed_elsewhere().unwrap());
+        assert!(settings::helper_asking(&db).unwrap());
+        record_helper_asking(&store, true).unwrap();
+        assert!(!db.changed_elsewhere().unwrap());
+        record_helper_asking(&store, false).unwrap();
+        assert!(!settings::helper_asking(&db).unwrap());
+    }
+
+    #[test]
+    fn reads_the_board_layout() {
+        let (_dir, _store, server, _) = helper_board();
+        let layout: Value = ok(server.get_board_layout());
+        assert_eq!(
+            layout["projects"],
+            json!(["dry-dock", "reef-map", "rigging"])
+        );
+        assert_eq!(layout["columns"].as_array().unwrap().len(), 3);
+        assert_eq!(layout["rows"].as_array().unwrap().len(), 5);
+        assert_eq!(layout["projectFilter"], json!([]));
+    }
+
+    #[test]
+    fn the_layout_includes_a_project_the_window_has_not_read_yet() {
+        let (_dir, _store, server, _) = helper_board();
+        add(&server, "Raise the mast", "mast-works", None);
+        let layout: Value = ok(server.get_board_layout());
+        assert_eq!(
+            layout["projects"],
+            json!(["dry-dock", "mast-works", "reef-map", "rigging"])
+        );
+        let mast = &layout["columns"][3];
+        assert_eq!(mast["project"], "mast-works");
+        let shown: Value = ok(server.show_projects(Parameters(ShowProjects {
+            projects: vec!["mast-works".into()],
+        })));
+        assert_eq!(shown["projectFilter"], json!(["mast-works"]));
+    }
+
+    #[test]
+    fn renames_moves_and_resizes_columns() {
+        let (_dir, store, server, columns) = helper_board();
+        let reef = column(&columns, "reef-map").id;
+
+        let renamed: Value = ok(server.rename_column(Parameters(RenameColumn {
+            id: reef,
+            name: "Reef chart".into(),
+        })));
+        assert_eq!(renamed["name"], "Reef chart");
+        assert_eq!(
+            server.rename_column(Parameters(RenameColumn {
+                id: 99,
+                name: "Ghost".into(),
+            })),
+            Err("there is no column 99".into())
+        );
+
+        let moved: Vec<Column> =
+            ok(server.move_column(Parameters(MoveColumn { id: reef, index: 0 })));
+        assert_eq!(moved[0].id, reef);
+
+        let folded: Value = ok(server.set_column_view(Parameters(SetColumnView {
+            id: reef,
+            width: Some(300),
+            collapsed: Some(true),
+        })));
+        assert_eq!(folded["width"], 300);
+        assert_eq!(folded["collapsed"], true);
+        let too_wide = server.set_column_view(Parameters(SetColumnView {
+            id: reef,
+            width: Some(5000),
+            collapsed: None,
+        }));
+        assert!(too_wide.unwrap_err().contains("between 180 and 640"));
+
+        let db = Db::open_file(&store).unwrap();
+        let saved = db.columns().unwrap();
+        assert_eq!(saved[0].name, "Reef chart");
+        assert_eq!(saved[0].width, 300);
+        assert!(saved[0].collapsed);
+    }
+
+    #[test]
+    fn adds_and_deletes_columns_and_moves_their_cards() {
+        let (_dir, store, server, columns) = helper_board();
+        let added: Vec<Column> = ok(server.add_column(Parameters(AddColumn {
+            name: "Ideas".into(),
+        })));
+        let ideas = added.iter().find(|c| c.name == "Ideas").unwrap().id;
+        let _: Vec<Column> = ok(server.delete_column(Parameters(DeleteColumn {
+            id: ideas,
+            move_to_column: None,
+            move_to_new_column: None,
+        })));
+
+        let reef = column(&columns, "reef-map").id;
+        let holding = server.delete_column(Parameters(DeleteColumn {
+            id: reef,
+            move_to_column: None,
+            move_to_new_column: None,
+        }));
+        assert!(holding.unwrap_err().contains("choose a column to move to"));
+        let both = server.delete_column(Parameters(DeleteColumn {
+            id: reef,
+            move_to_column: Some(column(&columns, "rigging").id),
+            move_to_new_column: Some("Later".into()),
+        }));
+        assert!(both.is_err());
+
+        let left: Vec<Column> = ok(server.delete_column(Parameters(DeleteColumn {
+            id: reef,
+            move_to_column: None,
+            move_to_new_column: Some("Later".into()),
+        })));
+        assert!(left.iter().all(|c| c.id != reef));
+        let later = left.iter().find(|c| c.name == "Later").unwrap().id;
+        let db = Db::open_file(&store).unwrap();
+        assert!(
+            db.columns()
+                .unwrap()
+                .iter()
+                .all(|c| c.id != reef && c.id != ideas)
+        );
+        assert!(db.places().unwrap().iter().any(|p| p.column == Some(later)));
+    }
+
+    #[test]
+    fn renames_a_row() {
+        let (_dir, store, server, _) = helper_board();
+        let rows: Vec<Value> = ok(server.rename_row(Parameters(RenameRow {
+            row: Row::Deep,
+            name: "Parked".into(),
+        })));
+        assert!(
+            rows.iter()
+                .any(|r| r["row"] == "deep" && r["name"] == "Parked")
+        );
+        let db = Db::open_file(&store).unwrap();
+        assert!(
+            db.row_names()
+                .unwrap()
+                .iter()
+                .any(|r| r.row == Row::Deep && r.name == "Parked")
+        );
+    }
+
+    #[test]
+    fn shows_only_the_named_projects_until_shown_all() {
+        let (_dir, store, server, columns) = helper_board();
+        let shown: Value = ok(server.show_projects(Parameters(ShowProjects {
+            projects: vec!["Reef-Map".into(), "rigging".into()],
+        })));
+        assert_eq!(shown["projectFilter"], json!(["reef-map", "rigging"]));
+        assert_eq!(stored(&store).project_filter, ["reef-map", "rigging"]);
+
+        let reef = column(&columns, "reef-map").id;
+        let _: Value = ok(server.rename_column(Parameters(RenameColumn {
+            id: reef,
+            name: "Fathom".into(),
+        })));
+        let by_column_name: Value = ok(server.show_projects(Parameters(ShowProjects {
+            projects: vec!["fathom".into()],
+        })));
+        assert_eq!(by_column_name["projectFilter"], json!(["reef-map"]));
+
+        let unknown = server.show_projects(Parameters(ShowProjects {
+            projects: vec!["lighthouse".into()],
+        }));
+        assert_eq!(
+            unknown,
+            Err(
+                "there is no project \"lighthouse\"; the projects are dry-dock, reef-map, rigging"
+                    .into()
+            )
+        );
+        let none = server.show_projects(Parameters(ShowProjects { projects: vec![] }));
+        assert_eq!(none, Err("name at least one project to show".into()));
+
+        let all: Value = ok(server.show_all_projects());
+        assert_eq!(all["projectFilter"], json!([]));
+        assert!(stored(&store).project_filter.is_empty());
+    }
+
+    #[test]
+    fn sets_the_theme_and_the_panels() {
+        let (_dir, store, server, _) = helper_board();
+        let dark: Value = ok(server.set_theme(Parameters(SetTheme { theme: Theme::Dark })));
+        assert_eq!(dark["theme"], "dark");
+        assert_eq!(stored(&store).theme, Theme::Dark);
+
+        let panels: Value = ok(server.set_panels(Parameters(SetPanels {
+            chat_open: Some(false),
+            chat_width: Some(720),
+            detail_width: None,
+        })));
+        assert_eq!(panels["chatOpen"], false);
+        assert_eq!(panels["chatWidth"], 720);
+        assert_eq!(panels["detailWidth"], DETAIL_WIDTH.default);
+        assert_eq!(panels["chatWidthRange"], json!([300, 1400]));
+        let narrow = server.set_panels(Parameters(SetPanels {
+            chat_open: None,
+            chat_width: Some(10),
+            detail_width: None,
+        }));
+        assert_eq!(
+            narrow,
+            Err("the chat width must be between 300 and 1400 pixels".into())
+        );
+        assert_eq!(stored(&store).chat_width, 720);
+    }
+
+    #[test]
+    fn sets_fonts_from_presets_and_checks_sizes() {
+        let (_dir, store, server, _) = helper_board();
+        let fonts: Value = ok(server.list_fonts());
+        let board_preset = fonts["board"]["presets"][1]["key"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let board_name = fonts["board"]["presets"][1]["name"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(fonts["installed"].is_array());
+
+        let changed: Value = ok(server.set_fonts(Parameters(SetFonts {
+            chat_font: None,
+            chat_font_size: Some(15),
+            board_font: Some(board_name.to_uppercase()),
+            board_font_size: None,
+        })));
+        assert_eq!(changed["boardFont"], board_preset);
+        assert_eq!(changed["chatFontSize"], 15);
+        assert_eq!(stored(&store).board_font, board_preset);
+
+        let huge = server.set_fonts(Parameters(SetFonts {
+            chat_font: None,
+            chat_font_size: None,
+            board_font: None,
+            board_font_size: Some(90),
+        }));
+        assert_eq!(
+            huge,
+            Err("the board font size must be between 11 and 20".into())
+        );
+        let missing = server.set_fonts(Parameters(SetFonts {
+            chat_font: Some("No Such Font Family 42".into()),
+            chat_font_size: None,
+            board_font: None,
+            board_font_size: None,
+        }));
+        assert_eq!(
+            missing,
+            Err("no font named \"No Such Font Family 42\" is installed".into())
+        );
+    }
+
+    #[test]
+    fn sets_the_connection_and_reads_the_settings() {
+        let (_dir, store, server, _) = helper_board();
+        let changed: Value = ok(server.set_connection(Parameters(SetConnection {
+            home: None,
+            terminal_label: None,
+            hc_session: Some(" crew ".into()),
+            hc_socket: None,
+            agent_folder: Some("/work/projects".into()),
+        })));
+        assert_eq!(changed["hcSession"], "crew");
+        assert_eq!(changed["agentFolder"], "/work/projects");
+        assert_eq!(changed["home"], "");
+        let read: Value = ok(server.get_settings());
+        assert_eq!(read["hcSession"], "crew");
+        assert_eq!(stored(&store).agent_folder, "/work/projects");
+    }
+
     async fn call(
         lines: &mut tokio::io::Lines<BufReader<tokio::io::ReadHalf<tokio::io::DuplexStream>>>,
         writer: &mut tokio::io::WriteHalf<tokio::io::DuplexStream>,
@@ -878,6 +1637,67 @@ esac
         assert_eq!(failed["result"]["isError"], true);
         assert_eq!(failed["result"]["content"][0]["text"], "no task 7");
 
+        drop(write);
+        drop(lines);
+        running.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn the_helper_switch_adds_the_app_control_tools_and_instructions() {
+        let (_dir, store, server, _) = helper_board();
+        let (client, transport) = tokio::io::duplex(64 * 1024);
+        let running = tokio::spawn(async move {
+            server
+                .serve(tokio::io::split(transport))
+                .await
+                .unwrap()
+                .waiting()
+                .await
+                .unwrap();
+        });
+        let (read, mut write) = tokio::io::split(client);
+        let mut lines = BufReader::new(read).lines();
+        let init = call(
+            &mut lines,
+            &mut write,
+            json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": {"name": "test-client", "version": "0"}
+            }}),
+        )
+        .await;
+        let instructions = init["result"]["instructions"].as_str().unwrap();
+        assert!(instructions.contains("show_projects hides every column"));
+        assert!(!instructions.contains("Keep your task list in Fathom"));
+        assert!(!instructions.contains("start_worker"));
+        call(
+            &mut lines,
+            &mut write,
+            json!({"jsonrpc": "2.0", "method": "notifications/initialized"}),
+        )
+        .await;
+        let tools = call(
+            &mut lines,
+            &mut write,
+            json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+        )
+        .await;
+        assert_eq!(
+            tools["result"]["tools"].as_array().unwrap().len(),
+            TASK_TOOLS.len() + HELPER_TOOLS.len()
+        );
+        let themed = call(
+            &mut lines,
+            &mut write,
+            json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
+                "name": "set_theme",
+                "arguments": {"theme": "dark"}
+            }}),
+        )
+        .await;
+        assert_eq!(themed["result"]["isError"], false);
+        assert_eq!(stored(&store).theme, Theme::Dark);
         drop(write);
         drop(lines);
         running.await.unwrap();

@@ -7,6 +7,7 @@ import {
   type BoardView,
   type Card,
   type Column,
+  type HelperStatus,
   type HerdrStatus,
   type MoveTo,
   type Overlay,
@@ -14,6 +15,7 @@ import {
   type RowKey,
   type Settings,
   type Terminal,
+  type WindowChange,
   type Worker,
 } from "./api";
 import { appearanceOf, boardStyle, chatFontStack, type Appearance } from "./appearance";
@@ -29,10 +31,16 @@ import { chatTitle, initialAgent, type AgentKey } from "./agents";
 import { WorkerTerminal, type Watched } from "./components/WorkerTerminal";
 import { ChevronLeft } from "./components/Icons";
 import { SettingsDialog } from "./components/SettingsDialog";
-import { INITIAL_THEME, otherTheme, themeToggleLabel, type Theme } from "./theme";
+import { BosunDrawer } from "./components/BosunDrawer";
+import { BOSUN, DRAWER_HEIGHT, dotOf, isMac, isToggleShortcut, shortcutLabel, summaryOf, type BosunState } from "./bosun";
+import { filterText, indexAmongAll, shownColumns } from "./projectFilter";
+import { DEFAULT_THEME, otherTheme, themeToggleLabel } from "./theme";
 
-const DETAIL_WIDTH = { initial: 460, min: 340, max: 900 };
-const CHAT_WIDTH = { initial: 600, min: 300, max: 1400 };
+const DETAIL_WIDTH = { min: 340, max: 900 };
+const CHAT_WIDTH = { min: 300, max: 1400 };
+const NO_HELPER: HelperStatus = { terminal: null, status: "", asking: false };
+const MAC = isMac(navigator.platform);
+const SHORTCUT = shortcutLabel(MAC);
 
 const clamp = (value: number, range: { min: number; max: number }) => Math.max(range.min, Math.min(range.max, value));
 
@@ -42,18 +50,20 @@ export default function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [herdr, setHerdr] = useState<HerdrStatus>({ connected: false, message: "connecting" });
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [chatOpen, setChatOpen] = useState(true);
   const [chatTerminal, setChatTerminal] = useState<Terminal | null>(null);
   const [pickedAgent, setPickedAgent] = useState<AgentKey | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [preview, setPreview] = useState<Appearance | null>(null);
-  const [detailWidth, setDetailWidth] = useState(DETAIL_WIDTH.initial);
-  const [chatWidth, setChatWidth] = useState(CHAT_WIDTH.initial);
+  const [detailDrag, setDetailDrag] = useState<number | null>(null);
+  const [chatDrag, setChatDrag] = useState<number | null>(null);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [columnError, setColumnError] = useState<string | null>(null);
   const [watched, setWatched] = useState<Watched | null>(null);
-  const [theme, setTheme] = useState<Theme>(INITIAL_THEME);
+  const [helper, setHelper] = useState<HelperStatus>(NO_HELPER);
+  const [bosunOpen, setBosunOpen] = useState(false);
+  const [bosunHeight, setBosunHeight] = useState(DRAWER_HEIGHT.initial);
+  const [bosunState, setBosunState] = useState<BosunState>("finding");
   const launchLogged = useRef(false);
 
   const logLaunch = useCallback((board: BoardView) => {
@@ -79,6 +89,8 @@ export default function App() {
       events.board((b) => alive && accept(b)),
       events.herdr((s) => alive && setHerdr(s)),
       events.workers((w) => alive && setWorkers(w)),
+      events.settings((s) => alive && setSettings(s)),
+      events.helper((h) => alive && setHelper(h)),
     ];
     api
       .cachedBoard()
@@ -92,6 +104,7 @@ export default function App() {
     api.getSettings().then((s) => alive && setSettings(s));
     api.herdrStatus().then((s) => alive && setHerdr(s));
     api.workers().then((w) => alive && setWorkers(w));
+    api.helperStatus().then((h) => alive && setHelper(h));
     return () => {
       alive = false;
       unlisten.forEach((p) => void p.then((fn) => fn()));
@@ -106,9 +119,42 @@ export default function App() {
     Object.entries(boardStyle(appearance)).forEach(([name, value]) => root.setProperty(name, value));
   }, [appearance]);
 
+  const theme = settings?.theme ?? DEFAULT_THEME;
+  const chatOpen = settings?.chatOpen ?? true;
+  const chatWidth = chatDrag ?? settings?.chatWidth ?? 0;
+  const detailWidth = detailDrag ?? settings?.detailWidth ?? 0;
+  const projectFilter = settings?.projectFilter ?? [];
+
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  useEffect(() => {
+    const toggle = (e: KeyboardEvent) => {
+      if (!isToggleShortcut(e, MAC)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setBosunOpen((o) => !o);
+    };
+    window.addEventListener("keydown", toggle, true);
+    return () => window.removeEventListener("keydown", toggle, true);
+  }, []);
+
+  const changeWindow = (change: WindowChange) => {
+    setSettings((s) => s && { ...s, ...change });
+    void api
+      .changeWindow(change)
+      .then(setSettings)
+      .catch(() => api.getSettings().then(setSettings));
+  };
+
+  const showAllProjects = () => {
+    setSettings((s) => s && { ...s, projectFilter: [] });
+    void api
+      .showAllProjects()
+      .then(setSettings)
+      .catch(() => api.getSettings().then(setSettings));
+  };
 
   const rowNames = useMemo(() => {
     const names = Object.fromEntries(ROW_ORDER.map((r) => [r, r])) as Record<RowKey, string>;
@@ -138,7 +184,9 @@ export default function App() {
       })
       .catch((e) => setColumnError(errorText(e)));
 
-  const moveColumn = (id: number, index: number) => {
+  const moveColumn = (id: number, shownIndex: number) => {
+    if (!view) return;
+    const index = indexAmongAll(view.columns, shownColumns(view.columns, projectFilter), id, shownIndex);
     setView((v) => v && { ...v, columns: moveTo(v.columns, id, index) });
     void replaceColumns(api.moveColumn(id, index));
   };
@@ -174,8 +222,9 @@ export default function App() {
     void changeOverlay(api.placeCard(placement, chatTerminal?.address ?? null));
   };
 
-  const anyCollapsed = view?.columns.some((c) => c.collapsed) ?? false;
-  const expandAll = () => view?.columns.filter((c) => c.collapsed).forEach((c) => changeColumn(c.id, { collapsed: false }));
+  const columns = shownColumns(view?.columns ?? [], projectFilter);
+  const anyCollapsed = columns.some((c) => c.collapsed);
+  const expandAll = () => columns.filter((c) => c.collapsed).forEach((c) => changeColumn(c.id, { collapsed: false }));
 
   const onSettingsSaved = (saved: Settings) => {
     setSettings(saved);
@@ -210,13 +259,23 @@ export default function App() {
             Expand all
           </button>
         )}
-        <button className="btn btn-header" onClick={() => setTheme(otherTheme)}>
+        <button className="btn btn-header" onClick={() => changeWindow({ theme: otherTheme(theme) })} disabled={!settings}>
           {themeToggleLabel(theme)}
         </button>
         <button className="btn btn-header" onClick={() => setSettingsOpen(true)} disabled={!settings}>
           Settings
         </button>
-        <button className="btn btn-dark" onClick={() => setChatOpen((o) => !o)}>
+        <button
+          className={`btn btn-header bosun-button${bosunOpen ? " on" : ""}`}
+          onClick={() => setBosunOpen((o) => !o)}
+          disabled={!settings}
+          aria-expanded={bosunOpen}
+          title={`${summaryOf(bosunState)} (${SHORTCUT})`}
+        >
+          <span className={`bosun-dot ${dotOf(bosunState)}`} aria-hidden="true" />
+          {BOSUN}
+        </button>
+        <button className="btn btn-dark" onClick={() => changeWindow({ chatOpen: !chatOpen })} disabled={!settings}>
           {chatOpen ? "Hide chat" : "Show chat"}
         </button>
       </header>
@@ -236,31 +295,58 @@ export default function App() {
         </div>
       )}
       <main className="main">
-        {view ? (
-          view.columns.length > 0 ? (
-            <Board
-              cards={cards}
-              source={view.source}
-              columns={view.columns}
-              overlay={overlay}
-              workers={workerByTask}
-              rowNames={rowNames}
-              selectedId={selectedId}
-              onSelect={selectCard}
-              onColumnChange={changeColumn}
-              onColumnRename={renameColumn}
-              onColumnMove={moveColumn}
-              onColumnAdd={(name) => void replaceColumns(api.addColumn(name))}
-              onColumnDelete={deleteColumn}
-              onPlace={placeCard}
-              onWatch={(card, worker) => setWatched({ taskId: card.id, title: card.title, terminal: worker.terminal })}
-            />
+        <div className="board-column">
+          {projectFilter.length > 0 && (
+            <div className="filter-strip" role="status">
+              <span>{filterText(projectFilter)}</span>
+              <button className="mini" onClick={showAllProjects}>
+                Show all
+              </button>
+            </div>
+          )}
+          {view ? (
+            view.columns.length > 0 ? (
+              <Board
+                cards={cards}
+                source={view.source}
+                columns={columns}
+                overlay={overlay}
+                workers={workerByTask}
+                rowNames={rowNames}
+                selectedId={selectedId}
+                onSelect={selectCard}
+                onColumnChange={changeColumn}
+                onColumnRename={renameColumn}
+                onColumnMove={moveColumn}
+                onColumnAdd={projectFilter.length > 0 ? undefined : (name) => void replaceColumns(api.addColumn(name))}
+                onColumnDelete={deleteColumn}
+                onPlace={placeCard}
+                onWatch={(card, worker) => setWatched({ taskId: card.id, title: card.title, terminal: worker.terminal })}
+              />
+            ) : (
+              <div className="board-empty">{emptyBoardText(view.source, view.home)}</div>
+            )
           ) : (
-            <div className="board-empty">{emptyBoardText(view.source, view.home)}</div>
-          )
-        ) : (
-          <div className="board-empty">{readError ? "" : "Reading tasks…"}</div>
-        )}
+            <div className="board-empty">{readError ? "" : "Reading tasks…"}</div>
+          )}
+          {settings && (
+            <BosunDrawer
+              open={bosunOpen}
+              height={bosunHeight}
+              helper={helper}
+              helperStarted={settings.helperStarted}
+              mac={MAC}
+              shortcut={SHORTCUT}
+              fontFamily={chatFontStack(appearance ?? appearanceOf(settings))}
+              fontSize={(appearance ?? settings).chatFontSize}
+              theme={theme}
+              connectionKey={connectionKey}
+              onHeight={setBosunHeight}
+              onToggle={() => setBosunOpen((o) => !o)}
+              onState={setBosunState}
+            />
+          )}
+        </div>
         {selected && (
           <>
             <div
@@ -269,7 +355,14 @@ export default function App() {
               aria-label="Resize card panel"
               onPointerDown={(e) => {
                 const start = detailWidth;
-                startDrag(e, (dx) => setDetailWidth(clamp(start - dx, DETAIL_WIDTH)));
+                startDrag(
+                  e,
+                  (dx) => setDetailDrag(clamp(start - dx, DETAIL_WIDTH)),
+                  (dx) => {
+                    setDetailDrag(null);
+                    changeWindow({ detailWidth: clamp(start - dx, DETAIL_WIDTH) });
+                  },
+                );
               }}
             >
               <span />
@@ -296,7 +389,14 @@ export default function App() {
               aria-label="Resize chat"
               onPointerDown={(e) => {
                 const start = chatWidth;
-                startDrag(e, (dx) => setChatWidth(clamp(start - dx, CHAT_WIDTH)));
+                startDrag(
+                  e,
+                  (dx) => setChatDrag(clamp(start - dx, CHAT_WIDTH)),
+                  (dx) => {
+                    setChatDrag(null);
+                    changeWindow({ chatWidth: clamp(start - dx, CHAT_WIDTH) });
+                  },
+                );
               }}
             >
               <span />
@@ -313,12 +413,12 @@ export default function App() {
               theme={theme}
               connectionKey={connectionKey}
               onTerminal={setChatTerminal}
-              onCollapse={() => setChatOpen(false)}
+              onCollapse={() => changeWindow({ chatOpen: false })}
             />
           </div>
         )}
         {settings && !chatOpen && (
-          <button className="chat-rail" onClick={() => setChatOpen(true)} aria-label={`Open ${chatName} chat`}>
+          <button className="chat-rail" onClick={() => changeWindow({ chatOpen: true })} aria-label={`Open ${chatName} chat`}>
             <ChevronLeft />
             <span className="vname">{chatName}</span>
           </button>

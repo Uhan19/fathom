@@ -2,6 +2,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { AgentKey } from "./agents";
+import type { Theme } from "./theme";
 
 export type RowKey = "surface" | "shallows" | "deep" | "seabed" | "landed";
 
@@ -126,6 +127,32 @@ export interface Settings {
   boardAddedFonts: string[];
   agentFolder: string;
   chatAgent: AgentKey | null;
+  theme: Theme;
+  chatOpen: boolean;
+  chatWidth: number;
+  detailWidth: number;
+  projectFilter: string[];
+  helperStarted: boolean;
+}
+
+export interface WindowChange {
+  theme?: Theme;
+  chatOpen?: boolean;
+  chatWidth?: number;
+  detailWidth?: number;
+}
+
+export type SignIn = "signedIn" | "signedOut" | "unknown";
+
+export interface HelperStatus {
+  terminal: string | null;
+  status: string;
+  asking: boolean;
+}
+
+export interface HelperCheck {
+  claude: string | null;
+  signIn: SignIn | null;
 }
 
 export interface Terminal {
@@ -145,7 +172,7 @@ export interface Size {
   rows: number;
 }
 
-export type View = "chat" | "worker";
+export type View = "chat" | "worker" | "helper";
 
 export interface AttachedSize extends Size {
   terminal: string;
@@ -185,6 +212,8 @@ export const api = {
   workers: () => invoke<Worker[]>("workers"),
   getSettings: () => invoke<Settings>("get_settings"),
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
+  changeWindow: (change: WindowChange) => invoke<Settings>("change_window", { change }),
+  showAllProjects: () => invoke<Settings>("show_all_projects"),
   dataInfo: () => invoke<DataInfo>("data_info"),
   installedFonts: () => invoke<string[]>("installed_fonts"),
   exportData: (directory: string) => invoke<string>("export_data", { directory }),
@@ -193,6 +222,11 @@ export const api = {
   findChatTerminal: () => invoke<Terminal | null>("find_chat_terminal"),
   listTerminals: () => invoke<Terminal[]>("list_terminals"),
   openChatTerminal: (agent: AgentKey) => invoke<Terminal>("open_chat_terminal", { agent }),
+  findHelper: () => invoke<Terminal | null>("find_helper"),
+  helperCheck: () => invoke<HelperCheck>("helper_check"),
+  helperStatus: () => invoke<HelperStatus>("helper_status"),
+  openHelper: () => invoke<Terminal>("open_helper"),
+  stopHelper: (terminal: string) => invoke<void>("stop_helper", { terminal }),
   attachTerminal: (view: View, terminal: string, size: Size, onOutput: (bytes: Uint8Array) => void, onSize: (size: Size) => void) => {
     const output = new Channel<ArrayBuffer | number[] | Size>((message) => {
       if (message instanceof ArrayBuffer) onOutput(new Uint8Array(message));
@@ -215,6 +249,10 @@ export const events = {
   terminals: (handler: () => void): Promise<UnlistenFn> => listen("herdr://terminals", () => handler()),
   workers: (handler: (workers: Worker[]) => void): Promise<UnlistenFn> =>
     listen<Worker[]>("workers://updated", (e) => handler(e.payload)),
+  settings: (handler: (settings: Settings) => void): Promise<UnlistenFn> =>
+    listen<Settings>("settings://updated", (e) => handler(e.payload)),
+  helper: (handler: (helper: HelperStatus) => void): Promise<UnlistenFn> =>
+    listen<HelperStatus>("helper://updated", (e) => handler(e.payload)),
   terminalEnded: (handler: (ended: EndedView) => void): Promise<UnlistenFn> =>
     listen<EndedView>("terminal://ended", (e) => handler(e.payload)),
   // wry reports macOS drop positions in points, which are CSS pixels here.
