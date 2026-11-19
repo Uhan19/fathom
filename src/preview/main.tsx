@@ -81,7 +81,7 @@ let settings: Settings = {
   chatAgent: rememberedAgent,
   theme: params.get("theme") === "dark" ? "dark" : "light",
   chatOpen: !params.has("nochat"),
-  chatWidth: 600,
+  chatWidth: Number(params.get("chatwidth")) || 600,
   detailWidth: 460,
   projectFilter: params.get("filter")?.split(",").filter(Boolean) ?? [],
   helperStarted: bosun !== "notstarted",
