@@ -9,7 +9,7 @@ When no terminal is there yet, the chat panel opens Claude Code, Codex or Firstm
 Cards can be dragged to arrange them, and a drag to another row asks the agent to move the task.
 A small sailor on a card shows that a crewmate is on the task: its red visor glows and blinks while it works and dims while idle.
 Clicking the sailor opens that crewmate's live terminal.
-When an agent reports something new on a card you have not read yet, its colored bar turns yellow and blinks until you open the card and close it again.
+When an agent reports something new on a card you have not read yet, its colored bar turns magenta and blinks until you open the card and close it again.
 
 ## Requirements
 
@@ -376,7 +376,7 @@ Fathom asks your login shell for its PATH once at startup and uses it to find he
 ## Unread updates
 
 - A card lights up when its agent has reported something you have not read yet.
-  Its colored bar turns lamp yellow, glows and blinks; the rest of the card looks as usual.
+  Its colored bar turns magenta, a color no other bar or badge uses, and glows and blinks; the rest of the card looks as usual.
   With reduced motion turned on in the system settings, the bar glows steadily instead of blinking.
 - A collapsed column's header and a collapsed row's band light up the same way, through their card count, while they hold at least one such card.
   Each goes dark once you have read every one of them.

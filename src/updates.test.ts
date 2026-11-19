@@ -87,7 +87,7 @@ describe("leftCard", () => {
 
 describe("the board", () => {
   it("lights only the cards with an unseen update", () => {
-    expect(litCards(board(fixtureUpdates(true)))).toEqual(["atl-04", "hrb-18", "lan-31", "pil-08"]);
+    expect(litCards(board(fixtureUpdates(true)))).toEqual(["atl-04", "atl-15", "hrb-18", "lan-31", "pil-08"]);
     expect(litCards(board(NO_UPDATES))).toEqual([]);
   });
 
@@ -120,7 +120,7 @@ describe("the board", () => {
     expect(litHeads(board(oneSeen, folded))).toEqual([harbor.id, lan.id]);
     const bothSeen = seenLocally(oneSeen, "hrb-16");
     expect(litHeads(board(bothSeen, folded))).toEqual([lan.id]);
-    expect(litCards(board(bothSeen))).toEqual(["atl-04", "lan-31", "pil-08"]);
+    expect(litCards(board(bothSeen))).toEqual(["atl-04", "atl-15", "lan-31", "pil-08"]);
   });
 
   it("lights a collapsed row's band while it holds an unseen card", () => {
