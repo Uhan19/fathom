@@ -100,23 +100,51 @@ pub enum Notice {
     AttachEnded { view: View, terminal: String },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+const SHELL_VIEW_PREFIX: &str = "shell:";
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub enum View {
     Chat,
     Worker,
     Helper,
+    Shell(String),
 }
 
 impl View {
-    const ALL: [View; 3] = [View::Chat, View::Worker, View::Helper];
-
-    fn name(self) -> &'static str {
+    fn name(&self) -> String {
         match self {
-            View::Chat => "chat",
-            View::Worker => "worker",
-            View::Helper => "helper",
+            View::Chat => "chat".into(),
+            View::Worker => "worker".into(),
+            View::Helper => "helper".into(),
+            View::Shell(terminal) => format!("{SHELL_VIEW_PREFIX}{terminal}"),
         }
+    }
+
+    fn is_shell(&self) -> bool {
+        matches!(self, View::Shell(_))
+    }
+}
+
+impl TryFrom<String> for View {
+    type Error = String;
+
+    fn try_from(name: String) -> Result<View, String> {
+        match name.as_str() {
+            "chat" => Ok(View::Chat),
+            "worker" => Ok(View::Worker),
+            "helper" => Ok(View::Helper),
+            _ => match name.strip_prefix(SHELL_VIEW_PREFIX) {
+                Some(terminal) if !terminal.is_empty() => Ok(View::Shell(terminal.to_string())),
+                _ => Err(format!("unknown terminal view \"{name}\"")),
+            },
+        }
+    }
+}
+
+impl From<View> for String {
+    fn from(view: View) -> String {
+        view.name()
     }
 }
 
@@ -167,9 +195,11 @@ pub struct Herdr {
     terminals: Arc<Mutex<BTreeMap<String, Terminal>>>,
     events_child: Arc<Mutex<Option<Child>>>,
     generation: Arc<AtomicU64>,
-    panes: Arc<Vec<Arc<Pane>>>,
+    panes: Panes,
     notify: Notify,
 }
+
+type Panes = Arc<Mutex<BTreeMap<View, Arc<Pane>>>>;
 
 impl Herdr {
     pub fn new(connection: Connection, notify: Notify) -> Herdr {
@@ -178,20 +208,7 @@ impl Herdr {
             terminals: Arc::default(),
             events_child: Arc::default(),
             generation: Arc::default(),
-            panes: Arc::new(
-                View::ALL
-                    .iter()
-                    .map(|&view| {
-                        Arc::new(Pane {
-                            view,
-                            attachment: Mutex::default(),
-                            sink: Mutex::default(),
-                            ids: AtomicU64::new(1),
-                            notify: Arc::clone(&notify),
-                        })
-                    })
-                    .collect(),
-            ),
+            panes: Arc::default(),
             notify,
         }
     }
@@ -287,28 +304,54 @@ impl Herdr {
         rows: u16,
         output: Output,
     ) -> Result<(), String> {
-        self.pane(view)
+        self.pane(&view)
             .attach(&self.connection(), terminal, (cols, rows), output)
     }
 
-    pub fn resize(&self, view: View, cols: u16, rows: u16) -> Result<(), String> {
-        self.pane(view).resize((cols, rows))
+    pub fn resize(&self, view: &View, cols: u16, rows: u16) -> Result<(), String> {
+        self.attached_pane(view)?.resize((cols, rows))
     }
 
-    pub fn write_input(&self, view: View, bytes: &[u8]) -> Result<(), String> {
-        self.pane(view).write_input(bytes)
+    pub fn write_input(&self, view: &View, bytes: &[u8]) -> Result<(), String> {
+        self.attached_pane(view)?.write_input(bytes)
     }
 
-    pub fn detach(&self, view: View) {
-        self.pane(view).detach();
+    pub fn detach(&self, view: &View) {
+        let pane = if view.is_shell() {
+            self.panes.lock().unwrap().remove(view)
+        } else {
+            self.panes.lock().unwrap().get(view).cloned()
+        };
+        if let Some(pane) = pane {
+            pane.detach();
+        }
     }
 
     pub fn detach_all(&self) {
-        self.panes.iter().for_each(|pane| pane.detach());
+        let panes = std::mem::take(&mut *self.panes.lock().unwrap());
+        panes.values().for_each(|pane| pane.detach());
     }
 
-    fn pane(&self, view: View) -> &Arc<Pane> {
-        &self.panes[view as usize]
+    fn pane(&self, view: &View) -> Arc<Pane> {
+        let mut panes = self.panes.lock().unwrap();
+        Arc::clone(panes.entry(view.clone()).or_insert_with(|| {
+            Arc::new(Pane {
+                view: view.clone(),
+                attachment: Mutex::default(),
+                sink: Mutex::default(),
+                ids: AtomicU64::new(1),
+                notify: Arc::clone(&self.notify),
+            })
+        }))
+    }
+
+    fn attached_pane(&self, view: &View) -> Result<Arc<Pane>, String> {
+        self.panes
+            .lock()
+            .unwrap()
+            .get(view)
+            .cloned()
+            .ok_or_else(|| unattached(view))
     }
 
     pub(crate) fn run(&self, args: &[&str]) -> Result<String, String> {
@@ -403,7 +446,7 @@ impl Pane {
             if let Some(ended) = ended {
                 ended.end();
                 (pane.notify)(Notice::AttachEnded {
-                    view: pane.view,
+                    view: pane.view.clone(),
                     terminal,
                 });
             }
@@ -421,7 +464,7 @@ impl Pane {
 
     fn resize(&self, size: Size) -> Result<(), String> {
         let mut slot = self.attachment.lock().unwrap();
-        let attachment = slot.as_mut().ok_or_else(|| self.unattached())?;
+        let attachment = slot.as_mut().ok_or_else(|| unattached(&self.view))?;
         attachment
             .master
             .resize(pty_size(size))
@@ -432,16 +475,12 @@ impl Pane {
 
     fn write_input(&self, bytes: &[u8]) -> Result<(), String> {
         let mut slot = self.attachment.lock().unwrap();
-        let attachment = slot.as_mut().ok_or_else(|| self.unattached())?;
+        let attachment = slot.as_mut().ok_or_else(|| unattached(&self.view))?;
         attachment
             .writer
             .write_all(bytes)
             .and_then(|_| attachment.writer.flush())
             .map_err(|e| e.to_string())
-    }
-
-    fn unattached(&self) -> String {
-        format!("the {} view is not attached", self.view.name())
     }
 
     fn detach(&self) {
@@ -451,6 +490,10 @@ impl Pane {
             attachment.end();
         }
     }
+}
+
+fn unattached(view: &View) -> String {
+    format!("the {} view is not attached", view.name())
 }
 
 fn spawn_attach(
@@ -599,7 +642,7 @@ fn stream_events(
     connection: &Connection,
     child_slot: &Mutex<Option<Child>>,
     terminals: &Mutex<BTreeMap<String, Terminal>>,
-    panes: &[Arc<Pane>],
+    panes: &Mutex<BTreeMap<View, Arc<Pane>>>,
     notify: &Notify,
 ) -> Result<(), String> {
     let mut command = Command::new(program()?);
@@ -623,6 +666,7 @@ fn stream_events(
             notify(notice);
         }
         if let Some((terminal, size)) = size_change(&message) {
+            let panes: Vec<Arc<Pane>> = panes.lock().unwrap().values().cloned().collect();
             for pane in panes {
                 pane.follow_size(connection, &terminal, size);
             }
@@ -789,15 +833,15 @@ done
             shows(&chat, "attached:t-chat") && shows(&worker, "attached:t-crew")
         });
 
-        herdr.write_input(View::Worker, b"hello crew\r").unwrap();
-        herdr.write_input(View::Chat, b"hello mate\r").unwrap();
+        herdr.write_input(&View::Worker, b"hello crew\r").unwrap();
+        herdr.write_input(&View::Chat, b"hello mate\r").unwrap();
         wait_for("each view's input", || {
             shows(&worker, "t-crew got:hello crew") && shows(&chat, "t-chat got:hello mate")
         });
         assert!(!shows(&chat, "crew"));
         assert!(!shows(&worker, "mate"));
 
-        herdr.write_input(View::Worker, b"bye\r").unwrap();
+        herdr.write_input(&View::Worker, b"bye\r").unwrap();
         wait_for("the worker attach to end", || {
             notices.lock().unwrap().contains(&Notice::AttachEnded {
                 view: View::Worker,
@@ -805,17 +849,96 @@ done
             })
         });
         assert_eq!(
-            herdr.write_input(View::Worker, b"x"),
+            herdr.write_input(&View::Worker, b"x"),
             Err("the worker view is not attached".into())
         );
-        herdr.write_input(View::Chat, b"still here\r").unwrap();
+        herdr.write_input(&View::Chat, b"still here\r").unwrap();
         wait_for("the chat to stay attached", || {
             shows(&chat, "t-chat got:still here")
         });
 
-        herdr.detach(View::Chat);
-        assert!(herdr.resize(View::Chat, 90, 30).is_err());
+        herdr.detach(&View::Chat);
+        assert!(herdr.resize(&View::Chat, 90, 30).is_err());
         assert_eq!(notices.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_view_travels_as_its_name_and_a_shell_view_carries_its_terminal() {
+        let views = [
+            View::Chat,
+            View::Worker,
+            View::Helper,
+            View::Shell("t12".into()),
+        ];
+        let names: Vec<Value> = views.iter().map(|v| json!(v)).collect();
+        assert_eq!(
+            names,
+            [
+                json!("chat"),
+                json!("worker"),
+                json!("helper"),
+                json!("shell:t12")
+            ]
+        );
+        for (view, name) in views.iter().zip(names) {
+            assert_eq!(&serde_json::from_value::<View>(name).unwrap(), view);
+        }
+        assert!(serde_json::from_value::<View>(json!("shell:")).is_err());
+        assert!(serde_json::from_value::<View>(json!("drawer")).is_err());
+    }
+
+    #[test]
+    fn shell_tabs_attach_beside_the_chat_and_close_on_their_own() {
+        let _hc = fake_hc();
+        let notices = Arc::new(Mutex::new(Vec::new()));
+        let heard = Arc::clone(&notices);
+        let herdr = Herdr::new(
+            Connection::default(),
+            Arc::new(move |notice| heard.lock().unwrap().push(notice)),
+        );
+        let (chat, chat_sink) = screen_sink();
+        let (one, one_sink) = screen_sink();
+        let (two, two_sink) = screen_sink();
+        let first = View::Shell("t5".into());
+        let second = View::Shell("t6".into());
+        herdr
+            .attach(View::Chat, "t-chat", 80, 24, chat_sink)
+            .unwrap();
+        herdr.attach(first.clone(), "t5", 80, 24, one_sink).unwrap();
+        herdr
+            .attach(second.clone(), "t6", 80, 24, two_sink)
+            .unwrap();
+        let shows = |screen: &Arc<Mutex<Screen>>, text: &str| {
+            String::from_utf8_lossy(&screen.lock().unwrap().bytes).contains(text)
+        };
+        wait_for("three attaches", || {
+            shows(&chat, "attached:t-chat")
+                && shows(&one, "attached:t5")
+                && shows(&two, "attached:t6")
+        });
+        herdr.write_input(&second, b"ls\r").unwrap();
+        wait_for("the second shell's input", || shows(&two, "t6 got:ls"));
+        assert!(!shows(&one, "got:"));
+
+        herdr.detach(&first);
+        assert_eq!(
+            herdr.write_input(&first, b"x"),
+            Err("the shell:t5 view is not attached".into())
+        );
+        assert!(!herdr.panes.lock().unwrap().contains_key(&first));
+
+        herdr.write_input(&second, b"bye\r").unwrap();
+        wait_for("the second shell to end", || {
+            notices.lock().unwrap().contains(&Notice::AttachEnded {
+                view: second.clone(),
+                terminal: "t6".into(),
+            })
+        });
+        herdr.write_input(&View::Chat, b"still here\r").unwrap();
+        wait_for("the chat to stay attached", || {
+            shows(&chat, "t-chat got:still here")
+        });
+        herdr.detach_all();
     }
 
     fn snapshot() -> Value {
@@ -1079,14 +1202,16 @@ done
         let seen =
             |text: &str| String::from_utf8_lossy(&screen.lock().unwrap().bytes).contains(text);
 
-        herdr.write_input(View::Chat, b"typed-in-fathom\r").unwrap();
+        herdr
+            .write_input(&View::Chat, b"typed-in-fathom\r")
+            .unwrap();
         wait_for("the typed line to arrive", || seen("GOT:typed-in-fathom"));
 
         let message = "Lab card (lab-1): sent-from-fathom";
         herdr.send(&terminal, message).unwrap();
         wait_for("the sent message", || seen(&format!("GOT:{message}")));
 
-        herdr.resize(View::Chat, 117, 41).unwrap();
+        herdr.resize(&View::Chat, 117, 41).unwrap();
         wait_for("the panel resize", || {
             known_size(&herdr, &terminal) == Some((117, 41))
         });
@@ -1102,17 +1227,17 @@ done
         wait_for("Fathom to reattach at the other client's size", || {
             screen.lock().unwrap().sizes.last() == Some(&(90, 30))
         });
-        herdr.write_input(View::Chat, b"after-reattach\r").unwrap();
+        herdr.write_input(&View::Chat, b"after-reattach\r").unwrap();
         wait_for("typing through the new attach", || {
             seen("GOT:after-reattach")
         });
         assert_eq!(known_size(&herdr, &terminal), Some((90, 30)));
 
-        herdr.resize(View::Chat, 117, 41).unwrap();
+        herdr.resize(&View::Chat, 117, 41).unwrap();
         wait_for("Fathom to take the size back", || {
             known_size(&herdr, &terminal) == Some((117, 41))
         });
-        other.write_input(View::Chat, b"\r").unwrap();
+        other.write_input(&View::Chat, b"\r").unwrap();
         wait_for("typing in the other client to take it back", || {
             known_size(&herdr, &terminal) == Some((90, 30))
         });

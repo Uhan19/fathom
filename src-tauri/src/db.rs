@@ -1,4 +1,5 @@
 pub mod backlog;
+pub mod shells;
 
 use std::cell::Cell;
 use std::collections::{BTreeSet, HashMap};
@@ -14,11 +15,12 @@ pub const FILE_NAME: &str = "fathom.sqlite";
 pub const DEFAULT_COLUMN_WIDTH: i64 = 240;
 pub const COLUMN_WIDTHS: std::ops::RangeInclusive<i64> = 180..=640;
 
-const MIGRATIONS: [&str; 4] = [
+const MIGRATIONS: [&str; 5] = [
     include_str!("../migrations/0001_init.sql"),
     include_str!("../migrations/0002_card_moves.sql"),
     include_str!("../migrations/0003_column_ids.sql"),
     include_str!("../migrations/0004_backlog.sql"),
+    include_str!("../migrations/0005_shell_tabs.sql"),
 ];
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const COLUMN_FIELDS: &str = "id, project, name, position, width, collapsed";
@@ -877,7 +879,7 @@ mod tests {
             .unwrap();
         }
         let db = Db::open(dir.path()).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 4);
+        assert_eq!(db.schema_version().unwrap(), MIGRATIONS.len());
         assert_eq!(db.columns().unwrap()[0].name, "Reef");
         assert!(db.tasks(None, None).unwrap().is_empty());
     }
