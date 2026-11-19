@@ -118,7 +118,7 @@ mod tests {
             .unwrap();
         }
         let db = Db::open(dir.path()).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 5);
+        assert_eq!(db.schema_version().unwrap(), MIGRATIONS.len());
         assert_eq!(db.columns().unwrap()[0].name, "Reef");
         assert!(db.shell_tabs().unwrap().is_empty());
         assert!(db.column_folders().unwrap().is_empty());

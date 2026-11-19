@@ -14,7 +14,7 @@ use crate::db::{Db, MoveTo};
 use crate::fonts;
 use crate::herdr::{Connection, Herdr, Terminal};
 use crate::launch::{self, Agent, FathomServer, Launch};
-use crate::settings::{self, CHAT_WIDTH, DETAIL_WIDTH, Surface, Theme, WindowChange};
+use crate::settings::{self, AgentFilter, CHAT_WIDTH, DETAIL_WIDTH, Surface, Theme, WindowChange};
 use crate::shell_path;
 use crate::source::Source;
 use crate::state::{connection_of, now_ms};
@@ -56,15 +56,20 @@ When the work is done, write a short summary in the detail and move the task to 
 const HELPER_INSTRUCTIONS: &str = "\
 Fathom is the user's task board app. These tools change how Fathom shows the board and its settings; they never change tasks.
 Columns are projects (or custom columns the user added); rows are surface, shallows, seabed, deep and landed.
-Read get_board_layout before changing columns, rows or the project filter, and get_settings before changing settings.
+Read get_board_layout before changing columns, rows or the filters, and get_settings before changing settings.
 Refer to columns by the id from get_board_layout.
 show_projects hides every column except the named projects; show_all_projects shows every column again.
+set_row_view collapses rows to a thin band that still shows the row's name and card count, or expands them again; get_board_layout gives each row's collapsed state.
+When asked to show or filter the board by rows, collapse every other row and expand the asked ones: \"only show what is in progress\" means expand shallows and collapse the rest.
 Each task has one of three agent states, the agent field from list_tasks: none means no agent is on it, inactive means it has an agent that is not active (idle, or waiting for a permission answer), and active means it has an active agent that is working right now.
 A task or column \"with an active agent\" means active only; \"with an agent\" means inactive or active.
+set_agent_filter hides cards by their agent: withAgent shows only tasks with an agent, withActiveAgent only tasks with an active agent, and all shows every card again. The window keeps it in step with the agents, and it combines with the project filter.
+When asked to show only tasks or cards with an agent or an active agent, use set_agent_filter; get_board_layout gives the current agentFilter.
 get_board_layout gives each column its tasks, tasksWithAgent and tasksWithActiveAgent counts.
-To show only the columns with an active agent, call show_projects with the project of every column whose tasksWithActiveAgent is above 0; for columns with any agent, use tasksWithAgent instead.
+When asked for only the columns with an active agent, call show_projects with the project of every column whose tasksWithActiveAgent is above 0; for columns with any agent, use tasksWithAgent instead.
 Custom columns have no project, so show_projects cannot keep them; say so when one of them has an agent.
 If get_board_layout has an agentError, Fathom could not read the agents; tell the user instead of guessing.
+When asked to show everything again, undo every filter: expand every row with set_row_view, call show_all_projects and set the agent filter to all.
 Fathom shows each change within a moment, so there is nothing to refresh.";
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -159,6 +164,22 @@ pub struct DeleteColumn {
 pub struct RenameRow {
     pub row: Row,
     pub name: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SetRowView {
+    #[schemars(description = "Rows to change")]
+    pub rows: Vec<Row>,
+    #[schemars(description = "true collapses the rows to a thin band, false expands them")]
+    pub collapsed: bool,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SetAgentFilter {
+    #[schemars(
+        description = "all shows every card, withAgent only cards with an agent, withActiveAgent only cards with an active agent"
+    )]
+    pub filter: AgentFilter,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -350,7 +371,7 @@ impl Fathom {
 #[tool_router(router = helper_tools)]
 impl Fathom {
     #[tool(
-        description = "Read the board layout: columns in order (id, name, project, width, collapsed, and how many tasks, tasks with an agent and tasks with an active agent each holds), row names, the project names and the current project filter."
+        description = "Read the board layout: columns in order (id, name, project, width, collapsed, and how many tasks, tasks with an agent and tasks with an active agent each holds), rows (name and collapsed), the project names, the current project filter and the current agent filter."
     )]
     fn get_board_layout(&self) -> Result<String, String> {
         let (source, agents) = self.board()?;
@@ -358,7 +379,7 @@ impl Fathom {
     }
 
     #[tool(
-        description = "Read Fathom's settings: theme, fonts and sizes, panel widths, the project filter and the connection settings."
+        description = "Read Fathom's settings: theme, fonts and sizes, panel widths, the project filter, the agent filter and the connection settings."
     )]
     fn get_settings(&self) -> Result<String, String> {
         reply(settings::load(&self.db.lock().unwrap()).map(settings_view))
@@ -436,6 +457,27 @@ impl Fathom {
             p.row,
             &p.name,
         ))
+    }
+
+    #[tool(
+        description = "Collapse one or more rows to a thin band, or expand them again. Leave out the rows that stay the same."
+    )]
+    fn set_row_view(&self, Parameters(p): Parameters<SetRowView>) -> Result<String, String> {
+        reply(control::set_row_view(
+            &self.db.lock().unwrap(),
+            &p.rows,
+            p.collapsed,
+        ))
+    }
+
+    #[tool(
+        description = "Show every card, only cards with an agent, or only cards with an active agent."
+    )]
+    fn set_agent_filter(
+        &self,
+        Parameters(p): Parameters<SetAgentFilter>,
+    ) -> Result<String, String> {
+        reply(control::set_agent_filter(&self.db.lock().unwrap(), p.filter).map(settings_view))
     }
 
     #[tool(description = "Show only the named projects' columns and hide every other column.")]
@@ -1207,7 +1249,7 @@ esac
         "move_task",
         "update_task",
     ];
-    const HELPER_TOOLS: [&str; 15] = [
+    const HELPER_TOOLS: [&str; 17] = [
         "add_column",
         "delete_column",
         "get_board_layout",
@@ -1216,10 +1258,12 @@ esac
         "move_column",
         "rename_column",
         "rename_row",
+        "set_agent_filter",
         "set_column_view",
         "set_connection",
         "set_fonts",
         "set_panels",
+        "set_row_view",
         "set_theme",
         "show_all_projects",
         "show_projects",
@@ -1321,7 +1365,9 @@ esac
         );
         assert_eq!(layout["columns"].as_array().unwrap().len(), 3);
         assert_eq!(layout["rows"].as_array().unwrap().len(), 5);
+        assert_eq!(layout["rows"][1]["collapsed"], false);
         assert_eq!(layout["projectFilter"], json!([]));
+        assert_eq!(layout["agentFilter"], "all");
     }
 
     #[test]
@@ -1441,11 +1487,79 @@ esac
         );
         let db = Db::open_file(&store).unwrap();
         assert!(
-            db.row_names()
+            db.rows()
                 .unwrap()
                 .iter()
                 .any(|r| r.row == Row::Deep && r.name == "Parked")
         );
+    }
+
+    fn collapsed_rows(layout: &Value) -> Vec<String> {
+        layout["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| r["collapsed"] == true)
+            .map(|r| r["row"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn collapses_and_expands_rows() {
+        let (_dir, store, server, _) = helper_board();
+        let others = vec![Row::Surface, Row::Deep, Row::Seabed, Row::Landed];
+        let rows: Value = ok(server.set_row_view(Parameters(SetRowView {
+            rows: others,
+            collapsed: true,
+        })));
+        assert_eq!(
+            collapsed_rows(&json!({ "rows": rows })),
+            ["surface", "deep", "seabed", "landed"]
+        );
+        let layout: Value = ok(server.get_board_layout());
+        assert_eq!(
+            collapsed_rows(&layout),
+            ["surface", "deep", "seabed", "landed"]
+        );
+
+        let _: Value = ok(server.set_row_view(Parameters(SetRowView {
+            rows: Row::ALL.to_vec(),
+            collapsed: false,
+        })));
+        let reopened = Db::open_file(&store).unwrap();
+        assert!(reopened.rows().unwrap().iter().all(|r| !r.collapsed));
+
+        let none = server.set_row_view(Parameters(SetRowView {
+            rows: vec![],
+            collapsed: true,
+        }));
+        assert_eq!(none, Err("name at least one row".into()));
+    }
+
+    #[test]
+    fn sets_the_agent_filter_and_reports_it() {
+        let (_dir, store, server, _) = helper_board();
+        let set: Value = ok(server.set_agent_filter(Parameters(SetAgentFilter {
+            filter: AgentFilter::WithActiveAgent,
+        })));
+        assert_eq!(set["agentFilter"], "withActiveAgent");
+        assert_eq!(stored(&store).agent_filter, AgentFilter::WithActiveAgent);
+        let layout: Value = ok(server.get_board_layout());
+        assert_eq!(layout["agentFilter"], "withActiveAgent");
+        let read: Value = ok(server.get_settings());
+        assert_eq!(read["agentFilter"], "withActiveAgent");
+
+        let shown: Value = ok(server.show_projects(Parameters(ShowProjects {
+            projects: vec!["rigging".into()],
+        })));
+        assert_eq!(shown["agentFilter"], "withActiveAgent");
+        assert_eq!(shown["projectFilter"], json!(["rigging"]));
+
+        let all: Value = ok(server.set_agent_filter(Parameters(SetAgentFilter {
+            filter: AgentFilter::All,
+        })));
+        assert_eq!(all["agentFilter"], "all");
+        assert_eq!(stored(&store).project_filter, ["rigging"]);
     }
 
     #[test]
@@ -1946,6 +2060,9 @@ esac
         assert!(instructions.contains("show_projects hides every column"));
         assert!(instructions.contains("\"with an active agent\" means active only"));
         assert!(instructions.contains("\"with an agent\" means inactive or active"));
+        assert!(instructions.contains("collapse every other row and expand the asked ones"));
+        assert!(instructions.contains("expand every row with set_row_view"));
+        assert!(instructions.contains("use set_agent_filter"));
         assert!(!instructions.contains("Keep your task list in Fathom"));
         assert!(!instructions.contains("start_worker"));
         call(
@@ -1975,6 +2092,36 @@ esac
         .await;
         assert_eq!(themed["result"]["isError"], false);
         assert_eq!(stored(&store).theme, Theme::Dark);
+        let folded = call(
+            &mut lines,
+            &mut write,
+            json!({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {
+                "name": "set_row_view",
+                "arguments": {"rows": ["deep", "landed"], "collapsed": true}
+            }}),
+        )
+        .await;
+        assert_eq!(folded["result"]["isError"], false);
+        let collapsed: Vec<Row> = Db::open_file(&store)
+            .unwrap()
+            .rows()
+            .unwrap()
+            .into_iter()
+            .filter(|r| r.collapsed)
+            .map(|r| r.row)
+            .collect();
+        assert_eq!(collapsed, [Row::Deep, Row::Landed]);
+        let filtered = call(
+            &mut lines,
+            &mut write,
+            json!({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {
+                "name": "set_agent_filter",
+                "arguments": {"filter": "withAgent"}
+            }}),
+        )
+        .await;
+        assert_eq!(filtered["result"]["isError"], false);
+        assert_eq!(stored(&store).agent_filter, AgentFilter::WithAgent);
         drop(write);
         drop(lines);
         running.await.unwrap();

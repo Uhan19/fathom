@@ -12,11 +12,11 @@ use tauri::{AppHandle, Emitter};
 
 use crate::control;
 use crate::db::shells::ShellTab;
-use crate::db::{CardPlace, Column, Db, MoveRequest, MoveStatus, MoveTo, RowName, Snapshot};
+use crate::db::{CardPlace, Column, Db, MoveRequest, MoveStatus, MoveTo, RowView, Snapshot};
 use crate::herdr::{self, Frame, Herdr, Notice, Terminal, View};
 use crate::launch::{self, Agent, FathomServer, Launch, LaunchError, SignIn};
 use crate::moves::{self, Placement};
-use crate::settings::{self, Settings, WindowChange};
+use crate::settings::{self, AgentFilter, Settings, WindowChange};
 use crate::shell_path;
 use crate::shell_tabs::{self, LauncherFolders};
 use crate::source::{Source, SourceKind};
@@ -44,7 +44,7 @@ const ENDED_STATES: [&str; 2] = ["finished", "lost"];
 #[serde(rename_all = "camelCase")]
 pub struct BoardView {
     pub columns: Vec<Column>,
-    pub row_names: Vec<RowName>,
+    pub rows: Vec<RowView>,
     pub cards: Vec<Card>,
     pub taken_at_ms: Option<i64>,
     pub home: String,
@@ -195,7 +195,7 @@ impl AppState {
         let snapshot = db.snapshot()?.filter(|s| s.home == home);
         Ok(BoardView {
             columns: db.columns()?,
-            row_names: db.row_names()?,
+            rows: db.rows()?,
             taken_at_ms: snapshot.as_ref().map(|s| s.taken_at_ms),
             cards: snapshot.map(|s| s.cards).unwrap_or_default(),
             home,
@@ -224,7 +224,7 @@ impl AppState {
                 db.save_snapshot(&snapshot)?;
                 Ok(BoardView {
                     columns,
-                    row_names: db.row_names()?,
+                    rows: db.rows()?,
                     cards: snapshot.cards,
                     taken_at_ms: Some(snapshot.taken_at_ms),
                     home: snapshot.home,
@@ -256,6 +256,12 @@ impl AppState {
 
     pub fn show_all_projects(&self) -> Result<Settings, String> {
         let saved = control::show_all_projects(&self.db.lock().unwrap())?;
+        self.adopt_settings(saved.clone());
+        Ok(saved)
+    }
+
+    pub fn set_agent_filter(&self, filter: AgentFilter) -> Result<Settings, String> {
+        let saved = control::set_agent_filter(&self.db.lock().unwrap(), filter)?;
         self.adopt_settings(saved.clone());
         Ok(saved)
     }

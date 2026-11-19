@@ -4,9 +4,9 @@ use std::sync::Mutex;
 use serde::Serialize;
 
 use crate::db::backlog::Task;
-use crate::db::{Column, Db, MoveTo, RowName};
+use crate::db::{Column, Db, MoveTo, RowView};
 use crate::moves;
-use crate::settings::{self, Settings};
+use crate::settings::{self, AgentFilter, Settings};
 use crate::source::Source;
 use crate::tasks::{Card, Row};
 use crate::workers::AgentState;
@@ -17,9 +17,10 @@ pub type Agents = Result<HashMap<String, AgentState>, String>;
 #[serde(rename_all = "camelCase")]
 pub struct BoardLayout {
     pub columns: Vec<ColumnView>,
-    pub rows: Vec<RowName>,
+    pub rows: Vec<RowView>,
     pub projects: Vec<String>,
     pub project_filter: Vec<String>,
+    pub agent_filter: AgentFilter,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_error: Option<String>,
 }
@@ -95,10 +96,12 @@ pub fn board_layout(
             }
         })
         .collect();
+    let settings = settings::load(&db)?;
     Ok(BoardLayout {
         projects: projects(&columns),
-        rows: db.row_names()?,
-        project_filter: settings::load(&db)?.project_filter,
+        rows: db.rows()?,
+        project_filter: settings.project_filter,
+        agent_filter: settings.agent_filter,
         columns: views,
         agent_error: agents.as_ref().err().cloned(),
     })
@@ -204,9 +207,24 @@ fn layout_cards(db: &Mutex<Db>, source: &Source) -> Result<Vec<Card>, String> {
     }
 }
 
-pub fn rename_row(db: &Db, row: Row, name: &str) -> Result<Vec<RowName>, String> {
+pub fn rename_row(db: &Db, row: Row, name: &str) -> Result<Vec<RowView>, String> {
     db.set_row_name(row, name)?;
-    db.row_names()
+    db.rows()
+}
+
+pub fn set_row_view(db: &Db, rows: &[Row], collapsed: bool) -> Result<Vec<RowView>, String> {
+    if rows.is_empty() {
+        return Err("name at least one row".into());
+    }
+    db.set_rows_collapsed(rows, collapsed)?;
+    db.rows()
+}
+
+pub fn set_agent_filter(db: &Db, filter: AgentFilter) -> Result<Settings, String> {
+    settings::update(db, |s| {
+        s.agent_filter = filter;
+        Ok(())
+    })
 }
 
 pub fn show_projects(db: &Db, wanted: &[String]) -> Result<Settings, String> {

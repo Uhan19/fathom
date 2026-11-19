@@ -30,6 +30,7 @@ const KEY_CHAT_OPEN: &str = "chatOpen";
 const KEY_CHAT_WIDTH: &str = "chatWidth";
 const KEY_DETAIL_WIDTH: &str = "detailWidth";
 const KEY_PROJECT_FILTER: &str = "projectFilter";
+const KEY_AGENT_FILTER: &str = "agentFilter";
 const KEY_HELPER_STARTED: &str = "helperStarted";
 const KEY_HELPER_ASKING: &str = "helperAsking";
 const KEY_SHORTCUTS: &str = "shortcuts";
@@ -69,6 +70,15 @@ pub enum Theme {
     Dark,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum AgentFilter {
+    #[default]
+    All,
+    WithAgent,
+    WithActiveAgent,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Surface {
@@ -97,6 +107,8 @@ pub struct Settings {
     pub chat_width: u32,
     pub detail_width: u32,
     pub project_filter: Vec<String>,
+    #[serde(default)]
+    pub agent_filter: AgentFilter,
     #[serde(default)]
     pub helper_started: bool,
     pub shortcuts: Shortcuts,
@@ -310,6 +322,10 @@ pub fn load(db: &Db) -> Result<Settings, String> {
         chat_width: width(KEY_CHAT_WIDTH, &CHAT_WIDTH),
         detail_width: width(KEY_DETAIL_WIDTH, &DETAIL_WIDTH),
         project_filter: list(KEY_PROJECT_FILTER),
+        agent_filter: stored
+            .get(KEY_AGENT_FILTER)
+            .and_then(|key| serde_json::from_value(json!(key)).ok())
+            .unwrap_or_default(),
         helper_started: flag(KEY_HELPER_STARTED, false),
         shortcuts: read_shortcuts(stored.get(KEY_SHORTCUTS)),
     })
@@ -319,6 +335,7 @@ pub fn store(db: &Db, next: &Settings) -> Result<Settings, String> {
     check(next)?;
     let theme = serde_json::to_value(next.theme).map_err(|e| e.to_string())?;
     let shortcuts = serde_json::to_string(&next.shortcuts).map_err(|e| e.to_string())?;
+    let agent_filter = serde_json::to_value(next.agent_filter).map_err(|e| e.to_string())?;
     let pairs = [
         (KEY_HOME, next.home.trim().to_string()),
         (KEY_LABEL, next.terminal_label.trim().to_string()),
@@ -337,6 +354,10 @@ pub fn store(db: &Db, next: &Settings) -> Result<Settings, String> {
         (KEY_DETAIL_WIDTH, next.detail_width.to_string()),
         (KEY_PROJECT_FILTER, names_json(&next.project_filter)),
         (KEY_SHORTCUTS, shortcuts),
+        (
+            KEY_AGENT_FILTER,
+            agent_filter.as_str().unwrap_or_default().to_string(),
+        ),
     ];
     db.set_settings(&pairs)?;
     load(db)
@@ -610,6 +631,7 @@ mod tests {
         assert_eq!(first.chat_width, CHAT_WIDTH.default);
         assert_eq!(first.detail_width, DETAIL_WIDTH.default);
         assert!(first.project_filter.is_empty());
+        assert_eq!(first.agent_filter, AgentFilter::All);
         assert!(!first.helper_started);
 
         let saved = update(&db, |s| {
@@ -618,15 +640,27 @@ mod tests {
             s.chat_width = 720;
             s.detail_width = 500;
             s.project_filter = vec![" reef-map ".into(), "reef-map".into(), "dry-dock".into()];
+            s.agent_filter = AgentFilter::WithActiveAgent;
             Ok(())
         })
         .unwrap();
         assert_eq!(saved.theme, Theme::Dark);
+        assert_eq!(saved.agent_filter, AgentFilter::WithActiveAgent);
+        assert_eq!(db.settings().unwrap()[KEY_AGENT_FILTER], "withActiveAgent");
         assert!(!saved.chat_open);
         assert_eq!(saved.project_filter, ["reef-map", "dry-dock"]);
 
         let reopened = load(&Db::open_file(db.path()).unwrap()).unwrap();
         assert_eq!(reopened, saved);
+    }
+
+    #[test]
+    fn an_unknown_agent_filter_shows_every_card() {
+        let (_dir, db) = fresh();
+        db.set_setting(KEY_AGENT_FILTER, "withAgent").unwrap();
+        assert_eq!(load(&db).unwrap().agent_filter, AgentFilter::WithAgent);
+        db.set_setting(KEY_AGENT_FILTER, "sleeping").unwrap();
+        assert_eq!(load(&db).unwrap().agent_filter, AgentFilter::All);
     }
 
     #[test]
