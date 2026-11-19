@@ -396,6 +396,16 @@ impl Db {
         Ok(())
     }
 
+    pub fn card_columns(&self, cards: &[Card]) -> Result<HashMap<String, i64>, String> {
+        let columns = self.columns()?;
+        let places = self.places_by_card()?;
+        let shown = ShownCards::new(cards, &columns, &places, &[]);
+        Ok(cards
+            .iter()
+            .filter_map(|card| Some((card.id.clone(), shown.column(card)?)))
+            .collect())
+    }
+
     fn places_by_card(&self) -> Result<HashMap<String, CardPlace>, String> {
         Ok(self
             .places()?

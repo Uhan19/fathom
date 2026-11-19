@@ -12,14 +12,14 @@ use crate::control;
 use crate::db::backlog::{NewTask, TaskChange};
 use crate::db::{Db, MoveTo};
 use crate::fonts;
-use crate::herdr::Herdr;
+use crate::herdr::{Connection, Herdr, Terminal};
 use crate::launch::{self, Agent, FathomServer, Launch};
 use crate::settings::{self, CHAT_WIDTH, DETAIL_WIDTH, Surface, Theme, WindowChange};
 use crate::shell_path;
 use crate::source::Source;
 use crate::state::{connection_of, now_ms};
 use crate::tasks::Row;
-use crate::workers::LIVE;
+use crate::workers::{self, LIVE};
 
 pub const MCP_FLAG: &str = "--mcp";
 pub const DB_FLAG: &str = "--db";
@@ -59,6 +59,12 @@ Columns are projects (or custom columns the user added); rows are surface, shall
 Read get_board_layout before changing columns, rows or the project filter, and get_settings before changing settings.
 Refer to columns by the id from get_board_layout.
 show_projects hides every column except the named projects; show_all_projects shows every column again.
+Each task has one of three agent states, the agent field from list_tasks: none means no agent is on it, inactive means it has an agent that is not active (idle, or waiting for a permission answer), and active means it has an active agent that is working right now.
+A task or column \"with an active agent\" means active only; \"with an agent\" means inactive or active.
+get_board_layout gives each column its tasks, tasksWithAgent and tasksWithActiveAgent counts.
+To show only the columns with an active agent, call show_projects with the project of every column whose tasksWithActiveAgent is above 0; for columns with any agent, use tasksWithAgent instead.
+Custom columns have no project, so show_projects cannot keep them; say so when one of them has an agent.
+If get_board_layout has an agentError, Fathom could not read the agents; tell the user instead of guessing.
 Fathom shows each change within a moment, so there is nothing to refresh.";
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -239,11 +245,13 @@ pub struct StartedWorker {
 }
 
 pub type FindProgram = Box<dyn Fn(&str) -> Option<PathBuf> + Send + Sync>;
+pub type ListTerminals = Box<dyn Fn(&Connection) -> Result<Vec<Terminal>, String> + Send + Sync>;
 
 pub struct Host {
     pub program: PathBuf,
     pub shell: Option<PathBuf>,
     pub find: FindProgram,
+    pub terminals: ListTerminals,
 }
 
 impl Host {
@@ -253,6 +261,9 @@ impl Host {
                 .map_err(|e| format!("cannot find Fathom's own program: {e}"))?,
             shell: shell_path::login_shell().map(PathBuf::from),
             find: Box::new(|program| shell_path::find_first(&[program])),
+            terminals: Box::new(|connection| {
+                Herdr::new(connection.clone(), Arc::new(|_| {})).list()
+            }),
         })
     }
 }
@@ -320,15 +331,30 @@ impl Fathom {
     fn source(&self) -> Result<Source, String> {
         Ok(Source::of(&settings::load(&self.db.lock().unwrap())?.home))
     }
+
+    fn board(&self) -> Result<(Source, control::Agents), String> {
+        let settings = settings::load(&self.db.lock().unwrap())?;
+        let source = Source::of(&settings.home);
+        let agents = (self.host.terminals)(&connection_of(&settings)).map(|listed| {
+            let terminals = listed.into_iter().map(|t| (t.address.clone(), t)).collect();
+            workers::agent_states(&workers::board_workers(
+                &source,
+                &settings.hc_session,
+                &terminals,
+            ))
+        });
+        Ok((source, agents))
+    }
 }
 
 #[tool_router(router = helper_tools)]
 impl Fathom {
     #[tool(
-        description = "Read the board layout: columns in order (id, name, project, width, collapsed), row names, the project names and the current project filter."
+        description = "Read the board layout: columns in order (id, name, project, width, collapsed, and how many tasks, tasks with an agent and tasks with an active agent each holds), row names, the project names and the current project filter."
     )]
     fn get_board_layout(&self) -> Result<String, String> {
-        reply(control::board_layout(&self.db, &self.source()?))
+        let (source, agents) = self.board()?;
+        reply(control::board_layout(&self.db, &source, &agents))
     }
 
     #[tool(
@@ -477,9 +503,18 @@ impl Fathom {
 
 #[tool_router(router = task_tools)]
 impl Fathom {
-    #[tool(description = "List backlog tasks, optionally only one project or one row.")]
+    #[tool(
+        description = "List the tasks the board shows, optionally only one project or one row. Each task has its column and its agent state: none, inactive (has an agent that is not active) or active (has an active agent)."
+    )]
     fn list_tasks(&self, Parameters(p): Parameters<ListTasks>) -> Result<String, String> {
-        reply(self.db.lock().unwrap().tasks(p.project.as_deref(), p.row))
+        let (source, agents) = self.board()?;
+        reply(control::board_tasks(
+            &self.db,
+            &source,
+            p.project.as_deref(),
+            p.row,
+            &agents,
+        ))
     }
 
     #[tool(description = "Add a task to the backlog.")]
@@ -687,17 +722,28 @@ mod tests {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     fn no_host() -> Host {
+        listing_host(Ok(vec![]))
+    }
+
+    fn listing_host(listed: Result<Vec<Terminal>, String>) -> Host {
         Host {
             program: PathBuf::from("/opt/fathom/fathom"),
             shell: None,
             find: Box::new(|_| None),
+            terminals: Box::new(move |_| listed.clone()),
         }
+    }
+
+    fn backlog_db(store: &Path) -> Db {
+        let db = Db::open_file(store).unwrap();
+        db.set_setting("home", "").unwrap();
+        db
     }
 
     fn server() -> (tempfile::TempDir, PathBuf, Fathom) {
         let dir = tempfile::tempdir().unwrap();
         let store = dir.path().join("board.sqlite");
-        let server = Fathom::new(Db::open_file(&store).unwrap(), no_host());
+        let server = Fathom::new(backlog_db(&store), no_host());
         (dir, store, server)
     }
 
@@ -964,8 +1010,8 @@ esac
             }
             crate::herdr::tests::FAKE_HC.with(|fake| *fake.borrow_mut() = Some(bin.join("hc")));
             let store = data.join("fathom.sqlite");
-            let db = Db::open_file(&store).unwrap();
-            db.set_setting("hcSession", "reef-lab").unwrap();
+            let db = backlog_db(&store);
+            db.set_setting("hcSession", LAB_SESSION).unwrap();
             db.set_setting("hcSocket", "/run/reef-lab.sock").unwrap();
             db.set_setting("agentFolder", &folder.display().to_string())
                 .unwrap();
@@ -974,6 +1020,9 @@ esac
                 program: PathBuf::from("/opt/fathom/fathom"),
                 shell: Some(bin.join("zsh")),
                 find: Box::new(move |program| Some(found.join(program)).filter(|p| p.is_file())),
+                terminals: Box::new(|connection| {
+                    Herdr::new(connection.clone(), Arc::new(|_| {})).list()
+                }),
             };
             WorkerLab {
                 _dir: dir,
@@ -1179,9 +1228,7 @@ esac
     fn helper_board() -> (tempfile::TempDir, PathBuf, Fathom, Vec<Column>) {
         let dir = tempfile::tempdir().unwrap();
         let store = dir.path().join("board.sqlite");
-        let db = Db::open_file(&store).unwrap();
-        db.set_setting("home", "").unwrap();
-        let server = Fathom::helper(db, no_host());
+        let server = Fathom::helper(backlog_db(&store), no_host());
         add(&server, "Chart the reef", "reef-map", None);
         add(&server, "Paint the hull", "dry-dock", Some(Row::Shallows));
         add(&server, "Trim the sails", "rigging", None);
@@ -1530,6 +1577,234 @@ esac
         assert_eq!(stored(&store).agent_folder, "/work/projects");
     }
 
+    const LAB_SESSION: &str = "reef-lab";
+
+    fn card(id: &str, project: &str, row: Row) -> crate::tasks::Card {
+        crate::tasks::Card {
+            id: id.into(),
+            title: format!("Task {id}"),
+            state: "open".into(),
+            kind: "ship".into(),
+            project: project.into(),
+            row,
+            hold_kind: String::new(),
+            hold_until: String::new(),
+            hold_reason: String::new(),
+            blocked_by: vec![],
+            links: vec![],
+            closed: String::new(),
+        }
+    }
+
+    struct FirstmateBoard {
+        _dir: tempfile::TempDir,
+        server: Fathom,
+    }
+
+    fn firstmate_board(host: Host) -> FirstmateBoard {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        let state = home.join("state");
+        std::fs::create_dir_all(&state).unwrap();
+        for (task, terminal) in [("atl-1", "t1"), ("atl-2", "t2")] {
+            std::fs::write(
+                state.join(format!("{task}.meta")),
+                format!("backend=hc\nhc_session={LAB_SESSION}\nhc_terminal={terminal}\n"),
+            )
+            .unwrap();
+        }
+        let db = Db::open_file(&dir.path().join("board.sqlite")).unwrap();
+        db.set_setting("home", &home.display().to_string()).unwrap();
+        db.set_setting("hcSession", LAB_SESSION).unwrap();
+        db.save_snapshot(&crate::db::Snapshot {
+            taken_at_ms: 1,
+            home: home.display().to_string(),
+            cards: vec![
+                card("atl-1", "reef-map", Row::Shallows),
+                card("atl-2", "dry-dock", Row::Seabed),
+                card("atl-3", "rigging", Row::Seabed),
+            ],
+        })
+        .unwrap();
+        FirstmateBoard {
+            _dir: dir,
+            server: Fathom::helper(db, host),
+        }
+    }
+
+    #[test]
+    fn list_tasks_reads_the_tasks_a_firstmate_board_shows() {
+        let board = firstmate_board(no_host());
+        let all = list(&board.server, None, None);
+        let ids: Vec<&str> = all.iter().map(|t| t["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["atl-1", "atl-2", "atl-3"]);
+        let reef = list(&board.server, Some("reef-map"), None);
+        assert_eq!(reef.len(), 1);
+        assert_eq!(reef[0]["title"], "Task atl-1");
+        assert_eq!(list(&board.server, None, Some(Row::Seabed)).len(), 2);
+    }
+
+    fn lab_terminal(address: &str, status: &str, labels: &[(&str, &str)]) -> Terminal {
+        Terminal {
+            address: address.into(),
+            state: LIVE.into(),
+            status: status.into(),
+            labels: labels
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            ..Terminal::default()
+        }
+    }
+
+    fn agents_by_task(server: &Fathom) -> Vec<(String, String, String)> {
+        list(server, None, None)
+            .iter()
+            .map(|t| {
+                let id = match &t["id"] {
+                    Value::String(id) => id.clone(),
+                    id => id.to_string(),
+                };
+                let column = t["columnName"].as_str().unwrap().to_string();
+                (id, column, t["agent"].as_str().unwrap().to_string())
+            })
+            .collect()
+    }
+
+    fn agent_counts(server: &Fathom) -> Vec<(String, u64, u64, u64)> {
+        let layout: Value = ok(server.get_board_layout());
+        layout["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| {
+                let count = |key: &str| c[key].as_u64().unwrap();
+                (
+                    c["project"].as_str().unwrap().to_string(),
+                    count("tasks"),
+                    count("tasksWithAgent"),
+                    count("tasksWithActiveAgent"),
+                )
+            })
+            .collect()
+    }
+
+    fn visible_after_showing_columns_with(server: &Fathom, count: &str) -> Vec<String> {
+        let layout: Value = ok(server.get_board_layout());
+        let projects: Vec<String> = layout["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|c| c[count].as_u64().unwrap() > 0)
+            .map(|c| c["project"].as_str().unwrap().to_string())
+            .collect();
+        let shown: Value = ok(server.show_projects(Parameters(ShowProjects { projects })));
+        visible(server, &shown)
+    }
+
+    fn visible(server: &Fathom, settings: &Value) -> Vec<String> {
+        let filter: Vec<String> =
+            serde_json::from_value(settings["projectFilter"].clone()).unwrap();
+        let layout: Value = ok(server.get_board_layout());
+        let mut shown: Vec<String> = layout["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|c| c["project"].as_str().map(String::from))
+            .filter(|p| filter.is_empty() || filter.contains(p))
+            .collect();
+        shown.sort();
+        shown
+    }
+
+    fn strings_of(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn assert_three_agent_states(server: &Fathom, working: &str, idle: &str, free: &str) {
+        let row = |id: &str, column: &str, agent: &str| (id.into(), column.into(), agent.into());
+        assert_eq!(
+            agents_by_task(server),
+            [
+                row(working, "reef-map", "active"),
+                row(idle, "dry-dock", "inactive"),
+                row(free, "rigging", "none"),
+            ]
+        );
+        let mut counts = agent_counts(server);
+        counts.sort();
+        assert_eq!(
+            counts,
+            [
+                ("dry-dock".into(), 1, 1, 0),
+                ("reef-map".into(), 1, 1, 1),
+                ("rigging".into(), 1, 0, 0),
+            ]
+        );
+
+        assert_eq!(
+            visible_after_showing_columns_with(server, "tasksWithActiveAgent"),
+            strings_of(&["reef-map"])
+        );
+        assert_eq!(
+            visible_after_showing_columns_with(server, "tasksWithAgent"),
+            strings_of(&["dry-dock", "reef-map"])
+        );
+        let all: Value = ok(server.show_all_projects());
+        assert_eq!(
+            visible(server, &all),
+            strings_of(&["dry-dock", "reef-map", "rigging"])
+        );
+    }
+
+    #[test]
+    fn bosun_sees_no_agent_an_inactive_agent_and_an_active_agent_on_a_firstmate_board() {
+        let board = firstmate_board(listing_host(Ok(vec![
+            lab_terminal("t1", "working", &[]),
+            lab_terminal("t2", "idle", &[]),
+            lab_terminal("t3", "working", &[("fathom.task", "3")]),
+        ])));
+        assert_three_agent_states(&board.server, "atl-1", "atl-2", "atl-3");
+    }
+
+    #[test]
+    fn bosun_sees_the_same_agent_states_on_fathoms_own_backlog() {
+        let lab = WorkerLab::new();
+        let working = lab.task("Chart the reef", Some(Row::Shallows));
+        let blocked = add(&lab.server, "Paint the hull", "dry-dock", None)["id"]
+            .as_i64()
+            .unwrap();
+        let free = add(&lab.server, "Trim the sails", "rigging", None)["id"]
+            .as_i64()
+            .unwrap();
+        lab.list(json!([
+            {"address": "t1", "state": "live", "status": "working", "labels": {"fathom.task": working.to_string()}},
+            {"address": "t2", "state": "live", "status": "blocked", "labels": {"fathom.task": blocked.to_string()}},
+            {"address": "t3", "state": "finished", "status": "working", "labels": {"fathom.task": free.to_string()}},
+        ]));
+        assert_three_agent_states(
+            &lab.server,
+            &working.to_string(),
+            &blocked.to_string(),
+            &free.to_string(),
+        );
+        assert_eq!(list(&lab.server, None, None)[0]["detail"], "");
+    }
+
+    #[test]
+    fn unreadable_terminals_leave_agent_states_out_and_say_why() {
+        let board = firstmate_board(listing_host(Err("hc is not running".into())));
+        let layout: Value = ok(board.server.get_board_layout());
+        assert_eq!(layout["agentError"], "hc is not running");
+        let reef = &layout["columns"][0];
+        assert_eq!(reef["tasks"], 1);
+        assert!(reef.get("tasksWithAgent").is_none());
+        assert!(reef.get("tasksWithActiveAgent").is_none());
+        let tasks = list(&board.server, None, None);
+        assert_eq!(tasks.len(), 3);
+        assert!(tasks.iter().all(|t| t.get("agent").is_none()));
+    }
+
     async fn call(
         lines: &mut tokio::io::Lines<BufReader<tokio::io::ReadHalf<tokio::io::DuplexStream>>>,
         writer: &mut tokio::io::WriteHalf<tokio::io::DuplexStream>,
@@ -1669,6 +1944,8 @@ esac
         .await;
         let instructions = init["result"]["instructions"].as_str().unwrap();
         assert!(instructions.contains("show_projects hides every column"));
+        assert!(instructions.contains("\"with an active agent\" means active only"));
+        assert!(instructions.contains("\"with an agent\" means inactive or active"));
         assert!(!instructions.contains("Keep your task list in Fathom"));
         assert!(!instructions.contains("start_worker"));
         call(
