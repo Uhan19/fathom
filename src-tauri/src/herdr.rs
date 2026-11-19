@@ -27,9 +27,10 @@ const ACTIVITY_EVENTS: [&str; 6] = [
     "status",
     "turn",
 ];
-const WORKER_EVENTS: [&str; 7] = [
+const WORKER_EVENTS: [&str; 8] = [
     "created",
     "finished",
+    "labels",
     "lost",
     "removed",
     "restarted",
@@ -213,17 +214,21 @@ impl Herdr {
     }
 
     pub fn find_by_label(&self, label: &str) -> Result<Option<Terminal>, String> {
+        Ok(self
+            .labeled(label)?
+            .into_iter()
+            .next()
+            .map(|listed| self.get(&listed.address).unwrap_or(listed)))
+    }
+
+    pub fn labeled(&self, label: &str) -> Result<Vec<Terminal>, String> {
         let label = label.trim();
         if !label.contains('=') {
             return Err(format!(
                 "the terminal label must look like key=value, got \"{label}\""
             ));
         }
-        let output = self.run(&["ls", "--json", "--label", label])?;
-        Ok(parse_terminals(&output)?
-            .into_iter()
-            .next()
-            .map(|listed| self.get(&listed.address).unwrap_or(listed)))
+        parse_terminals(&self.run(&["ls", "--json", "--label", label])?)
     }
 
     pub fn get(&self, terminal: &str) -> Result<Terminal, String> {
@@ -867,6 +872,21 @@ done
     }
 
     #[test]
+    fn a_label_change_can_add_or_remove_a_worker() {
+        let mut terminals = BTreeMap::new();
+        apply_event(&mut terminals, &snapshot());
+        let notices = apply_event(
+            &mut terminals,
+            &event("labels", json!({"labels": {"fathom.task": "7"}})),
+        );
+        assert_eq!(
+            notices,
+            vec![Notice::TerminalsChanged, Notice::WorkersChanged]
+        );
+        assert_eq!(terminals["t1"].labels["fathom.task"], "7");
+    }
+
+    #[test]
     fn agent_status_follows_the_snapshot_status_and_turn_events() {
         let mut terminals = BTreeMap::new();
         apply_event(
@@ -1097,6 +1117,27 @@ done
 
         other.detach_all();
         herdr.detach_all();
+        herdr.stop_events();
+    }
+
+    #[test]
+    #[ignore = "needs FATHOM_LAB_SESSION, FATHOM_LAB_SOCKET and FATHOM_LAB_TASK for a worker started in a throwaway herdr-core session"]
+    fn lists_a_started_worker_in_a_lab_session_as_its_task_sailor() {
+        let connection = Connection {
+            session: std::env::var("FATHOM_LAB_SESSION").expect("FATHOM_LAB_SESSION"),
+            socket: std::env::var("FATHOM_LAB_SOCKET").expect("FATHOM_LAB_SOCKET"),
+        };
+        let task = std::env::var("FATHOM_LAB_TASK").expect("FATHOM_LAB_TASK");
+        let herdr = Herdr::new(connection, Arc::new(|_| {}));
+        herdr.start_events();
+        wait_for("the worker to show as a sailor", || {
+            crate::workers::task_workers(&herdr.terminals())
+                .iter()
+                .any(|w| w.task_id == task)
+        });
+        for worker in crate::workers::task_workers(&herdr.terminals()) {
+            println!("sailor {worker:?}");
+        }
         herdr.stop_events();
     }
 }

@@ -13,7 +13,7 @@ import {
   renamedColumn,
   shownRequest,
 } from "../board";
-import { projectTasks } from "../source";
+import { projectTasks, sailorLabel } from "../source";
 import { deletePlan, moveTargets, NEW_COLUMN, nextDraft, startDraft } from "../columnDelete";
 import { useCardDrag, type CardDrag } from "../cardDrag";
 import { useColumnDrag, type ColumnDrag } from "../columnDrag";
@@ -40,7 +40,7 @@ interface BoardProps {
 }
 
 export function Board(props: BoardProps) {
-  const { cards, columns, overlay, workers, rowNames, selectedId, onSelect, onColumnChange, onColumnRename, onPlace, onWatch } = props;
+  const { cards, source, columns, overlay, workers, rowNames, selectedId, onSelect, onColumnChange, onColumnRename, onPlace, onWatch } = props;
   const [liveWidths, setLiveWidths] = useState<Record<number, number>>({});
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const deleting = columns.find((c) => c.id === deletingId);
@@ -173,6 +173,7 @@ export function Board(props: BoardProps) {
                             card={card}
                             request={shownRequest(card.id, overlay.requests)}
                             worker={workers[card.id]}
+                            source={source}
                             selected={card.id === selectedId}
                             lifted={drag?.card.id === card.id}
                             onPointerDown={(e) => begin(e, card)}
@@ -433,6 +434,7 @@ interface CardViewProps {
   card: Card;
   request: MoveRequest | null;
   worker?: Worker;
+  source: SourceKind;
   selected: boolean;
   lifted: boolean;
   onPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
@@ -440,7 +442,7 @@ interface CardViewProps {
   onWatch: (card: Card, worker: Worker) => void;
 }
 
-function CardView({ card, request, worker, selected, lifted, onPointerDown, onSelect, onWatch }: CardViewProps) {
+function CardView({ card, request, worker, source, selected, lifted, onPointerDown, onSelect, onWatch }: CardViewProps) {
   return (
     <div
       className={`card card-${card.row}${selected ? " selected" : ""}${lifted ? " lifted" : ""}`}
@@ -453,8 +455,8 @@ function CardView({ card, request, worker, selected, lifted, onPointerDown, onSe
       {worker && (
         <button
           className={`sailor ${worker.status}`}
-          aria-label={WORKER_LABEL[worker.status]}
-          title={WORKER_LABEL[worker.status]}
+          aria-label={sailorLabel(source, worker.status)}
+          title={sailorLabel(source, worker.status)}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => onWatch(card, worker)}
         >
@@ -464,11 +466,6 @@ function CardView({ card, request, worker, selected, lifted, onPointerDown, onSe
     </div>
   );
 }
-
-const WORKER_LABEL: Record<Worker["status"], string> = {
-  working: "A crewmate is working on this. Open its terminal",
-  idle: "A crewmate is on this, idle. Open its terminal",
-};
 
 function CardFace({ card, request }: { card: Card; request: MoveRequest | null }) {
   const note = cardNote(card);
