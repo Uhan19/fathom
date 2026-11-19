@@ -223,6 +223,7 @@ Its tools show up in Claude Code as `mcp__fathom__*`:
 | `move_task` | Moves a task to a `row`; this also answers any board request asking for that row. |
 | `list_requests` | Lists pending board requests, oldest first. |
 | `answer_request` | Accepts a request, which moves the task, or declines it with a short `reason`. |
+| `start_worker` | Starts a Claude Code worker on a task in its own terminal, optionally in a given `folder`. |
 
 The server's instructions tell the agent to keep its task list in Fathom and to answer board requests.
 Rows use the fixed keys `surface` (needs the user), `shallows` (in progress), `deep` (parked or waiting), `seabed` (queued) and `landed` (done).
@@ -258,6 +259,7 @@ Release builds live in versioned folders, so point the command at the new build 
 
 `fathom --mcp --helper` adds tools that change Fathom itself, and swaps in instructions about them.
 [Bosun](#bosun) starts the server this way; without `--helper` the server is the one above.
+The helper server leaves out `start_worker`, because a worker is a new Claude Code session that works in a repo and Bosun's tools run without asking.
 The tools write through the same code as the window's own controls and never change tasks.
 
 | Tool | What it does |
