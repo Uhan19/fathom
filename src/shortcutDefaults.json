@@ -1,0 +1,12 @@
+{
+  "macos": {
+    "toggleChat": "Meta+KeyB",
+    "toggleTheme": "Shift+Meta+KeyL",
+    "openSettings": "Meta+Comma"
+  },
+  "linux": {
+    "toggleChat": "Ctrl+Shift+KeyB",
+    "toggleTheme": "Ctrl+Shift+KeyL",
+    "openSettings": "Ctrl+Comma"
+  }
+}

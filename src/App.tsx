@@ -35,11 +35,14 @@ import { BosunDrawer } from "./components/BosunDrawer";
 import { BOSUN, DRAWER_HEIGHT, dotOf, isMac, isToggleShortcut, shortcutLabel, summaryOf, type BosunState } from "./bosun";
 import { filterText, indexAmongAll, shownColumns } from "./projectFilter";
 import { DEFAULT_THEME, otherTheme, themeToggleLabel } from "./theme";
+import { comboLabel, listenForShortcuts, type ShortcutAction } from "./shortcuts";
 import { CHAT_WIDTH, DETAIL_WIDTH } from "./windowSettings";
 
 const NO_HELPER: HelperStatus = { terminal: null, status: "", asking: false };
 const MAC = isMac(navigator.platform);
 const SHORTCUT = shortcutLabel(MAC);
+
+const withShortcut = (text: string, combo: string | undefined) => (combo ? `${text} (${comboLabel(combo, MAC)})` : text);
 
 export default function App() {
   const [view, setView] = useState<BoardView | null>(null);
@@ -63,6 +66,7 @@ export default function App() {
   const [bosunState, setBosunState] = useState<BosunState>("finding");
   const [activeTabName, setActiveTabName] = useState<string | null>(null);
   const launchLogged = useRef(false);
+  const shortcutActions = useRef<Record<ShortcutAction, () => void> | null>(null);
   const mainRef = useRef<HTMLElement>(null);
   const boardColumnRef = useRef<HTMLDivElement>(null);
 
@@ -155,6 +159,18 @@ export default function App() {
       .then(setSettings)
       .catch(() => api.getSettings().then(setSettings));
   };
+
+  shortcutActions.current = {
+    toggleChat: () => changeWindow({ chatOpen: !chatOpen }),
+    toggleTheme: () => changeWindow({ theme: otherTheme(theme) }),
+    openSettings: () => setSettingsOpen(true),
+  };
+
+  const shortcuts = settings?.shortcuts;
+  useEffect(() => {
+    if (!shortcuts) return;
+    return listenForShortcuts(window, shortcuts, (action) => shortcutActions.current?.[action]());
+  }, [shortcuts]);
 
   const showAllProjects = () => {
     setSettings((s) => s && { ...s, projectFilter: [] });
@@ -267,10 +283,15 @@ export default function App() {
             Expand all
           </button>
         )}
-        <button className="btn btn-header" onClick={() => changeWindow({ theme: otherTheme(theme) })} disabled={!settings}>
+        <button
+          className="btn btn-header"
+          onClick={() => changeWindow({ theme: otherTheme(theme) })}
+          disabled={!settings}
+          title={withShortcut("Switch light and dark", shortcuts?.toggleTheme)}
+        >
           {themeToggleLabel(theme)}
         </button>
-        <button className="btn btn-header" onClick={() => setSettingsOpen(true)} disabled={!settings}>
+        <button className="btn btn-header" onClick={() => setSettingsOpen(true)} disabled={!settings} title={withShortcut("Settings", shortcuts?.openSettings)}>
           Settings
         </button>
         <button
@@ -283,7 +304,12 @@ export default function App() {
           <span className={`bosun-dot ${dotOf(bosunState)}`} aria-hidden="true" />
           {BOSUN}
         </button>
-        <button className="btn btn-dark" onClick={() => changeWindow({ chatOpen: !chatOpen })} disabled={!settings}>
+        <button
+          className="btn btn-dark"
+          onClick={() => changeWindow({ chatOpen: !chatOpen })}
+          disabled={!settings}
+          title={withShortcut(chatOpen ? "Hide chat" : "Show chat", shortcuts?.toggleChat)}
+        >
           {chatOpen ? "Hide chat" : "Show chat"}
         </button>
       </header>
@@ -446,6 +472,7 @@ export default function App() {
       {settingsOpen && settings && (
         <SettingsDialog
           settings={settings}
+          mac={MAC}
           rowNames={rowNames}
           onPreview={setPreview}
           onSaved={onSettingsSaved}

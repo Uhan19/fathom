@@ -15,10 +15,12 @@ import {
 import { formatBytes } from "../board";
 import { FontPicker, useInstalledFonts } from "./FontPicker";
 import { Close } from "./Icons";
+import { ShortcutsSection } from "./ShortcutsSection";
 import { withLatestWindow } from "../windowSettings";
 
 interface SettingsDialogProps {
   settings: Settings;
+  mac: boolean;
   rowNames: Record<RowKey, string>;
   onPreview: (appearance: Appearance) => void;
   onSaved: (settings: Settings) => void;
@@ -33,8 +35,9 @@ const DEFAULT_ROW_NAMES: Record<RowKey, string> = {
   landed: "Landed",
 };
 
-export function SettingsDialog({ settings, rowNames, onPreview, onSaved, onClose }: SettingsDialogProps) {
+export function SettingsDialog({ settings, mac, rowNames, onPreview, onSaved, onClose }: SettingsDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const homeRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(settings);
   const [names, setNames] = useState(rowNames);
   const [data, setData] = useState<DataInfo | null>(null);
@@ -45,6 +48,7 @@ export function SettingsDialog({ settings, rowNames, onPreview, onSaved, onClose
 
   useEffect(() => {
     dialogRef.current?.showModal();
+    homeRef.current?.focus();
     api.dataInfo().then(setData).catch(() => setData(null));
   }, []);
 
@@ -145,7 +149,7 @@ export function SettingsDialog({ settings, rowNames, onPreview, onSaved, onClose
             <legend>Firstmate</legend>
             <label className="field">
               <span>Firstmate home</span>
-              <input className="text-input mono" {...field("home")} spellCheck={false} autoFocus />
+              <input className="text-input mono" {...field("home")} ref={homeRef} spellCheck={false} />
               <small>
                 Fathom reads tasks through bin/fm-tasks-axi.sh in this folder and never writes there. Leave it empty to use Fathom's own
                 backlog.
@@ -180,6 +184,11 @@ export function SettingsDialog({ settings, rowNames, onPreview, onSaved, onClose
             {fontRow("chat")}
             {fontRow("board")}
             <small className="field-note">Changes show at once; Save keeps them, Cancel puts them back.</small>
+          </fieldset>
+          <fieldset>
+            <legend>Shortcuts</legend>
+            <ShortcutsSection shortcuts={draft.shortcuts} mac={mac} onChange={(shortcuts) => setDraft({ ...draft, shortcuts })} />
+            <small className="field-note">Click a shortcut and press the new keys. They work everywhere in Fathom, terminals included.</small>
           </fieldset>
           <fieldset>
             <legend>Row names</legend>

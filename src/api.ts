@@ -2,6 +2,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { AgentKey } from "./agents";
+import type { Shortcuts } from "./shortcuts";
 import type { Theme } from "./theme";
 
 export type RowKey = "surface" | "shallows" | "deep" | "seabed" | "landed";
@@ -133,6 +134,7 @@ export interface Settings {
   detailWidth: number;
   projectFilter: string[];
   helperStarted: boolean;
+  shortcuts: Shortcuts;
 }
 
 export interface WindowChange {

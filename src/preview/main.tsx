@@ -5,6 +5,8 @@ import { ROW_ORDER, type BoardView, type Card, type CardPlace, type Column, type
 import { presetFonts } from "../appearance";
 import { cellCount, groupCards, type Cells } from "../board";
 import { moveTo } from "../columnOrder";
+import { isMac } from "../bosun";
+import { defaultShortcuts, type Shortcuts } from "../shortcuts";
 import {
   FIXTURE_BACKLOG_CARDS,
   FIXTURE_BACKLOG_COLUMNS,
@@ -42,6 +44,9 @@ const rememberedAgent = (params.get("agent") as AgentKey | null) ?? null;
 const missingTool = params.get("missing");
 let openedAgent: AgentKey | null = rememberedAgent;
 const bosun = params.get("bosun") ?? "ready";
+if (params.has("linux")) Object.defineProperty(navigator, "platform", { value: "Linux x86_64" });
+const mac = isMac(navigator.platform);
+const customShortcuts = (): Shortcuts => ({ ...defaultShortcuts(mac), toggleChat: mac ? "Alt+Meta+KeyB" : "Ctrl+Alt+KeyB", toggleTheme: "" });
 const NO_HELPER: HelperStatus = { terminal: null, status: "", asking: false };
 const HELPER_STATUS: Record<string, Omit<HelperStatus, "terminal">> = {
   starting: { status: "", asking: false },
@@ -88,6 +93,7 @@ let settings: Settings = {
   detailWidth: 460,
   projectFilter: params.get("filter")?.split(",").filter(Boolean) ?? [],
   helperStarted: bosun !== "notstarted",
+  shortcuts: params.get("shortcuts") === "custom" ? customShortcuts() : defaultShortcuts(mac),
 };
 
 const openChatTerminal = (agent: AgentKey) => {
@@ -434,3 +440,11 @@ const pressLauncher = () => {
   else setTimeout(pressLauncher, 50);
 };
 if (params.has("launcher")) setTimeout(pressLauncher, 400);
+
+const openShortcuts = () => {
+  const button = [...document.querySelectorAll<HTMLButtonElement>(".btn-header")].find((b) => b.textContent === "Settings" && !b.disabled);
+  if (!button) return setTimeout(openShortcuts, 50);
+  button.click();
+  setTimeout(() => document.querySelector(".shortcuts")?.closest("fieldset")?.scrollIntoView({ block: "start" }), 50);
+};
+if (params.has("settings")) setTimeout(openShortcuts, 400);
