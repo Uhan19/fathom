@@ -1,5 +1,5 @@
 import { AGENTS, type AgentKey } from "../agents";
-import type { Card, Column, Detail, MoveRequest, RowKey, Terminal, Worker } from "../api";
+import type { Card, Column, Detail, MoveRequest, RowKey, ShellTab, Terminal, Worker } from "../api";
 
 type Seed = [id: string, project: string, row: RowKey, title: string, extra?: Partial<Card>];
 
@@ -303,3 +303,45 @@ const HELPER_SCREENS: Record<string, string[]> = {
 };
 
 export const helperScreen = (state: string) => (HELPER_SCREENS[state] ?? HELPER_SCREENS.ready).join("\r\n");
+
+export const FIXTURE_HOME = "/home/demo";
+
+export const FIXTURE_SHELL_TABS: ShellTab[] = [
+  { terminal: "t11", name: "zsh · atlas-api", folder: "/home/demo/projects/atlas-api" },
+  { terminal: "t12", name: "zsh · ~", folder: "/home/demo" },
+  { terminal: "t13", name: "npm · harbor-web", folder: "/home/demo/projects/harbor-web" },
+  { terminal: "t16", name: "zsh · ledger-sync", folder: "/home/demo/projects/ledger-sync" },
+  { terminal: "t17", name: "codex · keel-cli", folder: "/home/demo/projects/keel-cli" },
+  { terminal: "t18", name: "zsh · lantern-docs", folder: "/home/demo/projects/lantern-docs" },
+];
+
+const running = (address: string, agent: string, name: string, cwd: string): Terminal => ({
+  address,
+  name,
+  title: name || agent,
+  state: "live",
+  cwd,
+  agent,
+  labels: {},
+  cols: 120,
+  rows: 40,
+});
+
+export const FIXTURE_ATTACHABLE: Terminal[] = [
+  running("t2", "zsh", "scratch", "/home/demo"),
+  running("t14", "codex", "", "/home/demo/projects/keel-cli"),
+  running("t15", "tail", "", "/home/demo/projects/atlas-api/logs"),
+];
+
+export const shellScreen = (tab: ShellTab) => {
+  const place = tab.folder === FIXTURE_HOME ? "~" : tab.folder.split("/").pop();
+  const prompt = `${ESC}32mdemo@harbor${ESC}0m ${ESC}36m${place}${ESC}0m % `;
+  return [
+    `${prompt}git status --short`,
+    ` M src/handlers/invoice.ts`,
+    `?? notes/retry-budget.md`,
+    `${prompt}ls`,
+    `README.md  notes  package.json  src  tests`,
+    prompt,
+  ].join("\r\n");
+};

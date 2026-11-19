@@ -210,5 +210,5 @@ export function useLiveTerminal(view: View, fontFamily: string, fontSize: number
     if (term) term.options.theme = TERMINAL_THEMES[theme];
   }, [theme]);
 
-  return { hostRef, scrollRef, attach, release, focus, paste };
+  return { hostRef, scrollRef, attach, release, focus, paste, fit: syncSize };
 }

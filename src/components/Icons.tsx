@@ -46,6 +46,15 @@ export function Plus() {
   );
 }
 
+export function TerminalIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+      <rect x="1.5" y="2.5" width="11" height="9" rx="1.5" />
+      <path d="M4 5.5l1.8 1.5L4 8.5M7.2 8.7h2.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function Trash() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
