@@ -101,6 +101,7 @@ Each system builds only its own bundles.
 The script refuses to overwrite an existing version, so bump the version first.
 It keeps the newest two versions, deletes older ones, and installs nothing.
 `release/` is ignored by git.
+CI builds the `.deb` and AppImage on Ubuntu 22.04 on every push to `main` and uploads them as workflow artifacts.
 
 On macOS, open the app from Finder or with `open release/<version>/Fathom.app`.
 The first launch of a new build can take several seconds while macOS checks the new binary; later launches paint from the cache.
