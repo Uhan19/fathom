@@ -4,6 +4,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { AgentKey } from "./agents";
 import type { Shortcuts } from "./shortcuts";
 import type { Theme } from "./theme";
+import type { CardUpdates } from "./updates";
 
 export type RowKey = "surface" | "shallows" | "deep" | "seabed" | "landed";
 
@@ -234,6 +235,8 @@ export const api = {
   resendRequest: (requestId: string) => invoke<Overlay>("resend_request", { requestId }),
   dismissRequest: (requestId: string) => invoke<Overlay>("dismiss_request", { requestId }),
   workers: () => invoke<Worker[]>("workers"),
+  cardUpdates: () => invoke<CardUpdates>("card_updates"),
+  markSeen: (cardId: string, mark: string) => invoke<void>("mark_seen", { cardId, mark }),
   getSettings: () => invoke<Settings>("get_settings"),
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
   changeWindow: (change: WindowChange) => invoke<Settings>("change_window", { change }),
@@ -281,6 +284,8 @@ export const events = {
   terminals: (handler: () => void): Promise<UnlistenFn> => listen("herdr://terminals", () => handler()),
   workers: (handler: (workers: Worker[]) => void): Promise<UnlistenFn> =>
     listen<Worker[]>("workers://updated", (e) => handler(e.payload)),
+  updates: (handler: (updates: CardUpdates) => void): Promise<UnlistenFn> =>
+    listen<CardUpdates>("updates://updated", (e) => handler(e.payload)),
   settings: (handler: (settings: Settings) => void): Promise<UnlistenFn> =>
     listen<Settings>("settings://updated", (e) => handler(e.payload)),
   helper: (handler: (helper: HelperStatus) => void): Promise<UnlistenFn> =>

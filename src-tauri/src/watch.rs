@@ -6,6 +6,7 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 pub const TASK_LIST: &str = "backlog.md";
 const STATE_DIR: &str = "state";
 const META_EXTENSION: &str = "meta";
+const STATUS_EXTENSION: &str = "status";
 const INBOX_DIR: &str = "inbox";
 const REPLIES_DIR: &str = ".replies";
 
@@ -13,6 +14,7 @@ const REPLIES_DIR: &str = ".replies";
 pub enum StateChange {
     Workers,
     Replies,
+    Updates,
 }
 
 pub fn watch_task_list(
@@ -78,8 +80,14 @@ pub fn watch_state(
 fn classify(path: &Path) -> Option<StateChange> {
     let parent = path.parent()?;
     let named = |dir: &Path, name: &str| dir.file_name().is_some_and(|n| n == name);
-    if named(parent, STATE_DIR) && path.extension().is_some_and(|e| e == META_EXTENSION) {
-        return Some(StateChange::Workers);
+    if named(parent, STATE_DIR) {
+        let extension = path.extension()?;
+        if extension == META_EXTENSION {
+            return Some(StateChange::Workers);
+        }
+        if extension == STATUS_EXTENSION {
+            return Some(StateChange::Updates);
+        }
     }
     let inbox = parent.parent()?;
     if named(parent, REPLIES_DIR)
@@ -160,19 +168,21 @@ mod tests {
     }
 
     #[test]
-    fn classifies_meta_records_and_inbox_replies() {
+    fn classifies_meta_records_status_logs_and_inbox_replies() {
         let home = Path::new("/fm");
         let at = |p: &str| classify(&home.join(p));
         assert_eq!(at("state/atl-12.meta"), Some(StateChange::Workers));
         assert_eq!(at("state/inbox/.replies/n-1"), Some(StateChange::Replies));
-        assert_eq!(at("state/atl-12.status"), None);
+        assert_eq!(at("state/atl-12.status"), Some(StateChange::Updates));
+        assert_eq!(at("state/deeper/atl-12.status"), None);
+        assert_eq!(at("state/atl-12"), None);
         assert_eq!(at("state/inbox/n-1.note"), None);
         assert_eq!(at("state/deeper/atl-12.meta"), None);
         assert_eq!(at("data/inbox/.replies/n-1"), None);
     }
 
     #[test]
-    fn reports_meta_and_reply_changes_under_the_state_folder() {
+    fn reports_meta_reply_and_status_changes_under_the_state_folder() {
         let home = tempfile::tempdir().unwrap();
         let replies = home.path().join("state/inbox/.replies");
         std::fs::create_dir_all(&replies).unwrap();
@@ -193,6 +203,16 @@ mod tests {
         assert_eq!(
             rx.recv_timeout(Duration::from_secs(5)),
             Ok(StateChange::Replies)
+        );
+        while rx.recv_timeout(Duration::from_millis(300)).is_ok() {}
+        std::fs::write(
+            home.path().join("state/atl-12.status"),
+            "working [at=1]: setup done\n",
+        )
+        .unwrap();
+        assert_eq!(
+            rx.recv_timeout(Duration::from_secs(5)),
+            Ok(StateChange::Updates)
         );
     }
 }

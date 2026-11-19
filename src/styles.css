@@ -95,6 +95,8 @@
   --tag-reported-ink: #2b3a55;
   --backdrop: rgba(11, 16, 34, 0.32);
   --shadow: rgba(17, 19, 21, 0.22);
+  --lamp-line: #d9a514;
+  --lamp-glow: rgba(242, 194, 48, 0.55);
 }
 
 :root[data-theme="dark"] {
@@ -157,6 +159,8 @@
   --tag-reported-ink: #cfe3f5;
   --backdrop: rgba(3, 6, 14, 0.55);
   --shadow: rgba(0, 0, 0, 0.45);
+  --lamp-line: #f2c230;
+  --lamp-glow: rgba(242, 194, 48, 0.4);
 }
 
 *,
@@ -1124,6 +1128,48 @@ button.column-name:focus-visible,
 
 .card-landed .bar {
   background: #7f8791;
+}
+
+.card.unseen {
+  border-color: var(--lamp-line);
+  box-shadow:
+    0 0 0 1px var(--lamp-line),
+    0 0 14px var(--lamp-glow),
+    0 2px 6px var(--card-shadow);
+}
+
+.card.unseen .bar {
+  background: var(--yellow);
+  box-shadow: 0 0 8px 1px var(--lamp-glow);
+  animation: lamp-blink 1.6s ease-in-out infinite;
+}
+
+.column-head.unseen .count-badge {
+  background: var(--yellow);
+  border-color: var(--lamp-line);
+  color: var(--abyss);
+  box-shadow: 0 0 10px 2px var(--lamp-glow);
+  animation: lamp-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes lamp-blink {
+  50% {
+    opacity: 0.2;
+    box-shadow: none;
+  }
+}
+
+@keyframes lamp-pulse {
+  50% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card.unseen .bar,
+  .column-head.unseen .count-badge {
+    animation: none;
+  }
 }
 
 .card-body {

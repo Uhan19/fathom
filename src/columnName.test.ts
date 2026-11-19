@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { ROW_ORDER, type Column, type RowKey } from "./api";
 import { Board } from "./components/Board";
 import { FIXTURE_UNFILED_CARDS, FIXTURE_UNFILED_COLUMNS } from "./preview/fixture";
+import { NO_UPDATES } from "./updates";
 
 const ignore = () => undefined;
 const rowNames = Object.fromEntries(ROW_ORDER.map((row) => [row, row])) as Record<RowKey, string>;
@@ -20,6 +21,7 @@ function header(columns: Column[]) {
       collapsedRows: [],
       agentFilter: "all",
       projectsFiltered: false,
+      updates: NO_UPDATES,
       selectedId: null,
       onSelect: ignore,
       onColumnChange: ignore,

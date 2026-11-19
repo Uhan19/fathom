@@ -7,6 +7,7 @@ import { insertAmongShown } from "./board";
 import { Board } from "./components/Board";
 import { shownColumns } from "./projectFilter";
 import { FIXTURE_BACKLOG_CARDS, FIXTURE_BACKLOG_COLUMNS, FIXTURE_CARDS, FIXTURE_COLUMNS, FIXTURE_WORKERS } from "./preview/fixture";
+import { NO_UPDATES } from "./updates";
 
 const ignore = () => undefined;
 const rowNames = Object.fromEntries(ROW_ORDER.map((row) => [row, row[0].toUpperCase() + row.slice(1)])) as Record<RowKey, string>;
@@ -32,6 +33,7 @@ function board({ workers = FIXTURE_WORKERS, agentFilter = "all", collapsedRows =
       collapsedRows,
       agentFilter,
       projectsFiltered: projectFilter.length > 0,
+      updates: NO_UPDATES,
       selectedId: null,
       onSelect: ignore,
       onColumnChange: ignore,

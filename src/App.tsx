@@ -40,6 +40,7 @@ import { filterText, indexAmongAll, shownColumns } from "./projectFilter";
 import { DEFAULT_THEME, otherTheme, themeToggleLabel } from "./theme";
 import { comboLabel, listenForShortcuts, type ShortcutAction } from "./shortcuts";
 import { CHAT_WIDTH, DETAIL_WIDTH } from "./windowSettings";
+import { isUnseen, leftCard, NO_UPDATES, seenLocally, type CardUpdates } from "./updates";
 
 const NO_HELPER: HelperStatus = { terminal: null, status: "", asking: false };
 const MAC = isMac(navigator.platform);
@@ -60,6 +61,7 @@ export default function App() {
   const [detailDrag, setDetailDrag] = useState<number | null>(null);
   const [chatDrag, setChatDrag] = useState<number | null>(null);
   const [workers, setWorkers] = useState<Worker[]>([]);
+  const [updates, setUpdates] = useState<CardUpdates>(NO_UPDATES);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [columnError, setColumnError] = useState<string | null>(null);
   const [watched, setWatched] = useState<Watched | null>(null);
@@ -96,6 +98,7 @@ export default function App() {
       events.board((b) => alive && accept(b)),
       events.herdr((s) => alive && setHerdr(s)),
       events.workers((w) => alive && setWorkers(w)),
+      events.updates((u) => alive && setUpdates(u)),
       events.settings((s) => alive && setSettings(s)),
       events.helper((h) => alive && setHelper(h)),
     ];
@@ -111,6 +114,10 @@ export default function App() {
     api.getSettings().then((s) => alive && setSettings(s));
     api.herdrStatus().then((s) => alive && setHerdr(s));
     api.workers().then((w) => alive && setWorkers(w));
+    api
+      .cardUpdates()
+      .then((u) => alive && setUpdates(u))
+      .catch(() => undefined);
     api.helperStatus().then((h) => alive && setHelper(h));
     return () => {
       alive = false;
@@ -278,7 +285,20 @@ export default function App() {
     void api.readBoard().then(accept).catch((e) => setReadError(errorText(e)));
   };
 
-  const selectCard = (card: Card) => setSelectedId((id) => (id === card.id ? null : card.id));
+  const markSeen = (cardId: string) => {
+    if (!isUnseen(updates, cardId)) return;
+    const mark = updates.marks[cardId];
+    setUpdates((u) => seenLocally(u, cardId));
+    void api.markSeen(cardId, mark);
+  };
+
+  const openCard = (next: string | null) => {
+    const left = leftCard(selectedId, next);
+    if (left !== null) markSeen(left);
+    setSelectedId(next);
+  };
+
+  const selectCard = (card: Card) => openCard(selectedId === card.id ? null : card.id);
   const connectionKey = settings ? `${settings.hcSession}|${settings.hcSocket}|${settings.terminalLabel}` : "";
   const chatSource = view?.source ?? (settings?.home.trim() ? "firstmate" : "fathom");
   const chatAgent = initialAgent(chatSource, pickedAgent ?? settings?.chatAgent ?? null);
@@ -384,6 +404,7 @@ export default function App() {
                 columns={columns}
                 overlay={overlay}
                 workers={workerByTask}
+                updates={updates}
                 rowNames={rowNames}
                 collapsedRows={collapsedRows}
                 agentFilter={agentFilter}
@@ -451,8 +472,8 @@ export default function App() {
               request={shownRequest(selected.id, overlay.requests)}
               width={detailWidth}
               chatTerminal={chatTerminal}
-              onClose={() => setSelectedId(null)}
-              onOpenCard={(id) => cards.some((c) => c.id === id) && setSelectedId(id)}
+              onClose={() => openCard(null)}
+              onOpenCard={(id) => cards.some((c) => c.id === id) && openCard(id)}
               onResend={(id) => void changeOverlay(api.resendRequest(id))}
               onDismiss={(id) => void changeOverlay(api.dismissRequest(id))}
             />

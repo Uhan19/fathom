@@ -21,12 +21,14 @@ use crate::shell_path;
 use crate::shell_tabs::{self, LauncherFolders};
 use crate::source::{Source, SourceKind};
 use crate::tasks::Card;
+use crate::updates::{self, CardUpdates};
 use crate::watch::{self, StateChange};
 use crate::workers::{self, Worker};
 
 const REFRESH_DEBOUNCE: Duration = Duration::from_millis(250);
 const STORE_POLL: Duration = REFRESH_DEBOUNCE;
 const WORKERS_DEBOUNCE: Duration = Duration::from_millis(80);
+const UPDATES_DEBOUNCE: Duration = WORKERS_DEBOUNCE;
 const LAUNCH_LOG: &str = "launch.log";
 
 pub const EVENT_BOARD: &str = "board://updated";
@@ -36,6 +38,7 @@ pub const EVENT_VIEW_ENDED: &str = "terminal://ended";
 pub const EVENT_WORKERS: &str = "workers://updated";
 pub const EVENT_SETTINGS: &str = "settings://updated";
 pub const EVENT_HELPER: &str = "helper://updated";
+pub const EVENT_UPDATES: &str = "updates://updated";
 const IDLE: &str = "idle";
 const BLOCKED: &str = "blocked";
 const ENDED_STATES: [&str; 2] = ["finished", "lost"];
@@ -106,7 +109,9 @@ pub struct AppState {
     pub settings: Mutex<Settings>,
     refresh: Sender<()>,
     workers_tick: Sender<()>,
+    updates_tick: Sender<()>,
     published_workers: Mutex<Option<Vec<Worker>>>,
+    published_updates: Mutex<Option<CardUpdates>>,
     published_helper: Mutex<HelperStatus>,
     watchers: Mutex<Vec<RecommendedWatcher>>,
     started: Instant,
@@ -138,6 +143,7 @@ impl AppState {
         let settings = settings::load(&db)?;
         let (refresh, requests) = mpsc::channel();
         let (workers_tick, worker_ticks) = mpsc::channel();
+        let (updates_tick, update_ticks) = mpsc::channel();
         let herdr_status = Arc::new(Mutex::new(HerdrStatus {
             connected: false,
             message: "connecting".into(),
@@ -165,7 +171,9 @@ impl AppState {
             settings: Mutex::new(settings),
             refresh,
             workers_tick,
+            updates_tick,
             published_workers: Mutex::new(None),
+            published_updates: Mutex::new(None),
             published_helper: Mutex::default(),
             watchers: Mutex::new(Vec::new()),
             started,
@@ -174,6 +182,7 @@ impl AppState {
         });
         spawn_refresher(app.clone(), Arc::clone(&state), requests);
         spawn_worker_publisher(app.clone(), Arc::clone(&state), worker_ticks);
+        spawn_updates_publisher(app.clone(), Arc::clone(&state), update_ticks);
         state.restart_watcher();
         state.watch_store(app.clone());
         state.herdr.start_events();
@@ -272,6 +281,7 @@ impl AppState {
             self.restart_watcher();
             self.request_refresh();
             self.request_workers();
+            self.request_updates();
         }
         if connection_of(&next) != connection_of(&previous) {
             self.herdr.set_connection(connection_of(&next));
@@ -430,10 +440,12 @@ impl AppState {
         });
         let refresh = self.refresh.clone();
         let workers = self.workers_tick.clone();
+        let updates = self.updates_tick.clone();
         let state = watch::watch_state(&home, move |change| {
             let _ = match change {
                 StateChange::Workers => workers.send(()),
                 StateChange::Replies => refresh.send(()),
+                StateChange::Updates => updates.send(()),
             };
         });
         for watcher in [task_list, state] {
@@ -461,12 +473,28 @@ impl AppState {
                 state.request_refresh();
                 state.reload_settings(&app);
                 state.request_workers();
+                state.request_updates();
             },
         );
     }
 
     pub fn request_workers(&self) {
         let _ = self.workers_tick.send(());
+    }
+
+    pub fn request_updates(&self) {
+        let _ = self.updates_tick.send(());
+    }
+
+    pub fn card_updates(&self) -> Result<CardUpdates, String> {
+        updates::card_updates(&self.source(), &self.db)
+    }
+
+    pub fn mark_seen(&self, card_id: &str, mark: &str) -> Result<(), String> {
+        let home = self.source().home();
+        self.db.lock().unwrap().mark_seen(&home, card_id, mark)?;
+        self.request_updates();
+        Ok(())
     }
 
     pub fn workers(&self) -> Vec<Worker> {
@@ -649,6 +677,26 @@ fn spawn_worker_publisher(app: AppHandle, state: Arc<AppState>, ticks: Receiver<
                 }
             }
             state.publish_helper(&app);
+        }
+    });
+}
+
+fn spawn_updates_publisher(app: AppHandle, state: Arc<AppState>, ticks: Receiver<()>) {
+    std::thread::spawn(move || {
+        while ticks.recv().is_ok() {
+            while ticks.recv_timeout(UPDATES_DEBOUNCE).is_ok() {}
+            let updates = match state.card_updates() {
+                Ok(updates) => updates,
+                Err(error) => {
+                    eprintln!("fathom: cannot read card updates: {error}");
+                    continue;
+                }
+            };
+            let mut published = state.published_updates.lock().unwrap();
+            if published.as_ref() != Some(&updates) {
+                let _ = app.emit(EVENT_UPDATES, &updates);
+                *published = Some(updates);
+            }
         }
     });
 }

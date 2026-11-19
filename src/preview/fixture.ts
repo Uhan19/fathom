@@ -1,5 +1,6 @@
 import { AGENTS, type AgentKey } from "../agents";
 import type { Card, Column, Detail, MoveRequest, RowKey, ShellTab, Terminal, Worker } from "../api";
+import type { CardUpdates } from "../updates";
 
 type Seed = [id: string, project: string, row: RowKey, title: string, extra?: Partial<Card>];
 
@@ -65,6 +66,25 @@ export const FIXTURE_WORKERS: Worker[] = [
   { taskId: "pil-08", terminal: "t6", status: "idle" },
 ];
 
+const FIXTURE_UPDATE_MARKS: Record<string, string> = {
+  "atl-09": "3 working [at=1795100000]: read and write paths split, running the invoice tests",
+  "hrb-18": "4 needs-decision [at=1795100400]: the form kit has no date picker; keep the old one or wait for the kit?",
+  "lan-31": "2 working [at=1795100600]: first draft of the v3 guide is up for review",
+  "pil-08": "3 done [at=1795100800]: staging certificates rotated, PR ready",
+  "led-37": "2 done [at=1795090000]: report written",
+};
+
+const FIXTURE_SEEN_MARKS: Record<string, string> = {
+  "atl-09": FIXTURE_UPDATE_MARKS["atl-09"],
+  "lan-31": "1 working [at=1795090400]: setup done",
+  "led-37": FIXTURE_UPDATE_MARKS["led-37"],
+};
+
+export const fixtureUpdates = (unseen: boolean): CardUpdates => ({
+  marks: { ...FIXTURE_UPDATE_MARKS },
+  seen: { ...(unseen ? FIXTURE_SEEN_MARKS : FIXTURE_UPDATE_MARKS) },
+});
+
 const fixtureRequest = (over: Partial<MoveRequest> & Pick<MoveRequest, "cardId" | "fromRow" | "toRow">): MoveRequest => ({
   requestId: `fathom-move-${over.cardId}-1763400000000`,
   title: FIXTURE_CARDS.find((c) => c.id === over.cardId)?.title ?? "",
@@ -121,6 +141,11 @@ export const FIXTURE_BACKLOG_CARDS: Card[] = BACKLOG_SEEDS.map(([id, project, ro
 );
 
 export const FIXTURE_BACKLOG_COLUMNS: Column[] = columnsFor(FIXTURE_BACKLOG_CARDS);
+
+export const fixtureBacklogUpdates = (unseen: boolean): CardUpdates => ({
+  marks: { "2": "1795100000000", "9": "1795090000000" },
+  seen: unseen ? { "9": "1795090000000" } : { "2": "1795100000000", "9": "1795090000000" },
+});
 
 export const FIXTURE_BACKLOG_WORKERS: Worker[] = [
   { taskId: "2", terminal: "t3", status: "working" },
