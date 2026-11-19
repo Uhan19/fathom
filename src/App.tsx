@@ -4,6 +4,7 @@ import {
   errorText,
   events,
   ROW_ORDER,
+  type AgentFilter,
   type BoardView,
   type Card,
   type Column,
@@ -24,6 +25,8 @@ import { emptyBoardText } from "./source";
 import { moveTo } from "./columnOrder";
 import { resizer, startDrag } from "./drag";
 import { Board } from "./components/Board";
+import { AgentFilterToggle } from "./components/AgentFilterToggle";
+import { agentFilterText } from "./agentFilter";
 import { Brand } from "./components/Brand";
 import { CardDetail } from "./components/CardDetail";
 import { ChatPanel } from "./components/ChatPanel";
@@ -128,6 +131,7 @@ export default function App() {
   const chatWidth = chatDrag ?? settings?.chatWidth ?? 0;
   const detailWidth = detailDrag ?? settings?.detailWidth ?? 0;
   const projectFilter = settings?.projectFilter ?? [];
+  const agentFilter = settings?.agentFilter ?? "all";
 
   const panelRoom = (width: number) => {
     const main = mainRef.current;
@@ -180,11 +184,20 @@ export default function App() {
       .catch(() => api.getSettings().then(setSettings));
   };
 
+  const changeAgentFilter = (filter: AgentFilter) => {
+    setSettings((s) => s && { ...s, agentFilter: filter });
+    void api
+      .setAgentFilter(filter)
+      .then(setSettings)
+      .catch(() => api.getSettings().then(setSettings));
+  };
+
   const rowNames = useMemo(() => {
     const names = Object.fromEntries(ROW_ORDER.map((r) => [r, r])) as Record<RowKey, string>;
-    view?.rowNames.forEach((r) => (names[r.row] = r.name));
+    view?.rows.forEach((r) => (names[r.row] = r.name));
     return names;
   }, [view]);
+  const collapsedRows = useMemo(() => (view?.rows ?? []).filter((r) => r.collapsed).map((r) => r.row), [view]);
 
   const cards = view?.cards ?? [];
   const counts = rowCounts(cards);
@@ -193,6 +206,11 @@ export default function App() {
   const changeColumn = (id: number, change: { width?: number; collapsed?: boolean }) => {
     setView((v) => v && { ...v, columns: v.columns.map((c) => (c.id === id ? { ...c, ...change } : c)) });
     void api.updateColumn(id, change);
+  };
+
+  const collapseRows = (rows: RowKey[], collapsed: boolean) => {
+    setView((v) => v && { ...v, rows: v.rows.map((r) => (rows.includes(r.row) ? { ...r, collapsed } : r)) });
+    void api.setRowsCollapsed(rows, collapsed);
   };
 
   const renameColumn = (id: number, name: string) => {
@@ -247,8 +265,11 @@ export default function App() {
   };
 
   const columns = shownColumns(view?.columns ?? [], projectFilter);
-  const anyCollapsed = columns.some((c) => c.collapsed);
-  const expandAll = () => columns.filter((c) => c.collapsed).forEach((c) => changeColumn(c.id, { collapsed: false }));
+  const anyCollapsed = columns.some((c) => c.collapsed) || collapsedRows.length > 0;
+  const expandAll = () => {
+    columns.filter((c) => c.collapsed).forEach((c) => changeColumn(c.id, { collapsed: false }));
+    if (collapsedRows.length > 0) collapseRows(collapsedRows, false);
+  };
 
   const onSettingsSaved = (saved: Settings) => {
     setSettings(saved);
@@ -278,6 +299,7 @@ export default function App() {
         <span className={`herdr-dot${herdr.connected ? " up" : ""}`} title={herdr.connected ? "herdr-core connected" : herdr.message}>
           herdr-core
         </span>
+        <AgentFilterToggle filter={agentFilter} disabled={!settings} onChange={changeAgentFilter} />
         {anyCollapsed && (
           <button className="btn btn-header" onClick={expandAll}>
             Expand all
@@ -330,12 +352,24 @@ export default function App() {
       )}
       <main className="main" ref={mainRef}>
         <div className="board-column" ref={boardColumnRef}>
-          {projectFilter.length > 0 && (
+          {(projectFilter.length > 0 || agentFilter !== "all") && (
             <div className="filter-strip" role="status">
-              <span>{filterText(projectFilter)}</span>
-              <button className="mini" onClick={showAllProjects}>
-                Show all
-              </button>
+              {projectFilter.length > 0 && (
+                <div className="filter-part">
+                  <span>{filterText(projectFilter)}</span>
+                  <button className="mini" onClick={showAllProjects}>
+                    Show all
+                  </button>
+                </div>
+              )}
+              {agentFilter !== "all" && (
+                <div className="filter-part">
+                  <span>{agentFilterText(agentFilter)}</span>
+                  <button className="mini" onClick={() => changeAgentFilter("all")}>
+                    Show every card
+                  </button>
+                </div>
+              )}
             </div>
           )}
           {view ? (
@@ -347,9 +381,14 @@ export default function App() {
                 overlay={overlay}
                 workers={workerByTask}
                 rowNames={rowNames}
+                collapsedRows={collapsedRows}
+                agentFilter={agentFilter}
+                projectsFiltered={projectFilter.length > 0}
                 selectedId={selectedId}
                 onSelect={selectCard}
                 onColumnChange={changeColumn}
+                onRowCollapse={(row, collapsed) => collapseRows([row], collapsed)}
+                onShowEveryCard={() => changeAgentFilter("all")}
                 onColumnRename={renameColumn}
                 onColumnMove={moveColumn}
                 onColumnAdd={projectFilter.length > 0 ? undefined : (name) => void replaceColumns(api.addColumn(name))}

@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
-import { ROW_ORDER, type Card, type Column, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type SourceKind, type Worker } from "../api";
+import { ROW_ORDER, type AgentFilter, type Card, type Column, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type SourceKind, type Worker } from "../api";
 import {
   boardMinWidth,
   cardNote,
@@ -8,19 +8,21 @@ import {
   columnTemplate,
   groupCards,
   headTemplate,
-  insertAt,
+  insertAmongShown,
   isUnnamed,
   outcomeTag,
   renamedColumn,
+  rowCount,
   shownRequest,
 } from "../board";
+import { anyCard, keepCards, noMatchText, shownByAgent } from "../agentFilter";
 import { projectTasks, sailorLabel } from "../source";
 import { deletePlan, moveTargets, NEW_COLUMN, nextDraft, startDraft } from "../columnDelete";
 import { useCardDrag, type CardDrag } from "../cardDrag";
 import { useColumnDrag, type ColumnDrag } from "../columnDrag";
 import type { DropTarget } from "../dropTarget";
 import { startDrag } from "../drag";
-import { ChevronLeft, ChevronRight, Plus, Sailor, Trash, Wave } from "./Icons";
+import { ChevronDown, ChevronLeft, ChevronRight, Plus, Sailor, Trash, Wave } from "./Icons";
 
 interface BoardProps {
   cards: Card[];
@@ -29,9 +31,14 @@ interface BoardProps {
   overlay: Overlay;
   workers: Record<string, Worker>;
   rowNames: Record<RowKey, string>;
+  collapsedRows: RowKey[];
+  agentFilter: AgentFilter;
+  projectsFiltered: boolean;
   selectedId: string | null;
   onSelect: (card: Card) => void;
   onColumnChange: (id: number, change: { width?: number; collapsed?: boolean }) => void;
+  onRowCollapse: (row: RowKey, collapsed: boolean) => void;
+  onShowEveryCard: () => void;
   onColumnRename: (id: number, name: string) => void;
   onColumnMove: (id: number, index: number) => void;
   onColumnAdd?: (name: string) => void;
@@ -41,16 +48,19 @@ interface BoardProps {
 }
 
 export function Board(props: BoardProps) {
-  const { cards, source, columns, overlay, workers, rowNames, selectedId, onSelect, onColumnChange, onColumnRename, onPlace, onWatch } = props;
+  const { cards, source, columns, overlay, workers, rowNames, collapsedRows, agentFilter, selectedId, onSelect, onColumnChange, onColumnRename, onPlace, onWatch } =
+    props;
   const [liveWidths, setLiveWidths] = useState<Record<number, number>>({});
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const deleting = columns.find((c) => c.id === deletingId);
   const shown = columns.map((c) => (liveWidths[c.id] ? { ...c, width: liveWidths[c.id] } : c));
-  const cells = groupCards(cards, shown, overlay);
+  const allCells = groupCards(cards, shown, overlay);
+  const cells = agentFilter === "all" ? allCells : keepCards(allCells, (card) => shownByAgent(workers[card.id], agentFilter));
   const template = columnTemplate(shown);
   const scroller = useRef<HTMLDivElement>(null);
 
-  const idsAt = (column: number, row: RowKey) => (cells.get(column)?.get(row) ?? []).map((c) => c.id);
+  const idsIn = (from: typeof cells, column: number, row: RowKey) => (from.get(column)?.get(row) ?? []).map((c) => c.id);
+  const idsAt = (column: number, row: RowKey) => idsIn(cells, column, row);
   const isOrigin = (card: Card, target: DropTarget) => idsAt(target.column, target.row).indexOf(card.id) === target.index;
 
   const { drag, begin, justDragged } = useCardDrag(scroller, (card, target) => {
@@ -61,7 +71,7 @@ export function Board(props: BoardProps) {
       column: target.column,
       fromRow: card.row,
       toRow: target.row,
-      order: insertAt(idsAt(target.column, target.row), card.id, target.index),
+      order: insertAmongShown(idsIn(allCells, target.column, target.row), idsAt(target.column, target.row), card.id, target.index),
     });
   });
   const columnDrag = useColumnDrag(scroller, (column, index) => props.onColumnMove(column.id, index));
@@ -90,6 +100,19 @@ export function Board(props: BoardProps) {
         });
       },
     );
+
+  const lastOpenRow = [...ROW_ORDER].reverse().find((row) => !collapsedRows.includes(row));
+
+  if (agentFilter !== "all" && !anyCard(cells)) {
+    return (
+      <div className="board-empty board-no-match" role="status">
+        <p>{noMatchText(agentFilter, props.projectsFiltered)}</p>
+        <button className="mini" onClick={props.onShowEveryCard}>
+          Show every card
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="board-scroll" ref={scroller}>
@@ -144,53 +167,73 @@ export function Board(props: BoardProps) {
           })}
           {props.onColumnAdd && <AddColumn onAdd={props.onColumnAdd} />}
         </div>
-        {ROW_ORDER.map((row) => (
-          <section
-            key={row}
-            className={`row row-${row}`}
-            data-row={row}
-            aria-label={rowNames[row]}
-            style={{ gridTemplateColumns: template }}
-          >
-            <h2 className="row-name">{rowNames[row]}</h2>
-            {shown.map((column) => {
-              const here = cells.get(column.id)?.get(row) ?? [];
-              const targeted = drag?.target?.column === column.id && drag.target.row === row;
-              return (
-                <div
-                  key={column.id}
-                  className={`cell${column.collapsed ? " cell-collapsed" : ""}${targeted ? " drop-target" : ""}${column.id === liftedColumn ? " column-lifted" : ""}`}
-                  data-column={column.id}
-                  data-row={row}
-                  data-collapsed={column.collapsed}
-                  onPointerDown={column.collapsed ? (e) => columnDrag.begin(e, column) : undefined}
+        {ROW_ORDER.map((row) => {
+          const folded = collapsedRows.includes(row);
+          const fill = row === lastOpenRow;
+          const name = rowNames[row];
+          const total = rowCount(cells, row);
+          return (
+            <section
+              key={row}
+              className={`row row-${row}${folded ? " row-collapsed" : ""}${fill ? " row-fill" : ""}`}
+              data-row={row}
+              aria-label={name}
+              style={{ gridTemplateColumns: template }}
+            >
+              <h2 className="row-name">
+                <button
+                  className="row-toggle"
+                  aria-expanded={!folded}
+                  aria-label={folded ? `Expand ${name}, ${total === 1 ? "1 card" : `${total} cards`}` : `Collapse ${name}`}
+                  title={folded ? `Expand ${name}` : `Collapse ${name}`}
+                  onClick={() => props.onRowCollapse(row, !folded)}
                 >
-                  {column.collapsed
-                    ? here.length > 0 && <span className="vname">{column.name}</span>
-                    : withSlot(
-                        here.map((card) => (
-                          <CardView
-                            key={card.id}
-                            card={card}
-                            request={shownRequest(card.id, overlay.requests)}
-                            worker={workers[card.id]}
-                            source={source}
-                            selected={card.id === selectedId}
-                            lifted={drag?.card.id === card.id}
-                            onPointerDown={(e) => begin(e, card)}
-                            onSelect={(c) => !justDragged.current && onSelect(c)}
-                            onWatch={onWatch}
-                          />
-                        )),
-                        here,
-                        drag,
-                        slotFor(column.id, row),
-                      )}
-                </div>
-              );
-            })}
-          </section>
-        ))}
+                  {folded ? <ChevronRight /> : <ChevronDown />}
+                  <span className="row-label">{name}</span>
+                  {folded && <span className="row-count">{total}</span>}
+                </button>
+              </h2>
+              {shown.map((column) => {
+                const here = cells.get(column.id)?.get(row) ?? [];
+                const targeted = drag?.target?.column === column.id && drag.target.row === row;
+                return (
+                  <div
+                    key={column.id}
+                    className={`cell${column.collapsed ? " cell-collapsed" : ""}${targeted ? " drop-target" : ""}${column.id === liftedColumn ? " column-lifted" : ""}`}
+                    data-column={column.id}
+                    data-row={row}
+                    data-collapsed={column.collapsed || folded}
+                    onPointerDown={column.collapsed ? (e) => columnDrag.begin(e, column) : undefined}
+                  >
+                    {folded
+                      ? null
+                      : column.collapsed
+                        ? here.length > 0 && <span className="vname">{column.name}</span>
+                        : withSlot(
+                            here.map((card) => (
+                              <CardView
+                                key={card.id}
+                                card={card}
+                                request={shownRequest(card.id, overlay.requests)}
+                                worker={workers[card.id]}
+                                source={source}
+                                selected={card.id === selectedId}
+                                lifted={drag?.card.id === card.id}
+                                onPointerDown={(e) => begin(e, card)}
+                                onSelect={(c) => !justDragged.current && onSelect(c)}
+                                onWatch={onWatch}
+                              />
+                            )),
+                            here,
+                            drag,
+                            slotFor(column.id, row),
+                          )}
+                  </div>
+                );
+              })}
+            </section>
+          );
+        })}
         {columnDrag.drag?.slotX != null && (
           <div className="drop-slot column-slot" style={{ left: columnDrag.drag.slotX }} aria-hidden="true" />
         )}
