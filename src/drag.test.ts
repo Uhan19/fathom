@@ -29,6 +29,15 @@ describe("resizer", () => {
     expect(width(-1)).toBe(shown - 1);
   });
 
+  it("moves in whole pixels when the pointer reports fractions, so the saved width is the shown width", () => {
+    const width = resizer(600, 600 + LAPTOP_BOARD, CHAT_WIDTH);
+    expect([123.37, -77.63, 0.2].map(width)).toEqual([723, 522, 600]);
+  });
+
+  it("stops on the last whole pixel the layout has room for", () => {
+    expect(resizer(600, 600 + LAPTOP_BOARD + 0.6, CHAT_WIDTH)(800)).toBe(600 + LAPTOP_BOARD);
+  });
+
   it("never goes below the smallest width, even when the layout has no room", () => {
     expect(resizer(DETAIL_WIDTH.min, 100, DETAIL_WIDTH)(-50)).toBe(DETAIL_WIDTH.min);
     expect(resizer(DETAIL_WIDTH.min, 100, DETAIL_WIDTH)(50)).toBe(DETAIL_WIDTH.min);

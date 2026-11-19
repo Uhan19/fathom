@@ -16,9 +16,9 @@ export interface Range {
 const clamp = (value: number, range: Range) => Math.max(range.min, Math.min(range.max, value));
 
 export function resizer(size: number, room: number, range: Range): (growth: number) => number {
-  const limit = { min: range.min, max: Math.max(range.min, Math.min(range.max, room)) };
+  const limit = { min: range.min, max: Math.max(range.min, Math.min(range.max, Math.floor(room))) };
   const start = clamp(size, limit);
-  return (growth) => clamp(start + growth, limit);
+  return (growth) => clamp(Math.round(start + growth), limit);
 }
 
 const DRAG_ENDS = ["pointerup", "pointercancel", "lostpointercapture"] as const;
