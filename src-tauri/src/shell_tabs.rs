@@ -314,4 +314,132 @@ esac
             "/work/harbor"
         );
     }
+
+    const STUB_SHELL: &str = r#"#!/bin/sh
+for arg in "$@"; do printf '%s\n' "$arg"; done > "$0.args"
+pwd -P > "$0.cwd"
+echo "stub shell ready"
+while IFS= read -r line; do
+  [ "$line" = exit ] && exit 0
+  echo "GOT:$line"
+done
+"#;
+
+    fn lab_herdr() -> Herdr {
+        let connection = Connection {
+            session: std::env::var("FATHOM_LAB_SESSION").expect("FATHOM_LAB_SESSION"),
+            socket: std::env::var("FATHOM_LAB_SOCKET").expect("FATHOM_LAB_SOCKET"),
+        };
+        Herdr::new(connection, Arc::new(|_| {}))
+    }
+
+    fn stub_shell(dir: &Path) -> PathBuf {
+        let path = dir.join("stub-zsh");
+        std::fs::write(&path, STUB_SHELL).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
+
+    fn type_line(herdr: &Herdr, terminal: &str, line: &str, expect: Option<&str>) {
+        use crate::herdr::View;
+        use crate::herdr::tests::{screen_sink, wait_for};
+        let view = View::Shell(terminal.into());
+        let (screen, sink) = screen_sink();
+        herdr.attach(view.clone(), terminal, 100, 30, sink).unwrap();
+        let seen =
+            |text: &str| String::from_utf8_lossy(&screen.lock().unwrap().bytes).contains(text);
+        wait_for("the stub shell's greeting", || seen("stub shell ready"));
+        herdr
+            .write_input(&view, format!("{line}\r").as_bytes())
+            .unwrap();
+        if let Some(text) = expect {
+            wait_for("the echoed line", || seen(text));
+        }
+        herdr.detach(&view);
+    }
+
+    #[test]
+    #[ignore = "needs FATHOM_LAB_SESSION and FATHOM_LAB_SOCKET pointing at a throwaway herdr-core session"]
+    fn a_shell_tab_opens_echoes_and_restores_in_a_lab() {
+        use crate::herdr::tests::wait_for;
+
+        let herdr = lab_herdr();
+        let bin = tempfile::tempdir().unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let db = Db::open(data.path()).unwrap();
+        let shell = crate::shell_path::choose_shell(
+            Some(stub_shell(bin.path()).display().to_string()),
+            None,
+        );
+
+        let kept = launch::open_shell(&herdr, folder.path(), &shell).unwrap();
+        let folder_text = folder.path().display().to_string();
+        let shell_label = format!("{}={}", launch::ROLE_KEY, launch::SHELL_ROLE);
+        let folder_label = format!("{}={folder_text}", launch::FOLDER_KEY);
+        for label in [&shell_label, &folder_label] {
+            let listed = herdr.run(&["ls", "--json", "--label", label]).unwrap();
+            assert!(
+                listed.contains(&format!(r#""address":"{}""#, kept.address)),
+                "{label}: {listed}"
+            );
+        }
+        let got: serde_json::Value =
+            serde_json::from_str(&herdr.run(&["get", &kept.address, "--json"]).unwrap()).unwrap();
+        assert_eq!(got["labels"][launch::ROLE_KEY], launch::SHELL_ROLE, "{got}");
+        assert_eq!(
+            got["labels"][launch::FOLDER_KEY],
+            folder_text.as_str(),
+            "{got}"
+        );
+        assert_eq!(
+            got["argv"],
+            serde_json::json!([shell.display().to_string(), "-l"]),
+            "{got}"
+        );
+        assert_eq!(
+            Path::new(&kept.cwd).canonicalize().unwrap(),
+            folder.path().canonicalize().unwrap()
+        );
+        let args_file = bin.path().join("stub-zsh.args");
+        wait_for("the stub shell to record its args", || args_file.exists());
+        assert_eq!(std::fs::read_to_string(&args_file).unwrap(), "-l\n");
+        assert_eq!(
+            std::fs::read_to_string(bin.path().join("stub-zsh.cwd"))
+                .unwrap()
+                .trim(),
+            folder.path().canonicalize().unwrap().display().to_string()
+        );
+
+        type_line(
+            &herdr,
+            &kept.address,
+            "typed-in-a-tab",
+            Some("GOT:typed-in-a-tab"),
+        );
+        let read = herdr.run(&["read", &kept.address]).unwrap();
+        assert!(read.contains("GOT:typed-in-a-tab"), "{read}");
+
+        let ended = launch::open_shell(&herdr, folder.path(), &shell).unwrap();
+        let kept_tab = shell_tab(&kept, &shell, folder.path(), None);
+        db.add_shell_tab(&kept_tab).unwrap();
+        db.add_shell_tab(&shell_tab(&ended, &shell, folder.path(), None))
+            .unwrap();
+        type_line(&herdr, &ended.address, "exit", None);
+        wait_for("the exited shell to leave hc ls", || {
+            herdr
+                .list()
+                .unwrap()
+                .iter()
+                .all(|t| t.address != ended.address)
+        });
+
+        assert_eq!(
+            restore(&herdr, &db).unwrap(),
+            std::slice::from_ref(&kept_tab)
+        );
+        assert_eq!(db.shell_tabs().unwrap(), [kept_tab]);
+
+        herdr.run(&["kill", &kept.address]).unwrap();
+    }
 }
