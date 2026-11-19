@@ -5,6 +5,7 @@ import { ROW_ORDER, type RowKey, type SourceKind, type Worker } from "./api";
 import { Board } from "./components/Board";
 import { WorkerTerminal } from "./components/WorkerTerminal";
 import { FIXTURE_BACKLOG_CARDS, FIXTURE_BACKLOG_COLUMNS, FIXTURE_BACKLOG_WORKERS } from "./preview/fixture";
+import { NO_UPDATES } from "./updates";
 
 const ignore = () => undefined;
 const rowNames = Object.fromEntries(ROW_ORDER.map((row) => [row, row])) as Record<RowKey, string>;
@@ -21,6 +22,7 @@ function backlogBoard(workers: Worker[], source: SourceKind = "fathom") {
       collapsedRows: [],
       agentFilter: "all",
       projectsFiltered: false,
+      updates: NO_UPDATES,
       selectedId: null,
       onSelect: ignore,
       onColumnChange: ignore,

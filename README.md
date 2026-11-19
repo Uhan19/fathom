@@ -9,6 +9,7 @@ When no terminal is there yet, the chat panel opens Claude Code, Codex or Firstm
 Cards can be dragged to arrange them, and a drag to another row asks the agent to move the task.
 A small sailor on a card shows that a crewmate is on the task: its red visor glows and blinks while it works and dims while idle.
 Clicking the sailor opens that crewmate's live terminal.
+When an agent reports something new on a card you have not read yet, its colored bar turns magenta and blinks until you open the card and close it again.
 
 ## Requirements
 
@@ -55,6 +56,7 @@ Add `?backlog` to see a board of Fathom's own backlog, with one pending and one 
 Add `?late` to have a card arrive in a column at the moment you confirm deleting it, or `?deletefail` to see a delete fail.
 Add `?theme=dark` to start in the dark theme, `?nochat` to start with the chat panel closed, and `?filter=harbor-web,keel-cli` to start with a project filter.
 Add `?agents=withAgent` or `?agents=withActiveAgent` to start with that agent filter, and `?rows=deep,landed` to start with those rows collapsed.
+Add `?unseen` to light the cards that have an update you have not read, and `?folded=pilot-infra,keel-cli` to start with those columns collapsed; `?unseen&folded=pilot-infra&rows=deep` shows a lit card, a lit column header and a lit row band at once.
 Add `?bosun=` with `notstarted`, `dormant`, `starting`, `ready`, `working`, `asking`, `signedout`, `missing`, `failed` or `stopped` to see that Bosun state; open the drawer with the Bosun button.
 
 ## Run the checks
@@ -145,12 +147,13 @@ On Linux, `~/.local/share` is `$XDG_DATA_HOME` when that is set.
 
 The database holds Fathom's own backlog and what Fathom adds on top of either task source:
 
-- backlog tasks (generated id, title, detail, project, row, created and updated times), used when no Firstmate home is set,
+- backlog tasks (generated id, title, detail, project, row, created and updated times, and when an agent last reported on the task), used when no Firstmate home is set,
 - columns (generated id, project or none for an added column, name, order, width, collapsed, deleted),
 - row names and which rows are collapsed,
 - settings, including the theme, whether the chat panel is open, the panel widths, the project filter and the agent filter,
 - card places: a card's order within its cell and the column the user put it in (by column id),
 - move requests (board requests) and what became of them,
+- the latest agent update you have read on each card, kept per task source, as described in [Unread updates](#unread-updates),
 - a disposable snapshot of the last board, used to paint the next launch at once.
 
 Migrations live in `src-tauri/migrations` and are numbered; the applied version is SQLite's `user_version`.
@@ -369,6 +372,24 @@ Fathom asks your login shell for its PATH once at startup and uses it to find he
 - Escape, a click on the dimmed board around the view, or the close button closes the view.
   Escape closes the view rather than reaching the crewmate's terminal.
   Closing only detaches Fathom; the crewmate and its terminal keep running.
+
+## Unread updates
+
+- A card lights up when its agent has reported something you have not read yet.
+  Its colored bar turns magenta, a color no other bar or badge uses, and glows and blinks; the rest of the card looks as usual.
+  With reduced motion turned on in the system settings, the bar glows steadily instead of blinking.
+- A collapsed column's header and a collapsed row's band light up the same way, through their card count, while they hold at least one such card.
+  Each goes dark once you have read every one of them.
+- Opening a card and then closing it, or opening another card, marks its updates read and the light goes out.
+  The light stays on while the card panel is open, and an update that arrives meanwhile counts as read when you close it.
+- With a Firstmate home, an update is a new line in the task's status log, `<firstmate home>/state/<task id>.status`.
+  Fathom reads these logs beside the `.meta` records and follows them through the same watcher, with no polling loop.
+- With Fathom's own backlog, an update is an agent changing a task's title, detail or project, or moving it to another row.
+  Adding a task does not count, nor does a move that answers your own board request.
+- Your own changes in Fathom, such as dragging cards or renaming and collapsing columns, never count as an update.
+- What you have read is saved in Fathom's database, so it survives a restart, and updates that arrive while Fathom is closed light up at the next launch.
+- The first time Fathom looks at a task source, everything already reported counts as read, so the board does not light up every card at once.
+- A card hidden by the project or agent filter is not marked anywhere.
 
 ## Settings
 

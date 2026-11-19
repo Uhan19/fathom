@@ -8,6 +8,8 @@ use crate::launch::TASK_KEY;
 use crate::source::Source;
 
 const META_EXTENSION: &str = "meta";
+const STATUS_EXTENSION: &str = "status";
+const STATE_DIR: &str = "state";
 const HC_BACKEND: &str = "hc";
 pub const LIVE: &str = "live";
 const WORKING: &str = "working";
@@ -56,7 +58,7 @@ pub struct Binding {
 }
 
 pub fn read_bindings(home: &Path) -> Vec<Binding> {
-    let Ok(entries) = std::fs::read_dir(home.join("state")) else {
+    let Ok(entries) = std::fs::read_dir(home.join(STATE_DIR)) else {
         return vec![];
     };
     let mut bindings: Vec<Binding> = entries
@@ -73,6 +75,37 @@ pub fn read_bindings(home: &Path) -> Vec<Binding> {
         .collect();
     bindings.sort_by(|a, b| a.task_id.cmp(&b.task_id));
     bindings
+}
+
+pub fn read_status_marks(home: &Path) -> Result<BTreeMap<String, String>, String> {
+    let state = home.join(STATE_DIR);
+    let entries =
+        std::fs::read_dir(&state).map_err(|e| format!("cannot read {}: {e}", state.display()))?;
+    Ok(entries
+        .flatten()
+        .filter(|entry| entry.file_type().is_ok_and(|t| t.is_file()))
+        .filter_map(|entry| {
+            let path = entry.path();
+            if path.extension()? != STATUS_EXTENSION {
+                return None;
+            }
+            let task_id = path.file_stem()?.to_str().filter(|id| is_atom(id))?;
+            let log = std::fs::read(&path).ok()?;
+            Some((
+                task_id.to_string(),
+                status_mark(&String::from_utf8_lossy(&log))?,
+            ))
+        })
+        .collect())
+}
+
+pub fn status_mark(log: &str) -> Option<String> {
+    let lines: Vec<&str> = log
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    Some(format!("{} {}", lines.len(), lines.last()?))
 }
 
 pub fn parse_meta(task_id: &str, text: &str) -> Option<Binding> {
@@ -361,6 +394,48 @@ mod tests {
                 status: WorkerStatus::Working,
             }]
         );
+    }
+
+    #[test]
+    fn a_status_mark_counts_the_reported_lines_and_keeps_the_last() {
+        assert_eq!(
+            status_mark("working [at=1]: setup done\n\nblocked [at=2]: needs a key\n"),
+            Some("2 blocked [at=2]: needs a key".into())
+        );
+        assert_eq!(
+            status_mark("working [at=1]: setup done"),
+            Some("1 working [at=1]: setup done".into())
+        );
+        assert_eq!(status_mark(""), None);
+        assert_eq!(status_mark(" \n\n"), None);
+    }
+
+    #[test]
+    fn status_marks_are_read_from_status_logs_in_the_state_folder() {
+        let home = tempfile::tempdir().unwrap();
+        let state = home.path().join("state");
+        std::fs::create_dir_all(state.join("nested.status")).unwrap();
+        std::fs::write(state.join("atl-12.status"), "working [at=1]: started\n").unwrap();
+        std::fs::write(state.join("atl-13.status"), "").unwrap();
+        std::fs::write(state.join("atl-12.meta"), GOOD).unwrap();
+        std::fs::write(state.join("bad name.status"), "done [at=2]: shipped\n").unwrap();
+        let marks = read_status_marks(home.path()).unwrap();
+        assert_eq!(
+            marks.into_iter().collect::<Vec<_>>(),
+            [("atl-12".into(), "1 working [at=1]: started".into())]
+        );
+
+        let mut log = std::fs::OpenOptions::new()
+            .append(true)
+            .open(state.join("atl-12.status"))
+            .unwrap();
+        std::io::Write::write_all(&mut log, b"done [at=3]: PR https://example.com/pull/3\n")
+            .unwrap();
+        assert_eq!(
+            read_status_marks(home.path()).unwrap()["atl-12"],
+            "2 done [at=3]: PR https://example.com/pull/3"
+        );
+        assert!(read_status_marks(&home.path().join("missing")).is_err());
     }
 
     #[test]

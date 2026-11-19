@@ -21,6 +21,7 @@ use crate::state::{
     now_ms,
 };
 use crate::tasks::{Detail, Row};
+use crate::updates::CardUpdates;
 use crate::workers::Worker;
 
 type AppStateRef<'a> = State<'a, Arc<AppState>>;
@@ -129,6 +130,17 @@ pub async fn resend_request(state: AppStateRef<'_>, request_id: String) -> Resul
 #[tauri::command]
 pub fn dismiss_request(state: AppStateRef, request_id: String) -> Result<Overlay, String> {
     state.dismiss_request(&request_id)
+}
+
+#[tauri::command]
+pub async fn card_updates(state: AppStateRef<'_>) -> Result<CardUpdates, String> {
+    let state = Arc::clone(&state);
+    blocking(move || state.card_updates()).await
+}
+
+#[tauri::command]
+pub fn mark_seen(state: AppStateRef, card_id: String, mark: String) -> Result<(), String> {
+    state.mark_seen(&card_id, &mark)
 }
 
 #[tauri::command]

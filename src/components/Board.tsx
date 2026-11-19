@@ -16,6 +16,7 @@ import {
   shownRequest,
 } from "../board";
 import { anyCard, keepCards, noMatchText, shownByAgent } from "../agentFilter";
+import { columnHasUnseen, isUnseen, rowHasUnseen, type CardUpdates } from "../updates";
 import { projectTasks, sailorLabel } from "../source";
 import { deletePlan, moveTargets, NEW_COLUMN, nextDraft, startDraft } from "../columnDelete";
 import { useCardDrag, type CardDrag } from "../cardDrag";
@@ -30,6 +31,7 @@ interface BoardProps {
   columns: Column[];
   overlay: Overlay;
   workers: Record<string, Worker>;
+  updates: CardUpdates;
   rowNames: Record<RowKey, string>;
   collapsedRows: RowKey[];
   agentFilter: AgentFilter;
@@ -48,7 +50,7 @@ interface BoardProps {
 }
 
 export function Board(props: BoardProps) {
-  const { cards, source, columns, overlay, workers, rowNames, collapsedRows, agentFilter, selectedId, onSelect, onColumnChange, onColumnRename, onPlace, onWatch } =
+  const { cards, source, columns, overlay, workers, updates, rowNames, collapsedRows, agentFilter, selectedId, onSelect, onColumnChange, onColumnRename, onPlace, onWatch } =
     props;
   const [liveWidths, setLiveWidths] = useState<Record<number, number>>({});
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -76,7 +78,8 @@ export function Board(props: BoardProps) {
   });
   const columnDrag = useColumnDrag(scroller, (column, index) => props.onColumnMove(column.id, index));
   const liftedColumn = columnDrag.drag?.column.id;
-  const headClass = (column: Column) => `column-head${column.collapsed ? " collapsed" : ""}${column.id === liftedColumn ? " column-lifted" : ""}`;
+  const headClass = (column: Column, unseen = false) =>
+    `column-head${column.collapsed ? " collapsed" : ""}${unseen ? " unseen" : ""}${column.id === liftedColumn ? " column-lifted" : ""}`;
   const headProps = (column: Column) => ({
     "data-column": column.id,
     onPointerDown: (e: React.PointerEvent<HTMLElement>) => columnDrag.begin(e, column),
@@ -122,16 +125,18 @@ export function Board(props: BoardProps) {
           <Wave />
           {shown.map((column) => {
             const total = cellCount(cells, column.id);
+            const unseen = column.collapsed && columnHasUnseen(cells, column.id, updates);
+            const expand = unseen ? `Expand ${column.name}, it has a new update` : `Expand ${column.name}`;
             return column.collapsed ? (
-              <div key={column.id} className={headClass(column)} {...headProps(column)}>
-                <span className="count-badge" aria-label={`${total} cards in ${column.name}`}>
+              <div key={column.id} className={headClass(column, unseen)} {...headProps(column)}>
+                <span className="count-badge" aria-label={`${total} cards in ${column.name}${unseen ? ", with a new update" : ""}`}>
                   {total}
                 </span>
                 <button
                   className="ico wide"
                   onClick={() => onColumnChange(column.id, { collapsed: false })}
-                  aria-label={`Expand ${column.name}`}
-                  title={`Expand ${column.name}`}
+                  aria-label={expand}
+                  title={expand}
                 >
                   <ChevronRight />
                 </button>
@@ -172,10 +177,12 @@ export function Board(props: BoardProps) {
           const fill = row === lastOpenRow;
           const name = rowNames[row];
           const total = rowCount(cells, row);
+          const unseen = folded && rowHasUnseen(cells, row, updates);
+          const cardsText = total === 1 ? "1 card" : `${total} cards`;
           return (
             <section
               key={row}
-              className={`row row-${row}${folded ? " row-collapsed" : ""}${fill ? " row-fill" : ""}`}
+              className={`row row-${row}${folded ? " row-collapsed" : ""}${unseen ? " unseen" : ""}${fill ? " row-fill" : ""}`}
               data-row={row}
               aria-label={name}
               style={{ gridTemplateColumns: template }}
@@ -184,8 +191,8 @@ export function Board(props: BoardProps) {
                 <button
                   className="row-toggle"
                   aria-expanded={!folded}
-                  aria-label={folded ? `Expand ${name}, ${total === 1 ? "1 card" : `${total} cards`}` : `Collapse ${name}`}
-                  title={folded ? `Expand ${name}` : `Collapse ${name}`}
+                  aria-label={folded ? `Expand ${name}, ${cardsText}${unseen ? ", it has a new update" : ""}` : `Collapse ${name}`}
+                  title={folded ? `Expand ${name}${unseen ? ", it has a new update" : ""}` : `Collapse ${name}`}
                   onClick={() => props.onRowCollapse(row, !folded)}
                 >
                   {folded ? <ChevronRight /> : <ChevronDown />}
@@ -217,6 +224,7 @@ export function Board(props: BoardProps) {
                                 request={shownRequest(card.id, overlay.requests)}
                                 worker={workers[card.id]}
                                 source={source}
+                                unseen={isUnseen(updates, card.id)}
                                 selected={card.id === selectedId}
                                 lifted={drag?.card.id === card.id}
                                 onPointerDown={(e) => begin(e, card)}
@@ -487,6 +495,7 @@ interface CardViewProps {
   request: MoveRequest | null;
   worker?: Worker;
   source: SourceKind;
+  unseen: boolean;
   selected: boolean;
   lifted: boolean;
   onPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
@@ -494,15 +503,16 @@ interface CardViewProps {
   onWatch: (card: Card, worker: Worker) => void;
 }
 
-function CardView({ card, request, worker, source, selected, lifted, onPointerDown, onSelect, onWatch }: CardViewProps) {
+function CardView({ card, request, worker, source, unseen, selected, lifted, onPointerDown, onSelect, onWatch }: CardViewProps) {
   return (
     <div
-      className={`card card-${card.row}${selected ? " selected" : ""}${lifted ? " lifted" : ""}`}
+      className={`card card-${card.row}${unseen ? " unseen" : ""}${selected ? " selected" : ""}${lifted ? " lifted" : ""}`}
       data-id={card.id}
       onPointerDown={onPointerDown}
     >
       <button className="card-open" onClick={() => onSelect(card)}>
         <CardFace card={card} request={request} />
+        {unseen && <span className="sr-only">New update</span>}
       </button>
       {worker && (
         <button

@@ -190,7 +190,7 @@ impl Db {
             .conn
             .execute(
                 "UPDATE backlog_tasks SET title = COALESCE(?2, title), detail = COALESCE(?3, detail),
-                 project = COALESCE(?4, project), updated_ms = ?5 WHERE id = ?1",
+                 project = COALESCE(?4, project), updated_ms = ?5, reported_ms = ?5 WHERE id = ?1",
                 params![id, title, detail, project, now_ms],
             )
             .map_err(err)?;
@@ -211,12 +211,20 @@ impl Db {
         if changed == 0 {
             return Err(format!("no task {id}"));
         }
-        tx.execute(
-            "UPDATE move_requests SET status = 'landed'
-             WHERE card_id = ?1 AND to_row = ?2 AND status = 'asked'",
-            params![id.to_string(), row.key()],
-        )
-        .map_err(err)?;
+        let answered = tx
+            .execute(
+                "UPDATE move_requests SET status = 'landed'
+                 WHERE card_id = ?1 AND to_row = ?2 AND status = 'asked'",
+                params![id.to_string(), row.key()],
+            )
+            .map_err(err)?;
+        if answered == 0 {
+            tx.execute(
+                "UPDATE backlog_tasks SET reported_ms = ?2 WHERE id = ?1",
+                params![id, now_ms],
+            )
+            .map_err(err)?;
+        }
         tx.commit().map_err(err)?;
         self.task(id)
     }

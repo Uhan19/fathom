@@ -15,6 +15,7 @@ mod source;
 mod state;
 mod tasks;
 mod toon;
+mod updates;
 mod watch;
 mod workers;
 
@@ -67,6 +68,8 @@ pub fn run() {
             commands::place_card,
             commands::resend_request,
             commands::dismiss_request,
+            commands::card_updates,
+            commands::mark_seen,
             commands::workers,
             commands::get_settings,
             commands::save_settings,

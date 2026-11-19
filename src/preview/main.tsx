@@ -23,7 +23,9 @@ import {
   agentScreen,
   agentTerminal,
   backlogWorkerScreen,
+  fixtureBacklogUpdates,
   fixtureDetail,
+  fixtureUpdates,
   helperScreen,
   shellScreen,
   workerScreen,
@@ -39,6 +41,8 @@ const otherClient = params.get("other")?.match(/^(\d+)x(\d+)$/);
 const sendFails = params.has("sendfail");
 const lateCard = params.has("late");
 const deleteFails = params.has("deletefail");
+const unseenUpdates = params.has("unseen");
+const foldedColumns = params.get("folded")?.split(",").filter(Boolean) ?? [];
 const KITTY_PUSH = params.has("kitty") ? "\x1b[>1u" : "";
 const rememberedAgent = (params.get("agent") as AgentKey | null) ?? null;
 const missingTool = params.get("missing");
@@ -107,7 +111,11 @@ const openChatTerminal = (agent: AgentKey) => {
 
 const chatScreen = (terminal: string) => (terminal === FIXTURE_AGENT_ADDRESS && openedAgent ? agentScreen(openedAgent) : KITTY_PUSH + FIXTURE_SCREEN);
 const INSTALLED_FONTS = ["American Typewriter", "Andale Mono", "Avenir Next", "Courier New", "Georgia", "Helvetica Neue", "Menlo", "PT Mono", "Times New Roman", "Trebuchet MS"];
-let columns: Column[] = (backlog ? FIXTURE_BACKLOG_COLUMNS : unfiled ? FIXTURE_UNFILED_COLUMNS : FIXTURE_COLUMNS).map((c) => ({ ...c }));
+let columns: Column[] = (backlog ? FIXTURE_BACKLOG_COLUMNS : unfiled ? FIXTURE_UNFILED_COLUMNS : FIXTURE_COLUMNS).map((c) => ({
+  ...c,
+  collapsed: foldedColumns.includes(c.name),
+}));
+let updates = empty ? { marks: {}, seen: {} } : (backlog ? fixtureBacklogUpdates : fixtureUpdates)(unseenUpdates);
 let nextColumnId = columns.length + 1;
 const rowNames = new Map<string, string>();
 const collapsedRows = new Set(params.get("rows")?.split(",").filter(Boolean) ?? []);
@@ -326,6 +334,13 @@ mockIPC(
         return overlay();
       case "workers":
         return empty ? [] : backlog ? FIXTURE_BACKLOG_WORKERS : FIXTURE_WORKERS;
+      case "card_updates":
+        return updates;
+      case "mark_seen":
+        console.info("mark_seen", args.cardId, args.mark);
+        updates = { ...updates, seen: { ...updates.seen, [args.cardId as string]: args.mark as string } };
+        setTimeout(() => void emit("updates://updated", updates), 0);
+        return null;
       case "get_settings":
         return settings;
       case "save_settings":
