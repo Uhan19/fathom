@@ -910,13 +910,6 @@ button.column-name:focus-visible,
   min-height: 96px;
 }
 
-.column-heads .wave {
-  position: absolute;
-  left: 0;
-  bottom: -4px;
-  pointer-events: none;
-}
-
 .row-name {
   margin: 0;
   padding: 4px 0 0 4px;

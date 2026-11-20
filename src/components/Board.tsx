@@ -23,7 +23,7 @@ import { useCardDrag, type CardDrag } from "../cardDrag";
 import { useColumnDrag, type ColumnDrag } from "../columnDrag";
 import type { DropTarget } from "../dropTarget";
 import { startDrag } from "../drag";
-import { ChevronDown, ChevronLeft, ChevronRight, Plus, Sailor, Trash, Wave } from "./Icons";
+import { ChevronDown, ChevronLeft, ChevronRight, Plus, Sailor, Trash } from "./Icons";
 
 interface BoardProps {
   cards: Card[];
@@ -122,7 +122,6 @@ export function Board(props: BoardProps) {
       <div className="board" style={{ minWidth: boardMinWidth(shown) }}>
         <div className="column-heads" style={{ gridTemplateColumns: headTemplate(shown) }}>
           <span className="column-heads-label">Projects →</span>
-          <Wave />
           {shown.map((column) => {
             const total = cellCount(cells, column.id);
             const unseen = column.collapsed && columnHasUnseen(cells, column.id, updates);
