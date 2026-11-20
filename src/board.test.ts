@@ -11,7 +11,6 @@ import {
   headTemplate,
   holdHeading,
   insertAt,
-  linkLabel,
   outcomeTag,
   renamedColumn,
   placeLocally,
@@ -126,11 +125,6 @@ describe("board helpers", () => {
     expect(holdHeading(card({ holdKind: "captain" }))).toBe("Question for you");
     expect(holdHeading(card({ holdKind: "parked" }))).toBe("Parked");
     expect(holdHeading(card({}))).toBeNull();
-  });
-
-  it("labels links", () => {
-    expect(linkLabel({ kind: "pr", target: "https://github.com/acme/harbor/pull/12" })).toBe("PR #12 on GitHub");
-    expect(linkLabel({ kind: "report", target: "data/harbor-lights/report.md" })).toBe("Report: report.md");
   });
 
   it("formats the message sent to firstmate", () => {

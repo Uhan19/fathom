@@ -38,6 +38,53 @@ export interface Detail {
   deps: string[];
 }
 
+export interface StatusEntry {
+  state: string;
+  atMs: number | null;
+  key: string | null;
+  text: string;
+}
+
+export interface CardContext {
+  hasHome: boolean;
+  recordedPr: string | null;
+  activity: StatusEntry[];
+  taskFolder: string | null;
+}
+
+export type PreviewKind = "markdown" | "text" | "image" | "html" | "none";
+
+export interface FileEntry {
+  path: string;
+  name: string;
+  folder: string;
+  kind: "file" | "folder";
+  preview: PreviewKind;
+  size: number | null;
+  modifiedMs: number | null;
+  inTaskFolder: boolean;
+  mentions: string[];
+}
+
+export interface FilePreview {
+  kind: PreviewKind;
+  text: string | null;
+  dataUrl: string | null;
+  truncated: boolean;
+  size: number;
+}
+
+export type PrState = "open" | "draft" | "merged" | "closed" | "unknown";
+export type Checks = "passing" | "failing" | "running" | "none" | "unknown";
+
+export interface PrStatus {
+  url: string;
+  state: PrState;
+  checks: Checks;
+  title: string | null;
+  note: string | null;
+}
+
 export interface Column {
   id: number;
   project: string | null;
@@ -140,6 +187,8 @@ export interface Settings {
   agentFilter: AgentFilter;
   helperStarted: boolean;
   shortcuts: Shortcuts;
+  linearWorkspace: string;
+  ticketPrefixes: string[];
 }
 
 export interface WindowChange {
@@ -222,6 +271,12 @@ export const api = {
   readBoard: () => invoke<BoardView>("read_board"),
   logLaunch: (source: string, cards: number) => invoke<number | null>("log_launch", { source, cards }),
   cardDetail: (id: string) => invoke<Detail>("card_detail", { id }),
+  cardContext: (id: string) => invoke<CardContext>("card_context", { id }),
+  cardFiles: (id: string, mentioned: string[]) => invoke<FileEntry[]>("card_files", { id, mentioned }),
+  filePreview: (path: string) => invoke<FilePreview>("file_preview", { path }),
+  openFile: (path: string) => invoke<void>("open_file", { path }),
+  revealFile: (path: string) => invoke<void>("reveal_file", { path }),
+  prStatus: (url: string) => invoke<PrStatus>("pr_status", { url }),
   updateColumn: (id: number, change: { width?: number; collapsed?: boolean }) =>
     invoke<void>("update_column", { id, width: change.width ?? null, collapsed: change.collapsed ?? null }),
   setColumnName: (id: number, name: string) => invoke<void>("set_column_name", { id, name }),

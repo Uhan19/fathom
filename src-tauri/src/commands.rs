@@ -5,6 +5,7 @@ use serde::Serialize;
 use tauri::State;
 use tauri::ipc::{Channel, InvokeResponseBody};
 
+use crate::context::{self, CardContext, FileEntry, Places, Preview};
 use crate::control;
 use crate::db::shells::ShellTab;
 use crate::db::{Column, MoveTo};
@@ -13,6 +14,7 @@ use crate::fonts;
 use crate::herdr::{Terminal, View};
 use crate::launch::{Agent, LaunchError};
 use crate::moves::Placement;
+use crate::pulls::{PrCache, PrStatus};
 use crate::settings::{AgentFilter, Settings, WindowChange};
 use crate::shell_tabs::LauncherFolders;
 use crate::source::Source;
@@ -61,6 +63,58 @@ pub fn log_launch(state: AppStateRef, source: String, cards: usize) -> Option<u1
 pub async fn card_detail(state: AppStateRef<'_>, id: String) -> Result<Detail, String> {
     let state = Arc::clone(&state);
     blocking(move || state.source().detail(&state.db, &id)).await
+}
+
+#[tauri::command]
+pub async fn card_context(state: AppStateRef<'_>, id: String) -> Result<CardContext, String> {
+    let state = Arc::clone(&state);
+    blocking(move || context::card_context(&state.source(), &id)).await
+}
+
+#[tauri::command]
+pub async fn card_files(
+    state: AppStateRef<'_>,
+    id: String,
+    mentioned: Vec<String>,
+) -> Result<Vec<FileEntry>, String> {
+    let state = Arc::clone(&state);
+    blocking(move || {
+        let Source::Firstmate { home } = state.source() else {
+            return Ok(vec![]);
+        };
+        let user_home = std::env::home_dir();
+        let places = Places {
+            home: &home,
+            user_home: user_home.as_deref(),
+        };
+        context::card_files(&places, &id, &mentioned)
+    })
+    .await
+}
+
+fn local_file(path: &str) -> Result<std::path::PathBuf, String> {
+    context::existing_path(path, std::env::home_dir().as_deref())
+}
+
+#[tauri::command]
+pub async fn file_preview(path: String) -> Result<Preview, String> {
+    blocking(move || context::preview(&local_file(&path)?)).await
+}
+
+#[tauri::command]
+pub fn open_file(path: String) -> Result<(), String> {
+    tauri_plugin_opener::open_path(local_file(&path)?, None::<&str>).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn reveal_file(path: String) -> Result<(), String> {
+    tauri_plugin_opener::reveal_item_in_dir(local_file(&path)?).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn pr_status(pulls: State<'_, Arc<PrCache>>, url: String) -> Result<PrStatus, String> {
+    let pulls = Arc::clone(&pulls);
+    blocking(move || Ok(pulls.status(&url))).await
 }
 
 #[tauri::command]

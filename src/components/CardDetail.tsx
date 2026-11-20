@@ -1,8 +1,14 @@
-import { useEffect, useState } from "react";
-import { api, errorText, type Card, type Detail, type MoveRequest, type RowKey, type SourceKind, type Terminal } from "../api";
-import { cardMessage, holdHeading, linkLabel } from "../board";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { api, errorText, type Card, type CardContext, type Detail, type FileEntry, type MoveRequest, type RowKey, type SourceKind, type Terminal } from "../api";
+import { cardMessage, holdHeading } from "../board";
+import { cardLinkSources, findLinks, findPaths, RECORDED_PR, topLinks, type Linking, type Source } from "../links";
 import { cardMessageLabel, cardMessagePrompt, moveCopy } from "../source";
+import { ActivityTab } from "./DetailActivity";
+import { FilesTab, openEntry } from "./DetailFiles";
+import { LinkRow, LinksTab, usePrStatuses, type PrStatuses } from "./DetailLinks";
 import { Close } from "./Icons";
+import { Markdown, type PathAction } from "./Markdown";
+import { RichText } from "./RichText";
 
 interface CardDetailProps {
   card: Card;
@@ -11,6 +17,8 @@ interface CardDetailProps {
   request: MoveRequest | null;
   width: number;
   chatTerminal: Terminal | null;
+  linking: Linking;
+  mark: string;
   onClose: () => void;
   onOpenCard: (id: string) => void;
   onResend: (requestId: string) => void;
@@ -18,18 +26,84 @@ interface CardDetailProps {
 }
 
 type SendState = { kind: "idle" } | { kind: "sending" } | { kind: "sent"; to: string } | { kind: "failed"; error: string };
+type Tab = "overview" | "links" | "files" | "activity";
 
-export function CardDetail({ card, source, rowNames, request, width, chatTerminal, onClose, onOpenCard, onResend, onDismiss }: CardDetailProps) {
+const TABS: { tab: Tab; name: string }[] = [
+  { tab: "overview", name: "Overview" },
+  { tab: "links", name: "Links" },
+  { tab: "files", name: "Files" },
+  { tab: "activity", name: "Activity" },
+];
+
+const NO_CONTEXT: CardContext = { hasHome: false, recordedPr: null, activity: [], taskFolder: null };
+
+function useCardContext(id: string, mark: string) {
+  const [context, setContext] = useState<CardContext | null>(null);
+  useEffect(() => setContext(null), [id]);
+  useEffect(() => {
+    let alive = true;
+    api
+      .cardContext(id)
+      .then((c) => alive && setContext(c))
+      .catch(() => alive && setContext((known) => known ?? { ...NO_CONTEXT, hasHome: true }));
+    return () => {
+      alive = false;
+    };
+  }, [id, mark]);
+  return context;
+}
+
+function useCardFiles(id: string, paths: string[] | null) {
+  const [files, setFiles] = useState<FileEntry[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const key = paths?.join("\n") ?? null;
+  useEffect(() => {
+    setFiles(null);
+    setError(null);
+  }, [id]);
+  useEffect(() => {
+    if (key === null) return;
+    let alive = true;
+    api
+      .cardFiles(id, key ? key.split("\n") : [])
+      .then((f) => alive && (setFiles(f), setError(null)))
+      .catch((e) => alive && setError(errorText(e)));
+    return () => {
+      alive = false;
+    };
+  }, [id, key]);
+  return { files, error };
+}
+
+function cardSources(card: Card, body: string, context: CardContext): Source[] {
+  return [
+    ...(context.recordedPr ? [{ name: RECORDED_PR, text: context.recordedPr }] : []),
+    ...cardLinkSources(card.links),
+    { name: "Title", text: card.title },
+    { name: "Note", text: body },
+    { name: "Hold reason", text: card.holdReason },
+    ...context.activity.map((entry) => ({ name: "Activity", text: entry.text })),
+  ];
+}
+
+export function CardDetail(props: CardDetailProps) {
+  const { card, source, rowNames, request, width, chatTerminal, linking, mark, onClose, onOpenCard, onResend, onDismiss } = props;
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [send, setSend] = useState<SendState>({ kind: "idle" });
+  const [tab, setTab] = useState<Tab>("overview");
+  const [previewing, setPreviewing] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const context = useCardContext(card.id, mark);
 
   useEffect(() => {
     let current = true;
     setDetail(null);
     setLoadError(null);
     setSend({ kind: "idle" });
+    setPreviewing(null);
+    setTab("overview");
     api
       .cardDetail(card.id)
       .then((d) => current && setDetail(d))
@@ -42,6 +116,41 @@ export function CardDetail({ card, source, rowNames, request, width, chatTermina
   const shown = detail?.card ?? card;
   const hold = holdHeading(shown);
   const canSend = draft.trim().length > 0 && chatTerminal !== null && send.kind !== "sending";
+  const settled = (detail !== null || loadError !== null) && context !== null;
+  const sources = useMemo(
+    () => (settled && context ? cardSources(shown, detail?.body ?? "", context) : null),
+    [settled, context, shown, detail?.body],
+  );
+  const links = useMemo(() => (sources ? findLinks(sources, linking) : []), [sources, linking]);
+  const paths = useMemo(() => (sources && context?.hasHome ? findPaths(sources) : null), [sources, context?.hasHome]);
+  const { files, error: filesError } = useCardFiles(card.id, paths);
+  const prUrls = useMemo(() => links.filter((l) => l.kind === "pr").map((l) => l.url), [links]);
+  const statuses = usePrStatuses(prUrls);
+
+  const byMention = useMemo(() => {
+    const map = new Map<string, FileEntry>();
+    for (const file of files ?? []) for (const raw of file.mentions) map.set(raw, file);
+    return map;
+  }, [files]);
+
+  const showTab = (next: Tab) => {
+    setTab(next);
+    scrollRef.current?.scrollTo({ top: 0 });
+  };
+
+  const preview = useCallback((path: string | null) => {
+    setPreviewing(path);
+    if (path) setTab("files");
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, []);
+
+  const onPath = useCallback<PathAction>(
+    (raw) => {
+      const entry = byMention.get(raw);
+      return entry ? () => openEntry(entry, preview) : null;
+    },
+    [byMention, preview],
+  );
 
   const submit = async () => {
     if (!canSend || !chatTerminal) return;
@@ -55,11 +164,21 @@ export function CardDetail({ card, source, rowNames, request, width, chatTermina
     }
   };
 
+  const hasHome = context?.hasHome ?? source === "firstmate";
+  const counts: Record<Tab, number | null> = {
+    overview: null,
+    links: sources ? links.length : null,
+    files: hasHome && files ? files.length : null,
+    activity: hasHome && context ? context.activity.length : null,
+  };
+
   return (
     <section className="detail" style={{ width }} aria-label={`Card: ${shown.title}`}>
       <div className="detail-head">
         <div className="detail-title-row">
-          <h2 className="detail-title">{shown.title}</h2>
+          <h2 className="detail-title">
+            <RichText text={shown.title} linking={linking} onPath={onPath} />
+          </h2>
           <button className="ico" onClick={onClose} aria-label="Close card" title="Close card">
             <Close />
           </button>
@@ -70,51 +189,67 @@ export function CardDetail({ card, source, rowNames, request, width, chatTermina
             {shown.project} · {shown.kind} · <code>{shown.id}</code>
           </span>
         </div>
-        {shown.links.length > 0 && (
-          <div className="detail-links">
-            {shown.links.map((link) => (
-              <button key={`${link.kind}:${link.target}`} className="link" onClick={() => api.openLink(link.target)}>
-                {linkLabel(link)} ↗
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
-      <div className="detail-scroll">
-        {request && <MoveSection request={request} source={source} rowNames={rowNames} onResend={onResend} onDismiss={onDismiss} />}
-        {hold && (
-          <div className={`sec hold hold-${shown.holdKind}`}>
-            <span className="sech">{hold}</span>
-            {shown.holdReason ? <p className="prose">{shown.holdReason}</p> : <p className="muted">No reason recorded.</p>}
-          </div>
-        )}
-        {shown.blockedBy.length > 0 && (
-          <div className="sec">
-            <span className="sech">Waits for</span>
-            <div className="chips">
-              {shown.blockedBy.map((id) => (
-                <button key={id} className="chip" onClick={() => onOpenCard(id)}>
-                  {id}
-                </button>
-              ))}
+      <TabBar tab={tab} counts={counts} onChange={showTab} />
+
+      <div className="detail-scroll" ref={scrollRef} role="tabpanel" id={`detail-panel-${tab}`} aria-labelledby={`detail-tab-${tab}`}>
+        {tab === "overview" && (
+          <>
+            {request && <MoveSection request={request} source={source} rowNames={rowNames} onResend={onResend} onDismiss={onDismiss} />}
+            {hold && (
+              <div className={`sec hold hold-${shown.holdKind}`}>
+                <span className="sech">{hold}</span>
+                {shown.holdReason ? (
+                  <Markdown text={shown.holdReason} linking={linking} onPath={onPath} />
+                ) : (
+                  <p className="muted">No reason recorded.</p>
+                )}
+              </div>
+            )}
+            {shown.blockedBy.length > 0 && (
+              <div className="sec">
+                <span className="sech">Waits for</span>
+                <div className="chips">
+                  {shown.blockedBy.map((id) => (
+                    <button key={id} className="chip" onClick={() => onOpenCard(id)}>
+                      {id}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="sec">
+              <span className="sech">Note</span>
+              {loadError && <p className="error-text">Could not load the full card: {loadError}</p>}
+              {!detail && !loadError && <p className="muted">Loading…</p>}
+              {detail && (detail.body ? <Markdown text={detail.body} linking={linking} onPath={onPath} /> : <p className="muted">No note recorded.</p>)}
             </div>
-          </div>
+            <KeyLinks links={links} statuses={statuses} onAll={() => showTab("links")} />
+            {detail && (
+              <div className="sec facts">
+                {detail.created && <Fact name="Created" value={detail.created} />}
+                {shown.closed && <Fact name="Closed" value={shown.closed} />}
+                {detail.priority && <Fact name="Priority" value={detail.priority} />}
+                <Fact name="State" value={shown.state.replace("_", " ")} />
+              </div>
+            )}
+          </>
         )}
-        <div className="sec">
-          <span className="sech">Details</span>
-          {loadError && <p className="error-text">Could not load the full card: {loadError}</p>}
-          {!detail && !loadError && <p className="muted">Loading…</p>}
-          {detail && (detail.body ? <p className="prose">{detail.body}</p> : <p className="muted">No details recorded.</p>)}
-        </div>
-        {detail && (
-          <div className="sec facts">
-            {detail.created && <Fact name="Created" value={detail.created} />}
-            {shown.closed && <Fact name="Closed" value={shown.closed} />}
-            {detail.priority && <Fact name="Priority" value={detail.priority} />}
-            <Fact name="State" value={shown.state.replace("_", " ")} />
-          </div>
+        {tab === "links" && (sources ? <LinksTab links={links} statuses={statuses} /> : <p className="tab-empty">Looking for links…</p>)}
+        {tab === "files" && (
+          <FilesTab
+            hasHome={hasHome}
+            files={files}
+            error={filesError}
+            taskFolder={context?.taskFolder ?? null}
+            cardId={card.id}
+            selected={previewing}
+            linking={linking}
+            onPreview={preview}
+          />
         )}
+        {tab === "activity" && <ActivityTab hasHome={hasHome} entries={context?.activity ?? null} linking={linking} onPath={onPath} />}
       </div>
 
       <form
@@ -143,6 +278,68 @@ export function CardDetail({ card, source, rowNames, request, width, chatTermina
         {send.kind === "failed" && <span className="send-note error-text">Not sent: {send.error}</span>}
       </form>
     </section>
+  );
+}
+
+function TabBar({ tab, counts, onChange }: { tab: Tab; counts: Record<Tab, number | null>; onChange: (tab: Tab) => void }) {
+  const refs = useRef(new Map<Tab, HTMLButtonElement>());
+  const step = (e: KeyboardEvent, by: number) => {
+    e.preventDefault();
+    const at = TABS.findIndex((t) => t.tab === tab);
+    const next = TABS[(at + by + TABS.length) % TABS.length].tab;
+    onChange(next);
+    refs.current.get(next)?.focus();
+  };
+  return (
+    <div
+      className="detail-tabs"
+      role="tablist"
+      aria-label="Card details"
+      onKeyDown={(e) => {
+        if (e.key === "ArrowRight") step(e, 1);
+        if (e.key === "ArrowLeft") step(e, -1);
+      }}
+    >
+      {TABS.map(({ tab: key, name }) => (
+        <button
+          key={key}
+          ref={(node) => {
+            if (node) refs.current.set(key, node);
+          }}
+          type="button"
+          role="tab"
+          id={`detail-tab-${key}`}
+          aria-selected={tab === key}
+          aria-controls={`detail-panel-${key}`}
+          tabIndex={tab === key ? 0 : -1}
+          className={`detail-tab ${tab === key ? "on" : ""}`}
+          onClick={() => onChange(key)}
+        >
+          {name}
+          {counts[key] !== null && counts[key] > 0 && <span className="tab-count">{counts[key]}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function KeyLinks({ links, statuses, onAll }: { links: ReturnType<typeof findLinks>; statuses: PrStatuses; onAll: () => void }) {
+  const top = topLinks(links);
+  if (top.length === 0) return null;
+  return (
+    <div className="sec">
+      <span className="sech">Key links</span>
+      <ul className="link-list">
+        {top.map((link) => (
+          <LinkRow key={link.url} link={link} status={statuses.get(link.url)} showSources={false} />
+        ))}
+      </ul>
+      {links.length > top.length && (
+        <button type="button" className="link more-link" onClick={onAll}>
+          All {links.length} links
+        </button>
+      )}
+    </div>
   );
 }
 

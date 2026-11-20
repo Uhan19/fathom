@@ -1,7 +1,7 @@
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import type { AgentKey } from "../agents";
-import { ROW_ORDER, type AgentFilter, type BoardView, type Card, type CardPlace, type Column, type HelperStatus, type Layout, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type Settings, type ShellTab, type Terminal, type WindowChange } from "../api";
+import { ROW_ORDER, type AgentFilter, type BoardView, type Card, type CardPlace, type Column, type FileEntry, type HelperStatus, type Layout, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type Settings, type ShellTab, type Terminal, type WindowChange } from "../api";
 import { presetFonts } from "../appearance";
 import { cellCount, groupCards, type Cells } from "../board";
 import { moveTo } from "../columnOrder";
@@ -30,6 +30,7 @@ import {
   shellScreen,
   workerScreen,
 } from "./fixture";
+import { FIXTURE_NOTES, fixtureContext, fixtureFiles, fixturePreview, fixturePrStatus } from "./detailFixture";
 
 const params = new URLSearchParams(location.search);
 const noLabel = params.has("nolabel");
@@ -46,6 +47,8 @@ const foldedColumns = params.get("folded")?.split(",").filter(Boolean) ?? [];
 const KITTY_PUSH = params.has("kitty") ? "\x1b[>1u" : "";
 const rememberedAgent = (params.get("agent") as AgentKey | null) ?? null;
 const missingTool = params.get("missing");
+const ghSignedIn = !params.has("nogh");
+const PR_STATUS_DELAY_MS = 600;
 let openedAgent: AgentKey | null = rememberedAgent;
 const bosun = params.get("bosun") ?? "ready";
 if (params.has("linux")) Object.defineProperty(navigator, "platform", { value: "Linux x86_64" });
@@ -94,11 +97,13 @@ let settings: Settings = {
   theme: params.get("theme") === "dark" ? "dark" : "light",
   chatOpen: !params.has("nochat"),
   chatWidth: Number(params.get("chatwidth")) || 600,
-  detailWidth: 460,
+  detailWidth: Number(params.get("detailwidth")) || 460,
   projectFilter: params.get("filter")?.split(",").filter(Boolean) ?? [],
   agentFilter: (params.get("agents") as AgentFilter | null) ?? "all",
   helperStarted: bosun !== "notstarted",
   shortcuts: params.get("shortcuts") === "custom" ? customShortcuts() : defaultShortcuts(mac),
+  linearWorkspace: params.has("nolinear") ? "" : "reef-co",
+  ticketPrefixes: params.has("nolinear") ? [] : ["ATL", "OPS"],
 };
 
 const openChatTerminal = (agent: AgentKey) => {
@@ -285,6 +290,8 @@ const bytes = (text: string) => [...new TextEncoder().encode(text)];
 
 mockWindows("main");
 
+let detailFiles: FileEntry[] = [];
+
 mockIPC(
   (cmd, payload) => {
     const args = (payload ?? {}) as Record<string, unknown>;
@@ -295,8 +302,23 @@ mockIPC(
         return view(false);
       case "log_launch":
         return 42;
-      case "card_detail":
-        return fixtureDetail(cards.find((c) => c.id === args.id) ?? FIXTURE_CARDS[0]);
+      case "card_detail": {
+        const detail = fixtureDetail(cards.find((c) => c.id === args.id) ?? FIXTURE_CARDS[0]);
+        return { ...detail, body: FIXTURE_NOTES[detail.card.id] ?? detail.body };
+      }
+      case "card_context":
+        return fixtureContext(args.id as string, !backlog);
+      case "card_files":
+        detailFiles = backlog ? [] : fixtureFiles(args.id as string, args.mentioned as string[]);
+        return detailFiles;
+      case "file_preview":
+        return fixturePreview(args.path as string, detailFiles);
+      case "open_file":
+      case "reveal_file":
+        console.info(cmd, args.path);
+        return null;
+      case "pr_status":
+        return new Promise((resolve) => setTimeout(() => resolve(fixturePrStatus(args.url as string, ghSignedIn)), PR_STATUS_DELAY_MS));
       case "update_column":
         columns = columns.map((c) =>
           c.id === args.id

@@ -24,6 +24,8 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
   agentFilter: "all",
   helperStarted: false,
   shortcuts: defaultShortcuts(true),
+  linearWorkspace: "",
+  ticketPrefixes: [],
   ...over,
 });
 
