@@ -19,13 +19,15 @@ export function openEntry(entry: FileEntry, onPreview: (path: string) => void) {
   else void api.openFile(entry.path);
 }
 
-function entryMeta(entry: FileEntry, now: number): string {
-  const parts = [entry.folder || "Firstmate home"];
+function entryMeta(entry: FileEntry, now: number, withFolder: boolean): string {
+  const parts = withFolder ? [entry.folder || "Firstmate home"] : [];
   if (entry.kind === "folder") parts.push("folder");
-  else if (entry.size !== null) parts.push(formatBytes(entry.size));
-  if (entry.modifiedMs !== null) parts.push(`changed ${relativeTime(entry.modifiedMs, now)}`);
+  else if (entry.size !== null) parts.push(unbroken(formatBytes(entry.size)));
+  if (entry.modifiedMs !== null) parts.push(unbroken(`changed ${relativeTime(entry.modifiedMs, now)}`));
   return parts.join(" · ");
 }
+
+const unbroken = (phrase: string) => phrase.replace(/ /g, "\u00a0");
 
 function Glyph({ entry }: { entry: FileEntry }) {
   if (entry.kind === "folder") return <FolderIcon />;
@@ -88,7 +90,7 @@ function FileRow({ entry, now, onPreview }: { entry: FileEntry; now: number; onP
         <span className="file-text">
           <span className="file-name">{entry.name}</span>
           <span className="file-meta" title={entry.modifiedMs !== null ? exactTime(entry.modifiedMs) : undefined}>
-            {entryMeta(entry, now)}
+            {entryMeta(entry, now, !entry.inTaskFolder)}
           </span>
         </span>
       </button>
@@ -114,7 +116,7 @@ export function FilesTab({ hasHome, files, error, taskFolder, cardId, selected, 
   if (error) return <p className="tab-empty error-text">Could not look for files: {error}</p>;
   if (!files) return <p className="tab-empty">Looking for files…</p>;
   const shown = selected ? files.find((f) => f.path === selected) : null;
-  if (shown) return <PreviewPane entry={shown} now={now} linking={linking} onBack={() => onPreview(null)} />;
+  if (shown) return <PreviewPane entry={shown} files={files} now={now} linking={linking} onPreview={onPreview} />;
   if (files.length === 0)
     return (
       <p className="tab-empty">
@@ -185,11 +187,21 @@ function folderOf(path: string): string {
   return path.slice(0, path.lastIndexOf("/"));
 }
 
-function PreviewPane({ entry, now, linking, onBack }: { entry: FileEntry; now: number; linking: Linking; onBack: () => void }) {
+interface PreviewPaneProps {
+  entry: FileEntry;
+  files: FileEntry[];
+  now: number;
+  linking: Linking;
+  onPreview: (path: string | null) => void;
+}
+
+function PreviewPane({ entry, files, now, linking, onPreview }: PreviewPaneProps) {
   const { preview, error } = usePreview(entry.path);
+  const onBack = () => onPreview(null);
   const onPath: PathAction = (raw) => {
     const target = raw.startsWith("/") || raw.startsWith("~/") ? raw : `${folderOf(entry.path)}/${raw.replace(/^\.\//, "")}`;
-    return () => void api.openFile(target);
+    const listed = files.find((f) => f.path === target);
+    return listed ? () => openEntry(listed, onPreview) : () => void api.openFile(target);
   };
   return (
     <div className="file-preview">
@@ -199,11 +211,16 @@ function PreviewPane({ entry, now, linking, onBack }: { entry: FileEntry; now: n
           All files
         </button>
         <h3 className="preview-name">{entry.name}</h3>
-        <span className="file-meta">{entryMeta(entry, now)}</span>
+        <span className="file-meta">{entryMeta(entry, now, true)}</span>
         <FileActions entry={entry} wide />
       </div>
       {error && <p className="error-text">{error}</p>}
       {!preview && !error && <p className="muted">Loading the preview…</p>}
+      {preview?.truncated && (
+        <p className="quiet-note">
+          This file is {formatBytes(preview.size)}; only the start is shown. Open it to read the rest.
+        </p>
+      )}
       {preview?.kind === "image" && preview.dataUrl && (
         <div className="preview-image">
           <img src={preview.dataUrl} alt={entry.name} />
@@ -211,11 +228,6 @@ function PreviewPane({ entry, now, linking, onBack }: { entry: FileEntry; now: n
       )}
       {preview?.kind === "markdown" && preview.text !== null && <Markdown text={preview.text} linking={linking} onPath={onPath} className="md-doc" />}
       {preview?.kind === "text" && preview.text !== null && <pre className="preview-text">{preview.text}</pre>}
-      {preview?.truncated && (
-        <p className="quiet-note">
-          This file is {formatBytes(preview.size)}; only the start is shown. Open it to read the rest.
-        </p>
-      )}
     </div>
   );
 }

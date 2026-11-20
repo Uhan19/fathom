@@ -178,4 +178,9 @@ describe("findPaths", () => {
     ];
     expect(findPaths(sources)).toEqual(["data/atl-03/report.md", "~/exports/review.md", "/tmp/fm-atl-03/after.png"]);
   });
+
+  it("ignores closing tags and single-segment roots", () => {
+    const sources = [{ name: "Note", text: "Raw <script>alert(1)</script> stays text; /tmp alone is not a file but ~/notes is" }];
+    expect(findPaths(sources)).toEqual(["~/notes"]);
+  });
 });

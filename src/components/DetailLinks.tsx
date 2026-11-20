@@ -86,8 +86,8 @@ export function LinkRow({ link, status, showSources }: { link: FoundLink; status
         {link.kind === "pr" && <PrBadge status={status} />}
         <span className="link-detail" title={link.url}>
           {link.detail}
-          {showSources && <> · {link.sources.map((s) => s.toLowerCase()).join(", ")}</>}
         </span>
+        {showSources && <span className="link-sources">Found in {link.sources.map((s) => s.toLowerCase()).join(", ")}</span>}
       </div>
     </li>
   );

@@ -103,6 +103,7 @@ export function CardDetail(props: CardDetailProps) {
     setLoadError(null);
     setSend({ kind: "idle" });
     setPreviewing(null);
+    setTab("overview");
     api
       .cardDetail(card.id)
       .then((d) => current && setDetail(d))

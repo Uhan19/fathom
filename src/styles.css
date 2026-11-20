@@ -1568,8 +1568,7 @@ button.sailor:focus-visible {
 .detail-tabs {
   flex: none;
   display: flex;
-  gap: 2px;
-  padding: 0 14px;
+  padding: 0 10px;
   border-bottom: 1px solid var(--line);
   overflow-x: auto;
   scrollbar-width: none;
@@ -1581,12 +1580,13 @@ button.sailor:focus-visible {
 
 .detail-tab {
   flex: 1 0 auto;
+  max-width: calc(128px * var(--board-scale));
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   margin-bottom: -1px;
-  padding: 10px 6px 9px;
+  padding: 10px 4px 9px;
   border: none;
   border-bottom: 2px solid transparent;
   background: none;
@@ -1595,7 +1595,7 @@ button.sailor:focus-visible {
   font-family: var(--heading);
   font-size: calc(12px * var(--board-scale));
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -1691,6 +1691,7 @@ h3.sech {
 }
 
 .md {
+  max-width: 46em;
   font-size: calc(14px * var(--board-scale));
   line-height: 1.6;
   overflow-wrap: anywhere;
@@ -1761,7 +1762,7 @@ h3.sech {
 }
 
 .md code {
-  padding: 1px 5px;
+  padding: 1px 4px;
   border-radius: 3px;
   background: var(--chip-bg);
   font-size: 0.86em;
@@ -1908,6 +1909,11 @@ button.md-image {
   text-overflow: ellipsis;
 }
 
+.link-sources {
+  color: var(--muted);
+  font-size: calc(12px * var(--board-scale));
+}
+
 .pr-line {
   display: flex;
   flex-wrap: wrap;
@@ -2048,9 +2054,7 @@ button.md-image {
 .file-meta {
   color: var(--muted);
   font-size: calc(12px * var(--board-scale));
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 .file-actions {
