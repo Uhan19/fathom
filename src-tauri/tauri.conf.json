@@ -28,6 +28,7 @@
     "active": true,
     "targets": ["app"],
     "category": "Productivity",
+    "license": "MIT",
     "macOS": {
       "signingIdentity": "-",
       "minimumSystemVersion": "13.0"

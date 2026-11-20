@@ -104,7 +104,7 @@ Each system builds only its own bundles.
 The script refuses to overwrite an existing version, so bump the version first.
 It keeps the newest two versions, deletes older ones, and installs nothing.
 `release/` is ignored by git.
-CI builds the `.deb` and AppImage on Ubuntu 22.04 on every push to `main` and uploads them as workflow artifacts.
+CI builds the `.deb` and AppImage on Ubuntu 22.04 for every pull request and every push to `main` and uploads them as workflow artifacts.
 
 On macOS, open the app from Finder or with `open release/<version>/Fathom.app`.
 The first launch of a new build can take several seconds while macOS checks the new binary; later launches paint from the cache.
@@ -120,6 +120,52 @@ Or run the AppImage directly, which needs no install:
 ```sh
 chmod +x release/<version>/Fathom_<version>_<arch>.AppImage
 release/<version>/Fathom_<version>_<arch>.AppImage
+```
+
+## Publish a release
+
+Pushing a version tag publishes a GitHub Release with three downloads:
+
+- `Fathom_universal.dmg`, one disk image for Apple Silicon and Intel Macs;
+- `Fathom_amd64.deb`, the Debian package for x86_64;
+- `Fathom_amd64.AppImage`, the AppImage for x86_64.
+
+The names carry no version, so `https://github.com/Uhan19/fathom/releases/latest/download/<name>` always points at the newest release.
+
+1. Set the new version in `src-tauri/tauri.conf.json`, `package.json` and `src-tauri/Cargo.toml`, then run `cargo check --manifest-path src-tauri/Cargo.toml` so `Cargo.lock` follows.
+2. Merge that change to `main`.
+3. Tag the merged commit and push the tag:
+
+   ```sh
+   git switch main && git pull
+   git tag v<version>
+   git push origin v<version>
+   ```
+
+The `Release` workflow then checks that the tag matches the version in `src-tauri/tauri.conf.json` and `package.json` and stops if it does not.
+It builds the Linux packages on Ubuntu 22.04 and the universal disk image on macOS, and creates the release from the tag with generated notes.
+The same workflow runs without publishing for pull requests that change it and when started by hand from the Actions tab, and leaves the three files in a `release-assets` artifact.
+
+The disk image has an ad-hoc signature.
+When the repository has the secrets `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD` and `APPLE_SIGNING_IDENTITY`, the workflow signs with that Developer ID certificate instead.
+When it also has `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID`, it notarizes the app as well.
+
+### Open a downloaded build on macOS
+
+An ad-hoc-signed app is not notarized, so macOS blocks its first open.
+Drag Fathom from the disk image into Applications, open it, and macOS says "Fathom" Not Opened, because Apple could not verify it is free of malware.
+To open it anyway:
+
+1. Click **Done** in that message.
+2. Open **System Settings**, then **Privacy & Security**.
+3. Scroll to **Security**, where it says "Fathom" was blocked to protect your Mac, and click **Open Anyway**.
+4. Enter your password, then click **Open Anyway** in the message that follows.
+
+macOS remembers the choice, so later opens work normally until you install a new download.
+Or clear the download mark in Terminal before the first open:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Fathom.app
 ```
 
 ## Roll back
@@ -537,3 +583,7 @@ The panel switches to the new size first and then draws the fresh repaint, so th
 Attaching at the current size changes nothing for the Herdr app.
 While the Herdr app owns the size, the panel shows blank space or scrolls, and the view follows the cursor.
 When the Herdr app leaves, the size stays where it was until you press a key in the panel or resize it.
+
+## License
+
+Fathom is released under the [MIT License](LICENSE).

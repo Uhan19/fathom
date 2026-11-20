@@ -1,0 +1,371 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fathom: your agents, at a glance</title><meta name="description" content="Fathom is a desktop board for watching and steering your coding agents."><link rel="icon" type="image/svg+xml" href="favicon.svg"><meta property="og:type" content="website"><meta property="og:site_name" content="Fathom"><meta property="og:title" content="Fathom: your agents, at a glance"><meta property="og:description" content="Fathom is a desktop board for watching and steering your coding agents."><meta name="twitter:card" content="summary"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Michroma&family=Saira:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet"><style>
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:'IBM Plex Sans',sans-serif;font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:inherit}img,svg{display:block}
+h1,h2,h3{font-family:'Saira',sans-serif;font-weight:600;line-height:1.1;margin:0;text-wrap:balance}
+p{margin:0 0 1em}.wrap{max-width:1180px;margin:0 auto;padding:0 32px}
+.nav{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:28px;padding:14px 32px}
+.brand{display:flex;align-items:center;gap:12px;text-decoration:none;margin-right:auto}
+.brand b{font-family:'Michroma',sans-serif;font-weight:400;letter-spacing:.26em;font-size:15px}
+.nav a.l{text-decoration:none;font-family:'Saira',sans-serif;font-weight:500;font-size:15px;letter-spacing:.04em;opacity:.8}.nav a.l:hover{opacity:1}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:'Saira',sans-serif;font-weight:600;font-size:15px;letter-spacing:.04em;text-decoration:none;padding:11px 20px;border-radius:4px;border:1px solid currentColor;transition:background .2s,color .2s,transform .2s}
+.btn:hover{transform:translateY(-1px)}
+.btn-primary{background:#f2c230;border-color:#f2c230;color:#111315}.btn-primary:hover{background:#ffd34a}
+:focus-visible{outline:2px solid #46afff;outline-offset:3px}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:13px;letter-spacing:.18em;text-transform:uppercase;margin:0 0 14px}
+.sec-head{max-width:640px;margin-bottom:48px}.sec-head h2{font-size:clamp(32px,4vw,48px);margin-bottom:12px}.lede{font-size:19px;opacity:.85}
+/* story */
+.story{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:64px;align-items:start}
+.steps{padding:12vh 0 30vh}
+.step{min-height:62vh;display:flex;flex-direction:column;justify-content:center;transition:opacity .4s}
+.step:not(.is-on){opacity:.42}
+.step .kicker{font-family:'JetBrains Mono',monospace;font-size:13px;letter-spacing:.16em;text-transform:uppercase;margin-bottom:12px}
+.step h3{font-size:clamp(26px,3vw,36px);margin-bottom:14px}.step p{font-size:18px;max-width:30em}
+.stage{position:sticky;top:0;height:100vh;display:flex;align-items:center;justify-content:center}
+/* download */
+.dl{padding:120px 0}.dl-grid{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:20px}
+.dl-card{padding:28px;border-radius:8px;display:flex;flex-direction:column;gap:6px}
+.dl-card h3{font-size:24px}.dl-req{font-size:15px;opacity:.75;margin-bottom:18px}
+.dl-row{display:flex;gap:10px;flex-wrap:wrap}.dl-note{font-size:14px;opacity:.7;margin:16px 0 0}
+.dl-card .btn{align-self:flex-start}.dl-msg{margin-top:20px;font-family:'JetBrains Mono',monospace;font-size:14px;min-height:1.5em}
+/* docs */
+.docs{padding:120px 0}.docs-grid{display:grid;grid-template-columns:200px minmax(0,1fr);gap:56px}
+.docs-nav{position:sticky;top:90px;align-self:start;display:flex;flex-direction:column;gap:2px}
+.docs-nav a{text-decoration:none;font-size:15px;padding:6px 12px;border-left:2px solid transparent;opacity:.75}.docs-nav a:hover{opacity:1}
+.docs-body{max-width:720px}.docs-body article{padding:0 0 48px;scroll-margin-top:90px}
+.docs-body h3{font-size:26px;margin-bottom:14px}.docs-body ul{padding-left:20px}.docs-body li{margin-bottom:10px}
+pre{margin:0 0 1em;padding:16px 18px;border-radius:6px;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:14px;line-height:1.6}
+code{font-family:'JetBrains Mono',monospace;font-size:.88em}
+kbd{font-family:'JetBrains Mono',monospace;font-size:13px;padding:2px 6px;border-radius:3px;border:1px solid currentColor;opacity:.9}
+table{width:100%;border-collapse:collapse;margin-bottom:1em;font-size:16px}th,td{text-align:left;padding:10px 12px}th{font-family:'Saira',sans-serif;font-weight:600;letter-spacing:.06em;font-size:13px;text-transform:uppercase}
+.sw{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:10px;vertical-align:-1px;border:1px solid rgba(0,0,0,.15)}
+.sw-s{background:#e5f1fa;box-shadow:inset 3px 0 #f2c230}.sw-sh{background:#cfe5f6}.sw-d{background:#b5d6f0}.sw-sb{background:#efe4bc}.sw-l{background:#f3f8fc}
+.foot{padding:40px 32px;display:flex;gap:24px;align-items:center;font-size:14px}
+.foot .brand b{font-size:12px}
+@media (max-width:900px){.story{grid-template-columns:minmax(0,1fr)}.stage{position:sticky;top:72px;height:auto;padding:16px 0;z-index:5;order:-1;background:var(--bg)}.steps{padding:4vh 0 10vh}.step{min-height:70vh}.dl-grid{grid-template-columns:minmax(0,1fr)}.docs-grid{grid-template-columns:minmax(0,1fr)}.req{grid-template-columns:minmax(0,1fr)}.docs-nav{position:static;flex-direction:row;flex-wrap:wrap}.nav a.l{display:none}}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}*{transition:none!important;animation:none!important}}
+
+.mb{--mb-ink:#15181b;width:100%;max-width:560px;border-radius:10px;overflow:hidden;background:#e3e9f4;box-shadow:0 30px 80px -30px rgba(6,20,40,.55),0 0 0 1px rgba(11,36,71,.18);font-family:'Saira',sans-serif;font-size:10px;color:var(--mb-ink)}
+.mb-top{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#1b4f77;border-bottom:2px solid #46afff;color:#fff}
+.mb-top b{font-family:'Michroma',sans-serif;font-weight:400;letter-spacing:.24em;font-size:10px;margin-right:auto}
+.mb-count{font-family:'JetBrains Mono',monospace;font-weight:700;background:#f2c230;color:#111315;border-radius:2px;padding:0 4px}
+.mb-btn{font-weight:700;letter-spacing:.12em;font-size:7px;border:1px solid rgba(255,255,255,.45);border-radius:2px;padding:2px 5px}
+.mb-btn.y{background:#f2c230;border-color:#f2c230;color:#111315}
+.mb-body{display:flex;position:relative;height:330px}
+.mb-board{flex:1;min-width:0;position:relative;display:flex;flex-direction:column;overflow:hidden}
+.mb-heads{display:grid;grid-template-columns:52px repeat(3,1fr);gap:6px;padding:7px 8px 4px;background:#eef2fa;font-weight:700;letter-spacing:.12em;font-size:7px;color:#1a1d20}
+.mb-wave{height:4px;background:repeating-linear-gradient(135deg,#f2c230 0 5px,#111315 5px 10px)}
+.mb-row{display:grid;grid-template-columns:52px repeat(3,1fr);gap:6px;padding:6px 8px;flex:1;transition:opacity .5s,filter .5s}
+.mb-row em{font-style:normal;font-weight:700;letter-spacing:.14em;font-size:7px;color:#111315}
+.mb-row>div{display:flex;flex-direction:column;gap:4px}
+.r-surface{background:#e5f1fa}.r-shallows{background:#cfe5f6;border-top:1px solid #bfdbf2}.r-deep{background:#b5d6f0;border-top:1px solid #a5ccec}.r-seabed{background:#efe4bc;border-top:1px solid #dccd95}.r-landed{background:#f3f8fc;border-top:1px solid #dccd95}
+.mb-card{position:relative;display:flex;gap:5px;align-items:flex-start;flex-wrap:wrap;background:#fff;border:1px solid #c3cce0;border-radius:3px;padding:4px 5px;font-weight:600;font-size:8.5px;line-height:1.2;box-shadow:0 1px 3px rgba(17,19,21,.08);transition:transform .7s cubic-bezier(.2,.8,.2,1),opacity .5s}
+.mb-card>span{flex:1;min-width:0}.mb-card:has(.mb-sailor){padding-right:20px}
+.mb-card small{flex-basis:100%;padding-left:7px;font-family:'IBM Plex Sans',sans-serif;font-weight:400;font-size:7px;color:#5c636b}
+.mb-bar{width:2px;align-self:stretch;border-radius:1px;flex:none}
+[data-row=surface] .mb-bar{background:#f2c230}[data-row=shallows] .mb-bar{background:#46afff}[data-row=landed] .mb-bar{background:#7f8791}
+[data-row=seabed]{border-style:dashed}
+.mb-tag{flex-basis:auto;margin-left:7px;font-family:'JetBrains Mono',monospace;font-size:6px;letter-spacing:.08em;padding:1px 3px;border-radius:2px;background:#ddeefd;color:#0a5a9e}
+.mb-tag.a{background:#f2c230;color:#111315}
+.mb-sailor{position:absolute;top:2px;right:2px;width:14px;height:14px}
+.mb-sailor svg{width:14px;height:14px}
+.mb-sailor .visor{fill:#ff2348}
+.mb-ghost{display:none}
+.mb-chat{flex:none;width:0;overflow:hidden;background:#f5f7fc;border-left:1px solid #dce3f0;transition:width .6s cubic-bezier(.2,.8,.2,1)}
+.mb-chat-h,.mb-bosun-h{font-weight:700;letter-spacing:.2em;font-size:7px;padding:7px 9px;border-bottom:1px solid #dce3f0;white-space:nowrap}
+.mb-chat code,.mb-bosun code{display:block;padding:8px 9px;font-family:'JetBrains Mono',monospace;font-size:7.5px;line-height:1.5;color:#15181b;white-space:nowrap}
+.mb-bosun{position:absolute;left:0;right:0;bottom:0;height:22px;background:#f5f7fc;border-top:1px solid #dce3f0;transition:height .6s cubic-bezier(.2,.8,.2,1);overflow:hidden}
+.mb-bosun-h{display:flex;align-items:center;gap:6px;border:none}
+.mb-bosun-h i{width:5px;height:5px;border-radius:50%;background:#3ddc84}
+.mb-bosun-h span{font-weight:400;letter-spacing:0;font-family:'IBM Plex Sans',sans-serif;opacity:.7}
+/* steps */
+.mb[data-step="surface"] .mb-row:not(.r-surface),.mb[data-step="shallows"] .mb-row:not(.r-shallows),.mb[data-step="deep"] .mb-row:not(.r-deep):not(.r-seabed),.mb[data-step="landed"] .mb-row:not(.r-landed){opacity:.35;filter:saturate(.4)}
+.mb[data-step="surface"] .r-surface .mb-card{transform:translateY(-2px);box-shadow:0 0 0 1.5px #f2c230,0 4px 10px rgba(17,19,21,.15)}
+.mb[data-step="shallows"] .mb-sailor .visor{animation:mbblink 1.2s ease-in-out infinite}
+@keyframes mbblink{50%{opacity:.35}}
+.mb[data-step="move"] .mb-ghost{display:flex;animation:mbrise 1.6s cubic-bezier(.2,.8,.2,1) both;box-shadow:0 0 0 1.5px #46afff,0 8px 18px rgba(17,19,21,.2)}
+.mb[data-step="move"] .mb-origin{opacity:.35}
+@keyframes mbrise{from{transform:translateY(64px) rotate(2deg)}to{transform:none}}
+.mb[data-step="chat"] .mb-chat,.hero .mb-chat{width:150px}
+.mb[data-step="bosun"] .mb-bosun{height:96px}
+@media (prefers-reduced-motion: reduce){.mb *{animation:none!important;transition:none!important}}
+body[data-scheme="bp5"]{--bg:#f8fbfe;--ink:#0a2236;--muted:#4f6b84;--accent:#1b6fb0;--hl:#1f86d6;--grid:rgba(27,79,119,.05);--rule:rgba(27,79,119,.14);--nav:#1b4f77;--card:#ffffff;--cardbd:#d6e4f0;--prim:#1b4f77;--primink:#ffffff;--code:#0d2a42;--codeink:#e3f1fc;--inl:rgba(27,111,176,.08);--btn:#1b4f77;--marka:#f4f1ea;--contour:#46afff}
+body{background:var(--bg);color:var(--ink);transition:background .4s,color .4s}
+body::before{content:"";position:fixed;inset:0;z-index:-1;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:64px 64px}
+.brand .mk-a{fill:var(--marka)}
+body[data-scheme="blueprint2"] .nav,body[data-scheme="bp3"] .nav,body[data-scheme="bp4"] .nav,body[data-scheme="bp5"] .nav{backdrop-filter:none;border-bottom:2px solid #46afff;color:#fff}
+body[data-scheme="bp4"] .nav .btn:not(.btn-primary),body[data-scheme="bp5"] .nav .btn:not(.btn-primary){color:#fff}
+.nav{background:var(--nav);backdrop-filter:blur(8px);border-bottom:1px solid var(--rule)}
+.eyebrow,.step .kicker{color:var(--accent)}
+.hero{padding:96px 32px 40px;display:grid;grid-template-columns:1fr 1.1fr;gap:56px;align-items:center}
+.hero h1{font-size:clamp(44px,5.6vw,76px);font-weight:500;letter-spacing:-.01em;margin-bottom:24px}
+.hero h1 em{font-style:normal;color:var(--hl)}
+.hero .lede{max-width:28em;margin-bottom:32px}.cta{display:flex;gap:12px;flex-wrap:wrap}
+.btn:not(.btn-primary){color:var(--btn)}
+.coords{margin-top:40px;font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.12em;color:var(--muted)}
+.sound{position:relative}.contour{position:absolute;inset:-40px;z-index:-1;pointer-events:none}.contour{stroke:var(--contour)}
+#how{border-top:1px solid var(--rule)}
+.how-head{padding-top:120px;margin-bottom:0}
+.chart-rule{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.14em;color:var(--muted);padding:18px 0;border-bottom:1px dashed var(--rule)}
+.step{min-height:72vh}.step:not(.is-on){opacity:.38}
+.step .kicker::before{content:"";display:inline-block;width:22px;height:1px;background:currentColor;vertical-align:middle;margin-right:10px}
+.dl-card{background:var(--card);border:1px solid var(--cardbd)}.dl-card.primary{background:var(--prim);color:var(--primink);border-color:var(--prim);box-shadow:inset 0 -3px #46afff}
+.dl-card.primary .btn:not(.btn-primary){color:var(--primink)}
+.dl-prereq{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;margin-top:28px;padding-top:20px;border-top:1px dashed var(--rule);font-size:15px}
+.dl-prereq span{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.dl-prereq a{color:var(--accent);text-decoration:none;font-weight:600}.dl-prereq a:hover{text-decoration:underline}
+.dl,.docs{border-top:1px solid var(--rule)}
+.docs-nav a{color:var(--ink)}.docs-nav a:hover{border-left-color:#46afff}
+.docs-body a{color:var(--accent)}
+.req{display:grid;gap:14px}.req-item{background:var(--card);border:1px solid var(--cardbd);border-radius:8px;padding:18px 20px 4px}
+.req-item h4{font-family:'Saira',sans-serif;font-weight:600;font-size:19px;margin:0 0 6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.req-item h4 a{text-decoration:none}.req-item h4 a::after{content:" ↗";font-size:.8em}
+.pill{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:400;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border-radius:20px;border:1px solid var(--cardbd);color:var(--muted)}
+pre{background:var(--code);color:var(--codeink)}td,th{border-bottom:1px solid var(--rule)}
+.docs-body code:not(pre code){background:var(--inl);padding:1px 5px;border-radius:3px}
+.foot{border-top:1px solid var(--rule);color:var(--muted)}
+.schemes{position:fixed;left:16px;bottom:16px;z-index:30;display:flex;gap:4px;align-items:center;padding:6px;border-radius:30px;background:var(--nav);backdrop-filter:blur(8px);border:1px solid var(--rule);font-family:'Saira',sans-serif;font-size:13px}
+.schemes span{padding:0 8px;color:var(--muted)}
+.schemes button{font:inherit;cursor:pointer;border:none;border-radius:20px;padding:5px 12px;background:transparent;color:var(--ink);display:flex;align-items:center;gap:6px}
+.schemes button i{width:11px;height:11px;border-radius:50%;border:1px solid rgba(0,0,0,.25)}
+.schemes button[aria-pressed="true"]{background:var(--prim);color:var(--primink)}
+
+.cust{padding:120px 32px;border-top:1px solid var(--rule)}
+.cust-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.cu{background:var(--card);border:1px solid var(--cardbd);border-radius:8px;padding:20px 22px 8px}
+.cu h3{font-size:21px;margin:18px 0 8px}.cu p{font-size:15.5px;color:var(--muted)}
+.cu-vis{height:120px;border-radius:6px;background:var(--bg);border:1px solid var(--cardbd);display:flex;flex-direction:column;justify-content:center;gap:10px;padding:14px;font-family:'Saira',sans-serif;font-size:12px;overflow:hidden}
+.v-rename{display:flex;align-items:center;gap:8px}.v-lbl{font-weight:700;letter-spacing:.14em;font-size:10px;color:var(--muted);text-decoration:line-through;text-decoration-color:rgba(27,79,119,.4)}
+.v-arrow{color:var(--accent)}.v-field{font-weight:700;letter-spacing:.14em;font-size:10px;background:#fff;border:1.5px solid #46afff;border-radius:3px;padding:3px 6px;color:#0b2a44;display:inline-flex;align-items:center;gap:2px}
+.v-field i{width:1px;height:11px;background:#0b2a44;animation:blink 1s steps(1) infinite}@keyframes blink{50%{opacity:0}}
+.v-cols{display:flex;gap:6px;flex-wrap:wrap}.v-cols span{background:#fff;border:1px solid var(--cardbd);border-radius:3px;padding:3px 8px;font-weight:600;font-size:10.5px;letter-spacing:.06em;color:#0b2a44}
+.v-del{border-color:#d9534f!important}.v-del b{color:#c0392b;margin-left:2px}
+.v-add{background:transparent!important;border:1px dashed var(--accent)!important;color:var(--accent)!important}
+.v-layout{display:flex;gap:6px;height:84px}.v-c{flex:1;border-radius:3px;background:linear-gradient(#e5f1fa 0 28%,#cfe5f6 28% 56%,#b5d6f0 56% 80%,#efe4bc 80%);border:1px solid var(--cardbd)}
+.v-c.wide{flex:1.8;box-shadow:inset -3px 0 #46afff}.v-c.slim{flex:none;width:22px;background:#eef2fa;display:flex;align-items:center;justify-content:center}
+.v-c.slim em{font-style:normal;writing-mode:vertical-rl;font-size:9px;font-weight:700;letter-spacing:.14em;color:#0b2a44}
+.v-font{display:flex;align-items:center;gap:8px}.v-k{width:42px;font-size:11px;color:var(--muted)}
+.v-sel{flex:1;background:#fff;border:1px solid var(--cardbd);border-radius:3px;padding:4px 8px;font-size:12px;font-weight:600;color:#0b2a44}.v-sel::after{content:" ▾";float:right;color:var(--muted)}
+.v-sel.mono{font-family:'JetBrains Mono',monospace;font-weight:400;font-size:11px}
+.v-size{font-family:'JetBrains Mono',monospace;font-size:11px;background:#fff;border:1px solid var(--cardbd);border-radius:3px;padding:4px 6px;color:#0b2a44}
+.v-theme{display:flex;gap:10px;height:84px}.v-theme span{flex:1;border-radius:4px;display:flex;align-items:flex-end;padding:6px 8px;font-size:11px;font-weight:600}
+.t-l{background:linear-gradient(#1b4f77 0 14px,#e5f1fa 14px 40%,#cfe5f6 40% 70%,#efe4bc 70%);color:#0b2a44;border:1px solid var(--cardbd)}
+.t-d{background:linear-gradient(#0d2236 0 14px,#14304d 14px 40%,#11284a 40% 70%,#2a2614 70%);color:#e6eef6}
+.v-chips{display:flex;gap:6px;flex-wrap:wrap}.v-chips span{border-radius:20px;padding:3px 10px;font-size:11px;border:1px solid var(--cardbd);color:var(--muted);background:transparent}
+.v-chips span.on{background:#1b4f77;border-color:#1b4f77;color:#fff}.v-chips span.on::before{content:"✓ "}
+.cust-bosun{margin-top:28px;font-size:16px}.cust-bosun code{background:var(--code);color:var(--codeink);padding:6px 10px;border-radius:4px;margin-left:8px;display:inline-block}
+
+.v-ask{display:flex;flex-direction:column;gap:3px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink)}.v-ask .ok{color:#1d8a5a;margin-bottom:4px}
+/* ---- sleek layer (white scheme) ---- */
+[data-scheme="bp5"] body,body[data-scheme="bp5"]{background:radial-gradient(1200px 600px at 75% -10%,rgba(70,175,255,.10),transparent 60%),var(--bg)}
+body[data-scheme="bp5"]::before{background-image:radial-gradient(rgba(27,79,119,.16) 1px,transparent 1.2px);background-size:32px 32px;mask-image:linear-gradient(180deg,#000,rgba(0,0,0,.35))}
+body[data-scheme="bp5"] .nav{background:#1b4f77;padding:12px 32px}
+body[data-scheme="bp5"] .nav a.l{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.16em;text-transform:uppercase;font-weight:400}
+body[data-scheme="bp5"] .btn{border-radius:2px;font-size:13px;letter-spacing:.14em;text-transform:uppercase;padding:12px 22px;border-width:1px}
+body[data-scheme="bp5"] .btn-primary{box-shadow:0 0 0 1px #f2c230,0 8px 24px -10px rgba(242,194,48,.8)}
+body[data-scheme="bp5"] .hero h1{font-family:'Michroma',sans-serif;font-weight:400;font-size:clamp(34px,4.3vw,58px);letter-spacing:.01em;line-height:1.18}
+body[data-scheme="bp5"] .hero h1 em{background:linear-gradient(90deg,#1b4f77,#46afff);-webkit-background-clip:text;background-clip:text;color:transparent}
+body[data-scheme="bp5"] .sec-head h2{font-family:'Michroma',sans-serif;font-weight:400;font-size:clamp(26px,3vw,38px);letter-spacing:.01em;line-height:1.25}
+body[data-scheme="bp5"] .step h3{font-family:'Michroma',sans-serif;font-weight:400;font-size:clamp(20px,2.1vw,27px);line-height:1.35}
+body[data-scheme="bp5"] .docs-body h3{font-family:'Michroma',sans-serif;font-weight:400;font-size:20px;letter-spacing:.02em}
+body[data-scheme="bp5"] .eyebrow::before,body[data-scheme="bp5"] .step .kicker::before{content:"";display:inline-block;width:6px;height:6px;margin-right:10px;vertical-align:1px;background:#46afff;box-shadow:0 0 10px #46afff;border-radius:0}
+body[data-scheme="bp5"] .step .kicker{counter-increment:st}
+body[data-scheme="bp5"] .steps{counter-reset:st}
+body[data-scheme="bp5"] .step .kicker::after{content:" — 0" counter(st) " / 07";color:var(--muted)}
+body[data-scheme="bp5"] .step.is-on h3{color:var(--ink)}
+body[data-scheme="bp5"] .step:not(.is-on){opacity:.3}
+body[data-scheme="bp5"] .how-head{padding-top:120px;margin-bottom:0}
+.chart-rule{border-bottom:1px solid var(--rule);background:linear-gradient(90deg,#46afff,transparent 40%) bottom/100% 1px no-repeat}
+body[data-scheme="bp5"] #how,body[data-scheme="bp5"] .cust,body[data-scheme="bp5"] .dl,body[data-scheme="bp5"] .docs{border-top:1px solid var(--rule);background-image:linear-gradient(90deg,#46afff,transparent 30%);background-size:100% 1px;background-repeat:no-repeat}
+body[data-scheme="bp5"] .mb{border-radius:6px;box-shadow:0 0 0 1px rgba(70,175,255,.35),0 30px 80px -30px rgba(10,40,70,.45),0 0 60px -10px rgba(70,175,255,.25)}
+/* HUD corner brackets on cards */
+body[data-scheme="bp5"] .cu,body[data-scheme="bp5"] .dl-card,body[data-scheme="bp5"] .req-item{position:relative;border-radius:2px;box-shadow:0 1px 2px rgba(10,34,54,.04),0 12px 30px -20px rgba(10,34,54,.25)}
+body[data-scheme="bp5"] .cu::before,body[data-scheme="bp5"] .cu::after,body[data-scheme="bp5"] .dl-card::before,body[data-scheme="bp5"] .dl-card::after,body[data-scheme="bp5"] .req-item::before,body[data-scheme="bp5"] .req-item::after{content:"";position:absolute;width:12px;height:12px;border:0 solid #46afff;pointer-events:none}
+body[data-scheme="bp5"] .cu::before,body[data-scheme="bp5"] .dl-card::before,body[data-scheme="bp5"] .req-item::before{top:-1px;left:-1px;border-top-width:2px;border-left-width:2px}
+body[data-scheme="bp5"] .cu::after,body[data-scheme="bp5"] .dl-card::after,body[data-scheme="bp5"] .req-item::after{bottom:-1px;right:-1px;border-bottom-width:2px;border-right-width:2px}
+body[data-scheme="bp5"] .cu{transition:transform .3s,box-shadow .3s}body[data-scheme="bp5"] .cu:hover{transform:translateY(-3px);box-shadow:0 20px 40px -24px rgba(27,111,176,.45)}
+body[data-scheme="bp5"] .cu-vis{border-radius:2px;background:linear-gradient(180deg,#f3f8fd,#eaf3fb)}
+body[data-scheme="bp5"] .cu h3,body[data-scheme="bp5"] .dl-card h3{font-family:'Saira',sans-serif;font-weight:500;letter-spacing:.02em}
+body[data-scheme="bp5"] .dl-card.primary{background:linear-gradient(160deg,#1b4f77,#0f3557);box-shadow:inset 0 -2px #46afff,0 24px 50px -24px rgba(15,53,87,.7)}
+body[data-scheme="bp5"] pre{border-radius:2px;border-left:2px solid #46afff}
+body[data-scheme="bp5"] .pill{border-radius:2px}
+body[data-scheme="bp5"] .docs-nav a{font-family:'JetBrains Mono',monospace;font-size:12.5px;letter-spacing:.04em}
+body[data-scheme="bp5"] .docs-nav a:hover{border-left-color:#46afff;background:linear-gradient(90deg,rgba(70,175,255,.12),transparent)}
+body[data-scheme="bp5"] .coords::before{content:"● ";color:#3ddc84;text-shadow:0 0 8px #3ddc84}
+@media (max-width:900px){.cust-grid{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:900px){.hero{grid-template-columns:minmax(0,1fr);padding-left:32px;padding-right:32px;overflow-x:clip}.mb-body{position:relative;height:372px}.mb-chat{position:absolute;top:0;right:0;bottom:0;box-shadow:-8px 0 20px -12px rgba(6,20,40,.4)}.hero .mb-chat{display:none}.foot{flex-wrap:wrap;row-gap:12px}.foot .brand{flex-basis:100%}.schemes span{display:none}}
+</style></head><body id="top" data-scheme="bp5"><header class="nav"><a class="brand" href="#top"><svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true"><path class="mk-a" d="M50.38 13.62 A26 26 0 0 0 13.62 50.38 Z" fill="#F4F1EA"/><path d="M50.38 13.62 A26 26 0 0 1 13.62 50.38 Z" fill="#C9A45C"/><path d="M51.09 12.91 L12.91 51.09" style="stroke:var(--bg)" stroke-width="2.6"/></svg><b>FATHOM</b></a><a class="l" href="#how">How it works</a><a class="l" href="#customize">Customize</a><a class="l" href="#docs">Docs</a><a class="l" href="https://github.com/Uhan19/fathom">GitHub</a><a class="btn btn-primary" href="#download">Download</a></header><main>
+<section class="wrap hero"><div>
+<p class="eyebrow">Organize and orchestrate your agent crew</p>
+<h1>See every agent’s work, <em>at a glance.</em></h1>
+<p class="lede">Fathom is a desktop board for organizing and steering your coding agents. What needs you floats to the surface. Work in progress, parked work and queued work sit at their own depth, with the agent’s live terminal beside them.</p>
+<div class="cta"><a class="btn btn-primary" href="#download">Download for macOS</a><a class="btn" href="#docs">Read the docs</a></div>
+<p class="coords">MACOS 13+ · LINUX · OPEN SOURCE</p>
+</div><div class="sound"><svg class="contour" viewBox="0 0 600 500" preserveAspectRatio="none" aria-hidden="true" fill="none" stroke-opacity=".2"><path d="M-20 420 C 150 380, 280 470, 620 360"/><path d="M-12 386 C 150 340, 280 440, 620 322"/><path d="M-4 352 C 150 300, 280 410, 620 284"/><path d="M4 318 C 150 260, 280 380, 620 246"/><path d="M12 284 C 150 220, 280 350, 620 208"/><path d="M20 250 C 150 180, 280 320, 620 170"/><path d="M28 216 C 150 140, 280 290, 620 132"/><path d="M36 182 C 150 100, 280 260, 620 94"/><path d="M44 148 C 150 60, 280 230, 620 56"/><path d="M52 114 C 150 20, 280 200, 620 18"/></svg><div class="mb" aria-hidden="true">
+<div class="mb-top"><svg width="14" height="14" viewBox="0 0 64 64" aria-hidden="true"><path class="mk-a" d="M50.38 13.62 A26 26 0 0 0 13.62 50.38 Z" fill="#F4F1EA"/><path d="M50.38 13.62 A26 26 0 0 1 13.62 50.38 Z" fill="#C9A45C"/><path d="M51.09 12.91 L12.91 51.09" stroke="#1b4f77" stroke-width="2.6"/></svg><b>FATHOM</b><span class="mb-count">5</span><span class="mb-btn">BOSUN</span><span class="mb-btn y">CHAT</span></div>
+<div class="mb-body">
+<div class="mb-board">
+<div class="mb-heads"><span></span><span>ATLAS-API</span><span>HARBOR-WEB</span><span>KEEL-CLI</span></div>
+<div class="mb-wave"></div>
+<div class="mb-row r-surface"><em>SURFACE</em><div><div class="mb-card " data-row="surface"><i class="mb-bar"></i><span>Pick a retry budget</span></div></div><div><div class="mb-card " data-row="surface"><i class="mb-bar"></i><span>Choose empty-state copy</span></div></div><div><div class="mb-card " data-row="surface"><i class="mb-bar"></i><span>Confirm flag names</span></div></div></div>
+<div class="mb-row r-shallows"><em>SHALLOWS</em><div><div class="mb-card " data-row="shallows"><i class="mb-bar"></i><span>Split the invoice service</span><span class="mb-sailor"><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><path d="M5 31 Q6 24 11 23 L21 23 Q26 24 27 31 Z" fill="#3f6b84"></path><path d="M13 23 L16 27 L19 23 Z" fill="#eceeea"></path><rect x="9" y="11" width="14" height="12" rx="3" fill="#eceeea"></rect><rect x="8" y="14.5" width="16" height="4" rx="1.5" class="visor"></rect><rect x="13" y="20" width="6" height="1.4" rx=".7" fill="#1b2438"></rect><path d="M6.5 10 Q16 3 25.5 10 L25.5 11.5 L6.5 11.5 Z" fill="#3c4d72"></path><rect x="5.5" y="10.5" width="21" height="2.4" rx="1" fill="#1b2438"></rect><circle cx="16" cy="7.4" r="2.1" fill="#f0c22c"></circle><path d="M16 6.3 L16 8.6 M15 7.9 Q16 8.9 17 7.9" stroke="#1b2438" stroke-width=".6" fill="none"></path></svg></span></div></div><div><div class="mb-card " data-row="shallows"><i class="mb-bar"></i><span>Rebuild settings page</span><span class="mb-sailor"><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><path d="M5 31 Q6 24 11 23 L21 23 Q26 24 27 31 Z" fill="#3f6b84"></path><path d="M13 23 L16 27 L19 23 Z" fill="#eceeea"></path><rect x="9" y="11" width="14" height="12" rx="3" fill="#eceeea"></rect><rect x="8" y="14.5" width="16" height="4" rx="1.5" class="visor"></rect><rect x="13" y="20" width="6" height="1.4" rx=".7" fill="#1b2438"></rect><path d="M6.5 10 Q16 3 25.5 10 L25.5 11.5 L6.5 11.5 Z" fill="#3c4d72"></path><rect x="5.5" y="10.5" width="21" height="2.4" rx="1" fill="#1b2438"></rect><circle cx="16" cy="7.4" r="2.1" fill="#f0c22c"></circle><path d="M16 6.3 L16 8.6 M15 7.9 Q16 8.9 17 7.9" stroke="#1b2438" stroke-width=".6" fill="none"></path></svg></span></div><div class="mb-card mb-ghost" data-row="shallows"><i class="mb-bar"></i><span>Try a denser table</span><b class="mb-tag">ASKED</b></div></div><div></div></div>
+<div class="mb-row r-deep"><em>DEEP</em><div><div class="mb-card " data-row="deep"><i class="mb-bar"></i><span>Move nightly export</span><small>Until 2026-12-02</small></div></div><div><div class="mb-card mb-origin" data-row="deep"><i class="mb-bar"></i><span>Try a denser table</span></div></div><div><div class="mb-card " data-row="deep"><i class="mb-bar"></i><span>Shell completions</span><b class="mb-tag a">ANSWERED</b></div></div></div>
+<div class="mb-row r-seabed"><em>SEABED</em><div></div><div><div class="mb-card " data-row="seabed"><i class="mb-bar"></i><span>Ship dark mode</span><small>Waits for hrb-18</small></div></div><div></div></div>
+<div class="mb-row r-landed"><em>LANDED</em><div><div class="mb-card " data-row="landed"><i class="mb-bar"></i><span>Fix duplicate receipts</span></div></div><div><div class="mb-card " data-row="landed"><i class="mb-bar"></i><span>Lazy-load charts</span></div></div><div><div class="mb-card " data-row="landed"><i class="mb-bar"></i><span>Print a config hint</span></div></div></div>
+<div class="mb-bosun"><div class="mb-bosun-h"><i></i>BOSUN <span>Bosun is ready</span></div><code>&gt; show me only the harbor-web tasks<br>✓ Only harbor-web shows now.</code></div>
+</div>
+<div class="mb-chat"><div class="mb-chat-h">FIRSTMATE</div><code>● Checked 7 projects.<br>● 5 cards need you<br>&nbsp;&nbsp;at the surface.<br>✓ ledger-sync landed<br>&nbsp;&nbsp;“Stop double-counting<br>&nbsp;&nbsp;refunds”.<br><br>&gt; ▍</code></div>
+</div>
+</div></div></section>
+<section id="how" class="wrap"><div class="sec-head how-head"><p class="eyebrow">How it works</p><h2>One board, sorted by depth</h2><p class="lede">Every task sits at the depth that matches its state, from what needs you at the surface to what has landed.</p></div>
+<div class="story"><div class="steps"><div class="step" data-step-for="surface"><p class="kicker">Surface</p><h3>What needs you floats up</h3><p>Questions and decisions from your agents rise to the top row, marked in yellow. The header counts them, so a glance tells you if anyone is waiting.</p></div><div class="step" data-step-for="shallows"><p class="kicker">Shallows</p><h3>See the work underway</h3><p>Every task an agent is working on sits in the shallows. A small sailor on a card shows a sub-agent is working on it, and its visor glows while it works. Click it to open that sub-agent’s live terminal.</p></div><div class="step" data-step-for="deep"><p class="kicker">Deep and Seabed</p><h3>Queued, parked and blocked</h3><p>The deep holds what is parked, or held until a date. The seabed holds what comes next, with any blocking tasks named on the card.</p></div><div class="step" data-step-for="move"><p class="kicker">Drag to ask</p><h3>You move cards, the agent agrees</h3><p>Drop a card in another row and Fathom asks the agent to move the task. The card waits with an Asked tag until the agent says yes, or answers with a reason.</p></div><div class="step" data-step-for="chat"><p class="kicker">Chat</p><h3>Talk to the agent beside the board</h3><p>The chat panel is the agent’s real terminal: Firstmate, Claude Code or Codex. It runs in herdr-core, so it keeps going after Fathom quits.</p></div><div class="step" data-step-for="bosun"><p class="kicker">Bosun</p><h3>Change Fathom in plain words</h3><p>Ask Bosun to show only one project, collapse columns or switch to dark mode. It uses only Fathom’s own tools and asks before risky changes.</p></div><div class="step" data-step-for="landed"><p class="kicker">Landed</p><h3>Done, newest first</h3><p>Finished work lands at the bottom with its pull request linked, so you can see what shipped today.</p></div></div><div class="stage"><div class="mb" aria-hidden="true">
+<div class="mb-top"><svg width="14" height="14" viewBox="0 0 64 64" aria-hidden="true"><path class="mk-a" d="M50.38 13.62 A26 26 0 0 0 13.62 50.38 Z" fill="#F4F1EA"/><path d="M50.38 13.62 A26 26 0 0 1 13.62 50.38 Z" fill="#C9A45C"/><path d="M51.09 12.91 L12.91 51.09" stroke="#1b4f77" stroke-width="2.6"/></svg><b>FATHOM</b><span class="mb-count">5</span><span class="mb-btn">BOSUN</span><span class="mb-btn y">CHAT</span></div>
+<div class="mb-body">
+<div class="mb-board">
+<div class="mb-heads"><span></span><span>ATLAS-API</span><span>HARBOR-WEB</span><span>KEEL-CLI</span></div>
+<div class="mb-wave"></div>
+<div class="mb-row r-surface"><em>SURFACE</em><div><div class="mb-card " data-row="surface"><i class="mb-bar"></i><span>Pick a retry budget</span></div></div><div><div class="mb-card " data-row="surface"><i class="mb-bar"></i><span>Choose empty-state copy</span></div></div><div><div class="mb-card " data-row="surface"><i class="mb-bar"></i><span>Confirm flag names</span></div></div></div>
+<div class="mb-row r-shallows"><em>SHALLOWS</em><div><div class="mb-card " data-row="shallows"><i class="mb-bar"></i><span>Split the invoice service</span><span class="mb-sailor"><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><path d="M5 31 Q6 24 11 23 L21 23 Q26 24 27 31 Z" fill="#3f6b84"></path><path d="M13 23 L16 27 L19 23 Z" fill="#eceeea"></path><rect x="9" y="11" width="14" height="12" rx="3" fill="#eceeea"></rect><rect x="8" y="14.5" width="16" height="4" rx="1.5" class="visor"></rect><rect x="13" y="20" width="6" height="1.4" rx=".7" fill="#1b2438"></rect><path d="M6.5 10 Q16 3 25.5 10 L25.5 11.5 L6.5 11.5 Z" fill="#3c4d72"></path><rect x="5.5" y="10.5" width="21" height="2.4" rx="1" fill="#1b2438"></rect><circle cx="16" cy="7.4" r="2.1" fill="#f0c22c"></circle><path d="M16 6.3 L16 8.6 M15 7.9 Q16 8.9 17 7.9" stroke="#1b2438" stroke-width=".6" fill="none"></path></svg></span></div></div><div><div class="mb-card " data-row="shallows"><i class="mb-bar"></i><span>Rebuild settings page</span><span class="mb-sailor"><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><path d="M5 31 Q6 24 11 23 L21 23 Q26 24 27 31 Z" fill="#3f6b84"></path><path d="M13 23 L16 27 L19 23 Z" fill="#eceeea"></path><rect x="9" y="11" width="14" height="12" rx="3" fill="#eceeea"></rect><rect x="8" y="14.5" width="16" height="4" rx="1.5" class="visor"></rect><rect x="13" y="20" width="6" height="1.4" rx=".7" fill="#1b2438"></rect><path d="M6.5 10 Q16 3 25.5 10 L25.5 11.5 L6.5 11.5 Z" fill="#3c4d72"></path><rect x="5.5" y="10.5" width="21" height="2.4" rx="1" fill="#1b2438"></rect><circle cx="16" cy="7.4" r="2.1" fill="#f0c22c"></circle><path d="M16 6.3 L16 8.6 M15 7.9 Q16 8.9 17 7.9" stroke="#1b2438" stroke-width=".6" fill="none"></path></svg></span></div><div class="mb-card mb-ghost" data-row="shallows"><i class="mb-bar"></i><span>Try a denser table</span><b class="mb-tag">ASKED</b></div></div><div></div></div>
+<div class="mb-row r-deep"><em>DEEP</em><div><div class="mb-card " data-row="deep"><i class="mb-bar"></i><span>Move nightly export</span><small>Until 2026-12-02</small></div></div><div><div class="mb-card mb-origin" data-row="deep"><i class="mb-bar"></i><span>Try a denser table</span></div></div><div><div class="mb-card " data-row="deep"><i class="mb-bar"></i><span>Shell completions</span><b class="mb-tag a">ANSWERED</b></div></div></div>
+<div class="mb-row r-seabed"><em>SEABED</em><div></div><div><div class="mb-card " data-row="seabed"><i class="mb-bar"></i><span>Ship dark mode</span><small>Waits for hrb-18</small></div></div><div></div></div>
+<div class="mb-row r-landed"><em>LANDED</em><div><div class="mb-card " data-row="landed"><i class="mb-bar"></i><span>Fix duplicate receipts</span></div></div><div><div class="mb-card " data-row="landed"><i class="mb-bar"></i><span>Lazy-load charts</span></div></div><div><div class="mb-card " data-row="landed"><i class="mb-bar"></i><span>Print a config hint</span></div></div></div>
+<div class="mb-bosun"><div class="mb-bosun-h"><i></i>BOSUN <span>Bosun is ready</span></div><code>&gt; show me only the harbor-web tasks<br>✓ Only harbor-web shows now.</code></div>
+</div>
+<div class="mb-chat"><div class="mb-chat-h">FIRSTMATE</div><code>● Checked 7 projects.<br>● 5 cards need you<br>&nbsp;&nbsp;at the surface.<br>✓ ledger-sync landed<br>&nbsp;&nbsp;“Stop double-counting<br>&nbsp;&nbsp;refunds”.<br><br>&gt; ▍</code></div>
+</div>
+</div></div></div></section>
+<section id="customize" class="wrap cust">
+<div class="sec-head"><p class="eyebrow">Make it yours</p><h2>Shape the board around your work</h2><p class="lede">Change the board in Settings, by dragging, or by asking Bosun in plain words.</p></div>
+<div class="cust-grid">
+<article class="cu"><div class="cu-vis"><div class="v-rename"><span class="v-lbl">SURFACE</span><span class="v-arrow">→</span><span class="v-field">NEEDS ME<i></i></span></div><div class="v-rename"><span class="v-lbl">ATLAS-API</span><span class="v-arrow">→</span><span class="v-field">BILLING<i></i></span></div></div>
+<h3>Rename rows and columns</h3><p>Call the rows and columns whatever fits how you work.</p></article>
+<article class="cu"><div class="cu-vis"><div class="v-cols"><span>ATLAS</span><span>HARBOR</span><span class="v-del">KEEL <b>×</b></span><span class="v-add">+ Column</span></div></div>
+<h3>Add and delete columns</h3><p>Add a column to group cards your own way. Delete the ones you don’t need, and their cards move where you choose.</p></article>
+<article class="cu"><div class="cu-vis"><div class="v-layout"><div class="v-c"></div><div class="v-c wide"></div><div class="v-c slim"><em>KEEL 3</em></div><div class="v-c"></div></div></div>
+<h3>Reorder, resize, collapse</h3><p>Drag columns into order, widen the busy ones, and collapse quiet ones to a strip with a count.</p></article>
+<article class="cu"><div class="cu-vis"><div class="v-font"><span class="v-k">Board</span><span class="v-sel">Saira</span><span class="v-size">− 13 +</span></div><div class="v-font"><span class="v-k">Chat</span><span class="v-sel mono">JetBrains Mono</span><span class="v-size">− 12 +</span></div></div>
+<h3>Fonts and sizes</h3><p>Pick the board font and the chat font separately, each with its own size.</p></article>
+<article class="cu"><div class="cu-vis"><div class="v-theme"><span class="t-l">Light</span><span class="t-d">Dark</span></div></div>
+<h3>Light and dark</h3><p>Both themes keep the same row colors, so the board reads the same either way.</p></article>
+<article class="cu"><div class="cu-vis"><div class="v-ask"><span>&gt; hide the chat panel</span><span class="ok">✓ The chat panel is hidden.</span><span>&gt; show only harbor-web</span><span class="ok">✓ Only harbor-web shows now.</span></div></div>
+<h3>Ask Bosun for the rest</h3><p>Bosun can hide or show the chat panel and filter the board to the projects you name, all in plain words.</p></article>
+</div>
+
+</section><div class="wrap"><section id="download" class="dl">
+<div class="sec-head"><p class="eyebrow">Download</p><h2>Get Fathom</h2><p class="lede">Free and open source under the <a href="https://github.com/Uhan19/fathom/blob/main/LICENSE">MIT license</a>. Version <span data-cfg="version">[VERSION]</span>.</p></div>
+<div class="dl-grid">
+<article class="dl-card primary">
+<h3>macOS</h3><p class="dl-req">macOS 13 Ventura or newer</p>
+<a class="btn btn-primary" href="#download" data-dl="mac">Download the .dmg</a>
+<p class="dl-note">Open the .dmg and drag Fathom into Applications.</p>
+</article>
+<article class="dl-card">
+<h3>Linux</h3><p class="dl-req">Ubuntu 22.04 or similar</p>
+<div class="dl-row"><a class="btn" href="#download" data-dl="deb">.deb package</a><a class="btn" href="#download" data-dl="appimage">AppImage</a></div>
+<p class="dl-note">New on Linux: tell us on GitHub if something looks off.</p>
+</article>
+<article class="dl-card">
+<h3>From source</h3><p class="dl-req">Rust, Node 22 or newer, and pnpm</p>
+<a class="btn" href="https://github.com/Uhan19/fathom">github.com/Uhan19/fathom</a>
+<p class="dl-note">Tauri 2 with a React front end.</p>
+</article>
+</div>
+<p class="dl-msg" role="status" aria-live="polite"></p>
+<div class="dl-prereq"><span>Install these too:</span><a href="https://herdr.dev/core/">herdr-core ↗</a><a href="https://code.claude.com/docs/en/quickstart">Claude Code ↗</a><a href="https://github.com/openai/codex">Codex ↗</a><a href="https://github.com/kunchenguid/firstmate">Firstmate ↗</a><a href="#d-need">What each one does</a></div>
+</section><section id="docs" class="docs">
+<div class="sec-head"><p class="eyebrow">Docs</p><h2>Set up and use Fathom</h2></div>
+<div class="docs-grid">
+<nav class="docs-nav" aria-label="Docs">
+<a href="#d-install">Install</a><a href="#d-need">What you need</a><a href="#d-source">Where tasks come from</a><a href="#d-rows">The five rows</a><a href="#d-move">Moving cards</a><a href="#d-crew">Crewmates</a><a href="#d-chat">Chat panel</a><a href="#d-bosun">Bosun</a><a href="#d-custom">Customize</a><a href="#d-settings">Settings and data</a><a href="#d-keys">Keyboard</a>
+</nav>
+<div class="docs-body">
+<article id="d-install"><h3>Install</h3>
+<p><b>macOS.</b> Open the .dmg and drag Fathom into Applications. Fathom needs macOS 13 or newer.</p>
+<p><b>Linux.</b> Install the package, or make the AppImage executable and run it:</p>
+<pre><code>sudo apt install ./Fathom_amd64.deb
+chmod +x Fathom_amd64.AppImage &amp;&amp; ./Fathom_amd64.AppImage</code></pre></article>
+<article id="d-need"><h3>What you need</h3>
+<p>Fathom is the board. These tools do the work it shows. Install them first.</p>
+<div class="req">
+<div class="req-item"><h4><a href="https://herdr.dev/core/">herdr-core</a> <span class="pill">Required</span></h4>
+<p>Runs the live terminals for the chat, crewmates and Bosun, through the <code>herdr-core</code> command. They keep running after Fathom quits. The header shows a green dot when Fathom can reach it.</p>
+<pre><code>curl -fsSL https://releases.herdr.dev/core/install.sh | sh</code></pre></div>
+<div class="req-item"><h4><a href="https://code.claude.com/docs/en/quickstart">Claude Code</a> <span class="pill">For Bosun and chat</span></h4>
+<p>Bosun runs on Claude Code, and it can be your chat agent. It needs a paid Claude plan or a Claude Console account.</p>
+<pre><code>curl -fsSL https://claude.ai/install.sh | bash</code></pre></div>
+<div class="req-item"><h4><a href="https://github.com/openai/codex">Codex</a> <span class="pill">Optional</span></h4>
+<p>Works as a chat agent instead of Claude Code. Follow the install steps in its README.</p></div>
+<div class="req-item"><h4><a href="https://github.com/kunchenguid/firstmate">Firstmate</a> <span class="pill">Optional</span></h4>
+<p>An agent setup that runs a crew of coding agents for you. Fathom shows its tasks. Without it, Fathom keeps its own backlog. Firstmate needs git and the GitHub CLI.</p>
+<pre><code>gh auth login
+git clone https://github.com/kunchenguid/firstmate ~/Documents/firstmate
+cd ~/Documents/firstmate &amp;&amp; claude</code></pre></div>
+</div></article>
+<article id="d-source"><h3>Where tasks come from</h3>
+<p><b>With Firstmate.</b> Fathom finds Firstmate in <code>~/Documents/firstmate</code>; if it lives elsewhere, set the Firstmate home folder in Settings. Fathom reads tasks through <code>bin/fm-tasks-axi.sh</code> in that folder and never changes the task list.</p>
+<p><b>Without Firstmate.</b> Leave the Firstmate home empty. Fathom keeps a local backlog that any agent fills through Fathom’s MCP server. Add it to your agent:</p>
+<pre><code># macOS
+claude mcp add --scope user fathom -- /Applications/Fathom.app/Contents/MacOS/fathom --mcp
+# Linux, after installing the .deb
+claude mcp add --scope user fathom -- /usr/bin/fathom --mcp</code></pre>
+<p>Claude Code and Codex get the server on their own when you open them from the chat panel.</p>
+<p>The board updates live as tasks change. There is no refresh button.</p></article>
+<article id="d-rows"><h3>The five rows</h3>
+<table><thead><tr><th scope="col">Row</th><th scope="col">What it holds</th></tr></thead><tbody>
+<tr><td><i class="sw sw-s"></i>Surface</td><td>Needs you: a question or a decision.</td></tr>
+<tr><td><i class="sw sw-sh"></i>Shallows</td><td>In progress now.</td></tr>
+<tr><td><i class="sw sw-d"></i>Deep</td><td>Parked, or held until a date.</td></tr>
+<tr><td><i class="sw sw-sb"></i>Seabed</td><td>Queued, including work waiting on other tasks.</td></tr>
+<tr><td><i class="sw sw-l"></i>Landed</td><td>Done, newest first.</td></tr></tbody></table>
+<p>Each project starts as a column. Rename, reorder, resize or collapse columns, and rename rows in Settings.</p></article>
+<article id="d-move"><h3>Moving cards</h3>
+<p>Drag a card within its row to reorder it. Drag it to another row and Fathom asks the agent to move the task. The card stays put with an <b>Asked</b> tag until the agent agrees. If the agent declines, the tag becomes <b>Answered</b> with its reply. If the request could not be sent, it shows <b>Not sent</b> with a button to try again.</p></article>
+<article id="d-crew"><h3>Crewmates</h3>
+<p>A small sailor on a card means a sub-agent is working on that task. Its visor glows while it works and dims while idle. Click the sailor to open that sub-agent’s live terminal.</p></article>
+<article id="d-chat"><h3>Chat panel</h3>
+<p>The chat panel beside the board is the agent’s real terminal. It attaches to the terminal labelled <code>firstmate.role=primary</code> on a Firstmate home, or <code>fathom.role=chat</code> on Fathom’s own backlog. If there isn’t one, open Claude Code, Codex or Firstmate from the panel, or pick a running terminal. Click a card and use “Message Firstmate about this card” to send it a note.</p></article>
+<article id="d-bosun"><h3>Bosun</h3>
+<p>Bosun changes Fathom itself when you ask in plain words: columns, rows, which projects show, the theme, fonts and panels. It runs Claude Code with only Fathom’s own tools, and asks before risky changes. Open it with <kbd>⌘J</kbd> on macOS or <kbd>Ctrl+J</kbd> on Linux.</p></article>
+<article id="d-custom"><h3>Customize</h3>
+<ul><li><b>Columns.</b> Each project starts as a column. Add, delete, rename, reorder and resize columns, and collapse one to a thin strip with its name and count.</li>
+<li><b>Rows.</b> Rename rows in Settings, and collapse one to a thin band with its name and count. The rows are Surface, Shallows, Deep, Seabed and Landed.</li>
+<li><b>Fonts.</b> Set the board font and size, and the chat font and size, separately, in Settings.</li>
+<li><b>Theme.</b> Switch between light and dark.</li>
+<li><b>Ask Bosun.</b> Bosun can hide or show the chat panel and show only the projects you name.</li></ul>
+<p>Or ask Bosun in plain words, for example “rename Surface to Needs me” or “make the chat font bigger”.</p></article>
+<article id="d-settings"><h3>Settings and data</h3>
+<p>Settings holds the Firstmate home, the herdr-core chat label, agent folder, session and socket, the chat and board fonts and sizes, and the row names. Fathom keeps its layout in a local SQLite file. Settings shows its size and location, and exports everything as JSON and CSV.</p></article>
+<article id="d-keys"><h3>Keyboard</h3>
+<table><tbody><tr><td><kbd>⌘J</kbd> / <kbd>Ctrl+J</kbd></td><td>Open or close Bosun</td></tr><tr><td><kbd>Esc</kbd></td><td>Close a worker’s terminal</td></tr></tbody></table></article>
+</div>
+</div>
+</section></div></main><footer class="foot wrap"><a class="brand" href="#top"><svg width="20" height="20" viewBox="0 0 64 64" aria-hidden="true"><path class="mk-a" d="M50.38 13.62 A26 26 0 0 0 13.62 50.38 Z" fill="#F4F1EA"/><path d="M50.38 13.62 A26 26 0 0 1 13.62 50.38 Z" fill="#C9A45C"/><path d="M51.09 12.91 L12.91 51.09" style="stroke:var(--bg)" stroke-width="2.6"/></svg><b>FATHOM</b></a><span>Open source.</span><a href="https://github.com/Uhan19/fathom">GitHub</a><a href="#docs">Docs</a></footer><script>
+const FATHOM_LINKS = { version: "0.1.0", mac: "https://github.com/Uhan19/fathom/releases/latest/download/Fathom_universal.dmg", deb: "https://github.com/Uhan19/fathom/releases/latest/download/Fathom_amd64.deb", appimage: "https://github.com/Uhan19/fathom/releases/latest/download/Fathom_amd64.AppImage" }; // set these when the files are hosted
+(function(){
+  document.querySelectorAll('[data-cfg="version"]').forEach(function(el){ if (FATHOM_LINKS.version) el.textContent = FATHOM_LINKS.version; });
+  var msg = document.querySelector('.dl-msg');
+  document.querySelectorAll('[data-dl]').forEach(function(a){
+    var url = FATHOM_LINKS[a.getAttribute('data-dl')];
+    if (url) { a.href = url; return; }
+    a.addEventListener('click', function(e){ e.preventDefault(); if (msg) msg.textContent = 'This download link is not set yet.'; });
+  });
+  var boards = document.querySelectorAll('.stage .mb');
+  var steps = document.querySelectorAll('[data-step-for]');
+  var stage = document.querySelector('.stage');
+  var stacked = window.matchMedia('(max-width:900px)');
+  function set(name){ boards.forEach(function(b){ b.setAttribute('data-step', name); }); steps.forEach(function(s){ s.classList.toggle('is-on', s.getAttribute('data-step-for') === name); }); document.dispatchEvent(new CustomEvent('fathom-step', { detail: name })); }
+  var cur = null, ticking = false;
+  function pick(){
+    ticking = false;
+    var line = window.innerHeight * 0.5, best = steps[0];
+    if (stacked.matches && stage) line = (stage.getBoundingClientRect().bottom + window.innerHeight) / 2;
+    steps.forEach(function(st){ var h = st.querySelector('h3') || st; if (h.getBoundingClientRect().top < line) best = st; });
+    var name = best && best.getAttribute('data-step-for');
+    if (name && name !== cur) { cur = name; set(name); }
+  }
+  if (steps.length) {
+    window.addEventListener('scroll', function(){ if (!ticking) { ticking = true; requestAnimationFrame(pick); } }, { passive: true });
+    window.addEventListener('resize', pick);
+    pick();
+  }
+})();
+</script></body></html>
