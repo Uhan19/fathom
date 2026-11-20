@@ -11,6 +11,8 @@ A small sailor on a card shows that a crewmate is on the task: its red visor glo
 Clicking the sailor opens that crewmate's live terminal.
 When an agent reports something new on a card you have not read yet, its colored bar turns magenta and blinks until you open the card and close it again.
 
+To skip the manual steps below, paste the [agent setup sheet](docs/agent-setup.md) into Codex, Claude Code or another coding agent on your computer, and it sets Fathom up for you.
+
 ## Requirements
 
 - macOS, or Linux on x86_64 or arm64.
