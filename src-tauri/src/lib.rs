@@ -1,4 +1,5 @@
 mod commands;
+mod context;
 mod control;
 mod db;
 mod export;
@@ -7,6 +8,7 @@ mod herdr;
 mod launch;
 mod mcp;
 mod moves;
+mod pulls;
 mod requests;
 mod settings;
 mod shell_path;
@@ -51,6 +53,7 @@ pub fn run() {
             let db = db::Db::open(&data_dir)?;
             let state = state::AppState::start(app.handle(), db, log_dir, started)?;
             app.manage(state);
+            app.manage(std::sync::Arc::new(pulls::PrCache::default()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -58,6 +61,12 @@ pub fn run() {
             commands::read_board,
             commands::log_launch,
             commands::card_detail,
+            commands::card_context,
+            commands::card_files,
+            commands::file_preview,
+            commands::open_file,
+            commands::reveal_file,
+            commands::pr_status,
             commands::update_column,
             commands::set_column_name,
             commands::move_column,

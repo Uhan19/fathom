@@ -34,6 +34,10 @@ const KEY_AGENT_FILTER: &str = "agentFilter";
 const KEY_HELPER_STARTED: &str = "helperStarted";
 const KEY_HELPER_ASKING: &str = "helperAsking";
 const KEY_SHORTCUTS: &str = "shortcuts";
+const KEY_LINEAR_WORKSPACE: &str = "linearWorkspace";
+const KEY_TICKET_PREFIXES: &str = "ticketPrefixes";
+const LINEAR_HOST: &str = "linear.app/";
+const MAX_PREFIX_LEN: usize = 10;
 
 #[cfg(target_os = "macos")]
 const PLATFORM: &str = "macos";
@@ -112,6 +116,10 @@ pub struct Settings {
     #[serde(default)]
     pub helper_started: bool,
     pub shortcuts: Shortcuts,
+    #[serde(default)]
+    pub linear_workspace: String,
+    #[serde(default)]
+    pub ticket_prefixes: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -328,11 +336,23 @@ pub fn load(db: &Db) -> Result<Settings, String> {
             .unwrap_or_default(),
         helper_started: flag(KEY_HELPER_STARTED, false),
         shortcuts: read_shortcuts(stored.get(KEY_SHORTCUTS)),
+        linear_workspace: stored
+            .get(KEY_LINEAR_WORKSPACE)
+            .and_then(|v| linear_workspace(v).ok())
+            .unwrap_or_default(),
+        ticket_prefixes: stored
+            .get(KEY_TICKET_PREFIXES)
+            .and_then(|v| serde_json::from_str::<Vec<String>>(v).ok())
+            .and_then(|v| ticket_prefixes(&v).ok())
+            .unwrap_or_default(),
     })
 }
 
 pub fn store(db: &Db, next: &Settings) -> Result<Settings, String> {
     check(next)?;
+    let workspace = linear_workspace(&next.linear_workspace)?;
+    let prefixes = serde_json::to_string(&ticket_prefixes(&next.ticket_prefixes)?)
+        .map_err(|e| e.to_string())?;
     let theme = serde_json::to_value(next.theme).map_err(|e| e.to_string())?;
     let shortcuts = serde_json::to_string(&next.shortcuts).map_err(|e| e.to_string())?;
     let agent_filter = serde_json::to_value(next.agent_filter).map_err(|e| e.to_string())?;
@@ -354,6 +374,8 @@ pub fn store(db: &Db, next: &Settings) -> Result<Settings, String> {
         (KEY_DETAIL_WIDTH, next.detail_width.to_string()),
         (KEY_PROJECT_FILTER, names_json(&next.project_filter)),
         (KEY_SHORTCUTS, shortcuts),
+        (KEY_LINEAR_WORKSPACE, workspace),
+        (KEY_TICKET_PREFIXES, prefixes),
         (
             KEY_AGENT_FILTER,
             agent_filter.as_str().unwrap_or_default().to_string(),
@@ -430,6 +452,48 @@ fn check_shortcuts(shortcuts: &Shortcuts) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+pub fn linear_workspace(input: &str) -> Result<String, String> {
+    let trimmed = input.trim();
+    let name = match trimmed.find(LINEAR_HOST) {
+        Some(at) => trimmed[at + LINEAR_HOST.len()..]
+            .split('/')
+            .next()
+            .unwrap_or_default(),
+        None => trimmed.trim_matches('/'),
+    };
+    if name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        Ok(name.to_string())
+    } else {
+        Err(format!(
+            "the Linear workspace is the name after linear.app/ in a ticket link, not \"{trimmed}\""
+        ))
+    }
+}
+
+pub fn ticket_prefixes(input: &[String]) -> Result<Vec<String>, String> {
+    let mut prefixes = Vec::<String>::new();
+    for raw in input {
+        let prefix = raw.trim().trim_end_matches('-').to_ascii_uppercase();
+        if prefix.is_empty() || prefixes.contains(&prefix) {
+            continue;
+        }
+        let starts_with_letter = prefix.starts_with(|c: char| c.is_ascii_alphabetic());
+        let fits =
+            prefix.len() <= MAX_PREFIX_LEN && prefix.chars().all(|c| c.is_ascii_alphanumeric());
+        if !starts_with_letter || !fits {
+            return Err(format!(
+                "a ticket prefix is a short word of letters and digits, such as ENG, not \"{}\"",
+                raw.trim()
+            ));
+        }
+        prefixes.push(prefix);
+    }
+    Ok(prefixes)
 }
 
 pub fn surface_name(surface: Surface) -> &'static str {
@@ -833,6 +897,36 @@ mod tests {
             assert!(check_shortcuts(defaults).is_ok(), "{platform}");
             assert!(defaults.named().iter().all(|(_, c)| is_shortcut(c)));
         }
+    }
+
+    #[test]
+    fn linear_settings_are_cleaned_and_remembered() {
+        let (_dir, db) = fresh();
+        let first = load(&db).unwrap();
+        assert_eq!(first.linear_workspace, "");
+        assert!(first.ticket_prefixes.is_empty());
+
+        let saved = update(&db, |s| {
+            s.linear_workspace = " https://linear.app/reef-co/issue/ENG-12/fix ".into();
+            s.ticket_prefixes = vec![" eng".into(), "OPS-".into(), "ENG".into(), String::new()];
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(saved.linear_workspace, "reef-co");
+        assert_eq!(saved.ticket_prefixes, ["ENG", "OPS"]);
+        let reopened = load(&Db::open_file(db.path()).unwrap()).unwrap();
+        assert_eq!(reopened, saved);
+
+        assert_eq!(linear_workspace("reef-co/").unwrap(), "reef-co");
+        assert!(linear_workspace("reef co").is_err());
+        assert!(ticket_prefixes(&["2FA".into()]).is_err());
+        assert!(ticket_prefixes(&["ENG,OPS".into()]).is_err());
+        let refused = update(&db, |s| {
+            s.ticket_prefixes = vec!["E N G".into()];
+            Ok(())
+        });
+        assert!(refused.is_err());
+        assert_eq!(load(&db).unwrap(), saved);
     }
 
     #[test]

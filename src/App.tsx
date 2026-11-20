@@ -204,6 +204,10 @@ export default function App() {
     view?.rows.forEach((r) => (names[r.row] = r.name));
     return names;
   }, [view]);
+  const linking = useMemo(
+    () => ({ linearWorkspace: settings?.linearWorkspace ?? "", ticketPrefixes: settings?.ticketPrefixes ?? [] }),
+    [settings?.linearWorkspace, settings?.ticketPrefixes],
+  );
   const collapsedRows = useMemo(() => (view?.rows ?? []).filter((r) => r.collapsed).map((r) => r.row), [view]);
 
   const cards = view?.cards ?? [];
@@ -472,6 +476,8 @@ export default function App() {
               request={shownRequest(selected.id, overlay.requests)}
               width={detailWidth}
               chatTerminal={chatTerminal}
+              linking={linking}
+              mark={updates.marks[selected.id] ?? ""}
               onClose={() => openCard(null)}
               onOpenCard={(id) => cards.some((c) => c.id === id) && openCard(id)}
               onResend={(id) => void changeOverlay(api.resendRequest(id))}

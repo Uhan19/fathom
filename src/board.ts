@@ -3,7 +3,6 @@ import {
   type Card,
   type CardPlace,
   type Column,
-  type Link,
   type MoveRequest,
   type MoveStatus,
   type Overlay,
@@ -172,13 +171,6 @@ export function holdHeading(card: Card): string | null {
     default:
       return card.holdUntil ? `On hold (${card.holdKind}) until ${card.holdUntil}` : `On hold (${card.holdKind})`;
   }
-}
-
-export function linkLabel(link: Link): string {
-  const pr = link.target.match(/\/pull\/(\d+)/);
-  if (link.kind === "pr" && pr) return `PR #${pr[1]} on GitHub`;
-  if (link.kind === "report") return `Report: ${link.target.split("/").pop() ?? link.target}`;
-  return `${link.kind}: ${link.target}`;
 }
 
 export function cardMessage(card: Pick<Card, "id" | "title">, text: string): string {

@@ -40,6 +40,7 @@ export function SettingsDialog({ settings, mac, rowNames, onPreview, onSaved, on
   const homeRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(settings);
   const [names, setNames] = useState(rowNames);
+  const [prefixes, setPrefixes] = useState(settings.ticketPrefixes.join(", "));
   const [data, setData] = useState<DataInfo | null>(null);
   const [note, setNote] = useState<{ text: string; error: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -52,7 +53,7 @@ export function SettingsDialog({ settings, mac, rowNames, onPreview, onSaved, on
     api.dataInfo().then(setData).catch(() => setData(null));
   }, []);
 
-  const field = (key: "home" | "terminalLabel" | "hcSession" | "hcSocket" | "agentFolder") => ({
+  const field = (key: "home" | "terminalLabel" | "hcSession" | "hcSocket" | "agentFolder" | "linearWorkspace") => ({
     value: draft[key],
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => setDraft({ ...draft, [key]: e.target.value }),
   });
@@ -111,7 +112,8 @@ export function SettingsDialog({ settings, mac, rowNames, onPreview, onSaved, on
       for (const row of ROW_ORDER) {
         if (names[row] !== rowNames[row]) await api.setRowName(row, names[row]);
       }
-      onSaved(await api.saveSettings(withLatestWindow(draft, settings)));
+      const ticketPrefixes = prefixes.split(/[\s,]+/).filter(Boolean);
+      onSaved(await api.saveSettings(withLatestWindow({ ...draft, ticketPrefixes }, settings)));
     } catch (e) {
       setNote({ text: errorText(e), error: true });
       setSaving(false);
@@ -155,6 +157,29 @@ export function SettingsDialog({ settings, mac, rowNames, onPreview, onSaved, on
                 backlog.
               </small>
             </label>
+          </fieldset>
+          <fieldset>
+            <legend>Ticket links</legend>
+            <div className="field-pair">
+              <label className="field">
+                <span>Linear workspace</span>
+                <input className="text-input mono" {...field("linearWorkspace")} placeholder="your-team" spellCheck={false} />
+              </label>
+              <label className="field">
+                <span>Ticket prefixes</span>
+                <input
+                  className="text-input mono"
+                  value={prefixes}
+                  onChange={(e) => setPrefixes(e.target.value)}
+                  placeholder="ENG, OPS"
+                  spellCheck={false}
+                />
+              </label>
+            </div>
+            <small className="field-note">
+              Card details turn bare ticket ids such as ENG-1234 into Linear links when both are set. The workspace is the name after
+              linear.app/ in a ticket link. Linear and Slack links written out in full always work.
+            </small>
           </fieldset>
           <fieldset>
             <legend>herdr-core</legend>
