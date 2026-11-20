@@ -96,7 +96,7 @@ body[data-scheme="blueprint2"] .nav,body[data-scheme="bp3"] .nav,body[data-schem
 body[data-scheme="bp4"] .nav .btn:not(.btn-primary),body[data-scheme="bp5"] .nav .btn:not(.btn-primary){color:#fff}
 .nav{background:var(--nav);backdrop-filter:blur(8px);border-bottom:1px solid var(--rule)}
 .eyebrow,.step .kicker{color:var(--accent)}
-.hero{padding:96px 0 40px;display:grid;grid-template-columns:1fr 1.1fr;gap:56px;align-items:center}
+.hero{padding:96px 32px 40px;display:grid;grid-template-columns:1fr 1.1fr;gap:56px;align-items:center}
 .hero h1{font-size:clamp(44px,5.6vw,76px);font-weight:500;letter-spacing:-.01em;margin-bottom:24px}
 .hero h1 em{font-style:normal;color:var(--hl)}
 .hero .lede{max-width:28em;margin-bottom:32px}.cta{display:flex;gap:12px;flex-wrap:wrap}
@@ -281,8 +281,8 @@ body[data-scheme="bp5"] .coords::before{content:"● ";color:#3ddc84;text-shadow
 <article id="d-install"><h3>Install</h3>
 <p><b>macOS.</b> Open the .dmg and drag Fathom into Applications. Fathom needs macOS 13 or newer.</p>
 <p><b>Linux.</b> Install the package, or make the AppImage executable and run it:</p>
-<pre><code>sudo apt install ./Fathom_<span data-cfg="version">0.1.0</span>_amd64.deb
-chmod +x Fathom_<span data-cfg="version">0.1.0</span>_amd64.AppImage &amp;&amp; ./Fathom_<span data-cfg="version">0.1.0</span>_amd64.AppImage</code></pre></article>
+<pre><code>sudo apt install ./Fathom_amd64.deb
+chmod +x Fathom_amd64.AppImage &amp;&amp; ./Fathom_amd64.AppImage</code></pre></article>
 <article id="d-need"><h3>What you need</h3>
 <p>Fathom is the board. These tools do the work it shows. Install them first.</p>
 <div class="req">
@@ -339,7 +339,7 @@ claude mcp add --scope user fathom -- /usr/bin/fathom --mcp</code></pre>
 </div>
 </div>
 </section></div></main><footer class="foot wrap"><a class="brand" href="#top"><svg width="20" height="20" viewBox="0 0 64 64" aria-hidden="true"><path class="mk-a" d="M50.38 13.62 A26 26 0 0 0 13.62 50.38 Z" fill="#F4F1EA"/><path d="M50.38 13.62 A26 26 0 0 1 13.62 50.38 Z" fill="#C9A45C"/><path d="M51.09 12.91 L12.91 51.09" style="stroke:var(--bg)" stroke-width="2.6"/></svg><b>FATHOM</b></a><span>Open source.</span><a href="https://github.com/Uhan19/fathom">GitHub</a><a href="#docs">Docs</a></footer><script>
-const FATHOM_LINKS = { version: "0.1.0", mac: "", deb: "", appimage: "" }; // set these when the files are hosted
+const FATHOM_LINKS = { version: "0.1.0", mac: "https://github.com/Uhan19/fathom/releases/latest/download/Fathom_universal.dmg", deb: "https://github.com/Uhan19/fathom/releases/latest/download/Fathom_amd64.deb", appimage: "https://github.com/Uhan19/fathom/releases/latest/download/Fathom_amd64.AppImage" }; // set these when the files are hosted
 (function(){
   document.querySelectorAll('[data-cfg="version"]').forEach(function(el){ if (FATHOM_LINKS.version) el.textContent = FATHOM_LINKS.version; });
   var msg = document.querySelector('.dl-msg');
