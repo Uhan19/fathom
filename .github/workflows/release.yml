@@ -1,0 +1,154 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - .github/workflows/linux-packages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check the versions agree
+        id: read
+        env:
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          tauri="$(node -p 'require("./src-tauri/tauri.conf.json").version')"
+          package="$(node -p 'require("./package.json").version')"
+          if [ "$tauri" != "$package" ]; then
+            echo "::error::src-tauri/tauri.conf.json has $tauri but package.json has $package"
+            exit 1
+          fi
+          if [ -n "$TAG" ] && [ "$TAG" != "v$tauri" ]; then
+            echo "::error::tag $TAG does not match the app version $tauri"
+            exit 1
+          fi
+          echo "version=$tauri" >> "$GITHUB_OUTPUT"
+
+  linux:
+    needs: version
+    uses: ./.github/workflows/linux-packages.yml
+
+  macos:
+    needs: version
+    runs-on: macos-15
+    env:
+      HAS_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_SIGNING_IDENTITY != '' }}
+      HAS_NOTARIZATION: ${{ secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: pnpm install --frozen-lockfile
+      - name: Use the Developer ID certificate
+        if: env.HAS_SIGNING == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          {
+            echo "APPLE_CERTIFICATE=$APPLE_CERTIFICATE"
+            echo "APPLE_CERTIFICATE_PASSWORD=$APPLE_CERTIFICATE_PASSWORD"
+            echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY"
+          } >> "$GITHUB_ENV"
+      - name: Use notarization
+        if: env.HAS_SIGNING == 'true' && env.HAS_NOTARIZATION == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          {
+            echo "APPLE_ID=$APPLE_ID"
+            echo "APPLE_PASSWORD=$APPLE_PASSWORD"
+            echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
+          } >> "$GITHUB_ENV"
+      - name: Build the universal disk image
+        run: pnpm tauri build --target universal-apple-darwin --bundles dmg
+      - name: Check the disk image
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          bundle=src-tauri/target/universal-apple-darwin/release/bundle
+          dmg="$bundle/dmg/Fathom_${VERSION}_universal.dmg"
+          archs="$(lipo -archs "$bundle/macos/Fathom.app/Contents/MacOS/fathom")"
+          echo "architectures: $archs"
+          case "$archs" in *x86_64*arm64* | *arm64*x86_64*) ;; *) echo "::error::not a universal binary"; exit 1 ;; esac
+          codesign --verify --deep --strict "$bundle/macos/Fathom.app"
+          hdiutil verify "$dmg"
+          mkdir -p out
+          cp "$dmg" out/Fathom_universal.dmg
+      - uses: actions/upload-artifact@v7
+        with:
+          name: fathom-${{ needs.version.outputs.version }}-macos-dmg
+          path: out/Fathom_universal.dmg
+          if-no-files-found: error
+
+  assets:
+    needs: [version, linux, macos]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: fathom-${{ needs.version.outputs.version }}-*
+          path: in
+          merge-multiple: true
+      - name: Name the assets
+        run: |
+          mkdir out
+          take() {
+            set -- "$1" in/$2
+            [ "$#" -eq 2 ] && [ -f "$2" ] || { echo "::error::expected exactly one file for $1"; exit 1; }
+            mv "$2" "out/$1"
+          }
+          take Fathom_universal.dmg 'Fathom_universal.dmg'
+          take Fathom_amd64.deb '*_amd64.deb'
+          take Fathom_amd64.AppImage '*_amd64.AppImage'
+          ls -l out
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-assets
+          path: out/*
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: assets
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-assets
+          path: out
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "Fathom $TAG" --generate-notes \
+            out/Fathom_universal.dmg out/Fathom_amd64.deb out/Fathom_amd64.AppImage
