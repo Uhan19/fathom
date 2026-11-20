@@ -412,7 +412,7 @@ mod tests {
     use super::*;
     use crate::herdr::Connection;
     use crate::herdr::tests::FAKE_HC;
-    use std::os::unix::fs::PermissionsExt;
+    use crate::test_support::write_script;
     use std::sync::Arc;
 
     const SHELL_STUB: &str = "zsh";
@@ -449,8 +449,7 @@ esac
                 } else {
                     "#!/bin/sh\n"
                 };
-                std::fs::write(&script, body).unwrap();
-                std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+                write_script(&script, body);
             }
             std::fs::create_dir_all(lab.data_dir()).unwrap();
             let hc = tools.contains(&"hc").then(|| lab.bin.path().join("hc"));
@@ -577,11 +576,6 @@ esac
             lab.run_call(Agent::Firstmate, "claude", &[])
         );
         assert!(!lab.data_dir().join("fathom-mcp.json").exists());
-    }
-
-    fn write_script(path: &Path, body: &str) {
-        std::fs::write(path, body).unwrap();
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
 
     fn read_json(path: &Path) -> serde_json::Value {
@@ -920,8 +914,7 @@ while IFS= read -r line; do printf 'GOT:%s\n' "$line"; done
         let bin = tempfile::tempdir().unwrap();
         for tool in [CLAUDE, CODEX] {
             let script = bin.path().join(tool);
-            std::fs::write(&script, STUB_AGENT).unwrap();
-            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+            write_script(&script, STUB_AGENT);
         }
         bin
     }
@@ -950,8 +943,7 @@ while IFS= read -r line; do printf 'GOT:%s\n' "$line"; done
             "#!/bin/sh\nZDOTDIR='{}' exec /bin/zsh \"$@\"\n",
             zdotdir.display()
         );
-        std::fs::write(&shell, script).unwrap();
-        std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o755)).unwrap();
+        write_script(&shell, &script);
         shell
     }
 

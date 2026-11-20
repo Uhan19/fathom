@@ -111,10 +111,8 @@ mod tests {
     }
 
     fn executable(dir: &std::path::Path, name: &str) {
-        use std::os::unix::fs::PermissionsExt;
         let file = dir.join(name);
-        std::fs::write(&file, "#!/bin/sh\n").unwrap();
-        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755)).unwrap();
+        crate::test_support::write_script(&file, "#!/bin/sh\n");
     }
 
     #[test]

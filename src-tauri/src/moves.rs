@@ -141,7 +141,7 @@ fn settle(
 mod tests {
     use super::*;
     use crate::db::Snapshot;
-    use std::os::unix::fs::PermissionsExt;
+    use crate::test_support::write_script;
 
     const FAKE_INBOX: &str = r#"#!/bin/sh
 case "$1" in
@@ -159,8 +159,7 @@ esac
         let home = tempfile::tempdir().unwrap();
         let script = home.path().join("bin/fm-inbox.sh");
         std::fs::create_dir_all(script.parent().unwrap()).unwrap();
-        std::fs::write(&script, FAKE_INBOX).unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        write_script(&script, FAKE_INBOX);
         let db = Db::open(&home.path().join("data")).unwrap();
         db.save_snapshot(&Snapshot {
             taken_at_ms: 1,
