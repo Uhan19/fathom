@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { api, errorText, type Card, type CardContext, type Detail, type FileEntry, type MoveRequest, type RowKey, type SourceKind, type Terminal } from "../api";
+import { api, errorText, type Card, type CardContext, type Detail, type FileEntry, type MoveRequest, type RowKey, type SourceKind, type Terminal, type Worker } from "../api";
 import { cardMessage, holdHeading } from "../board";
 import { cardLinkSources, findLinks, findPaths, RECORDED_PR, topLinks, type Linking, type Source } from "../links";
-import { cardMessageLabel, cardMessagePrompt, moveCopy } from "../source";
+import { cardMessageLabel, cardMessagePrompt, moveCopy, sailorLabel } from "../source";
+import type { Theme } from "../theme";
 import { ActivityTab } from "./DetailActivity";
+import { AgentTab } from "./DetailAgent";
 import { FilesTab, openEntry } from "./DetailFiles";
 import { LinkRow, LinksTab, usePrStatuses, type PrStatuses } from "./DetailLinks";
-import { Close } from "./Icons";
+import { Close, Sailor } from "./Icons";
 import { Markdown, type PathAction } from "./Markdown";
 import { RichText } from "./RichText";
 
@@ -17,6 +19,10 @@ interface CardDetailProps {
   request: MoveRequest | null;
   width: number;
   chatTerminal: Terminal | null;
+  worker: Worker | null;
+  fontFamily: string;
+  fontSize: number;
+  theme: Theme;
   linking: Linking;
   mark: string;
   onClose: () => void;
@@ -26,14 +32,17 @@ interface CardDetailProps {
 }
 
 type SendState = { kind: "idle" } | { kind: "sending" } | { kind: "sent"; to: string } | { kind: "failed"; error: string };
-type Tab = "overview" | "links" | "files" | "activity";
+type Tab = "overview" | "links" | "files" | "activity" | "agent";
+type TabEntry = { tab: Tab; name: string };
 
-const TABS: { tab: Tab; name: string }[] = [
+const TABS: TabEntry[] = [
   { tab: "overview", name: "Overview" },
   { tab: "links", name: "Links" },
   { tab: "files", name: "Files" },
   { tab: "activity", name: "Activity" },
 ];
+const TABS_WITH_AGENT: TabEntry[] = [...TABS, { tab: "agent", name: "Agent" }];
+const TAB_SAILOR_SIZE = 20;
 
 const NO_CONTEXT: CardContext = { hasHome: false, recordedPr: null, activity: [], taskFolder: null };
 
@@ -87,12 +96,14 @@ function cardSources(card: Card, body: string, context: CardContext): Source[] {
 }
 
 export function CardDetail(props: CardDetailProps) {
-  const { card, source, rowNames, request, width, chatTerminal, linking, mark, onClose, onOpenCard, onResend, onDismiss } = props;
+  const { card, source, rowNames, request, width, chatTerminal, worker, fontFamily, fontSize, theme, linking, mark, onClose, onOpenCard, onResend, onDismiss } =
+    props;
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [send, setSend] = useState<SendState>({ kind: "idle" });
-  const [tab, setTab] = useState<Tab>("overview");
+  const [picked, setPicked] = useState<Tab>("overview");
+  const tab: Tab = picked === "agent" && !worker ? "overview" : picked;
   const [previewing, setPreviewing] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const context = useCardContext(card.id, mark);
@@ -103,7 +114,7 @@ export function CardDetail(props: CardDetailProps) {
     setLoadError(null);
     setSend({ kind: "idle" });
     setPreviewing(null);
-    setTab("overview");
+    setPicked("overview");
     api
       .cardDetail(card.id)
       .then((d) => current && setDetail(d))
@@ -133,14 +144,18 @@ export function CardDetail(props: CardDetailProps) {
     return map;
   }, [files]);
 
+  useEffect(() => {
+    if (!worker) setPicked((p) => (p === "agent" ? "overview" : p));
+  }, [worker]);
+
   const showTab = (next: Tab) => {
-    setTab(next);
+    setPicked(next);
     scrollRef.current?.scrollTo({ top: 0 });
   };
 
   const preview = useCallback((path: string | null) => {
     setPreviewing(path);
-    if (path) setTab("files");
+    if (path) setPicked("files");
     scrollRef.current?.scrollTo({ top: 0 });
   }, []);
 
@@ -170,6 +185,7 @@ export function CardDetail(props: CardDetailProps) {
     links: sources ? links.length : null,
     files: hasHome && files ? files.length : null,
     activity: hasHome && context ? context.activity.length : null,
+    agent: null,
   };
 
   return (
@@ -191,102 +207,126 @@ export function CardDetail(props: CardDetailProps) {
         </div>
       </div>
 
-      <TabBar tab={tab} counts={counts} onChange={showTab} />
+      <TabBar tabs={worker ? TABS_WITH_AGENT : TABS} tab={tab} counts={counts} worker={worker} source={source} onChange={showTab} />
 
-      <div className="detail-scroll" ref={scrollRef} role="tabpanel" id={`detail-panel-${tab}`} aria-labelledby={`detail-tab-${tab}`}>
-        {tab === "overview" && (
-          <>
-            {request && <MoveSection request={request} source={source} rowNames={rowNames} onResend={onResend} onDismiss={onDismiss} />}
-            {hold && (
-              <div className={`sec hold hold-${shown.holdKind}`}>
-                <span className="sech">{hold}</span>
-                {shown.holdReason ? (
-                  <Markdown text={shown.holdReason} linking={linking} onPath={onPath} />
-                ) : (
-                  <p className="muted">No reason recorded.</p>
-                )}
-              </div>
-            )}
-            {shown.blockedBy.length > 0 && (
-              <div className="sec">
-                <span className="sech">Waits for</span>
-                <div className="chips">
-                  {shown.blockedBy.map((id) => (
-                    <button key={id} className="chip" onClick={() => onOpenCard(id)}>
-                      {id}
-                    </button>
-                  ))}
+      {tab === "agent" && worker ? (
+        <AgentTab
+          key={worker.terminal}
+          card={shown}
+          source={source}
+          worker={worker}
+          chatTerminal={chatTerminal}
+          fontFamily={fontFamily}
+          fontSize={fontSize}
+          theme={theme}
+        />
+      ) : (
+        <div className="detail-scroll" ref={scrollRef} role="tabpanel" id={`detail-panel-${tab}`} aria-labelledby={`detail-tab-${tab}`}>
+          {tab === "overview" && (
+            <>
+              {request && <MoveSection request={request} source={source} rowNames={rowNames} onResend={onResend} onDismiss={onDismiss} />}
+              {hold && (
+                <div className={`sec hold hold-${shown.holdKind}`}>
+                  <span className="sech">{hold}</span>
+                  {shown.holdReason ? (
+                    <Markdown text={shown.holdReason} linking={linking} onPath={onPath} />
+                  ) : (
+                    <p className="muted">No reason recorded.</p>
+                  )}
                 </div>
+              )}
+              {shown.blockedBy.length > 0 && (
+                <div className="sec">
+                  <span className="sech">Waits for</span>
+                  <div className="chips">
+                    {shown.blockedBy.map((id) => (
+                      <button key={id} className="chip" onClick={() => onOpenCard(id)}>
+                        {id}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="sec">
+                <span className="sech">Note</span>
+                {loadError && <p className="error-text">Could not load the full card: {loadError}</p>}
+                {!detail && !loadError && <p className="muted">Loading…</p>}
+                {detail && (detail.body ? <Markdown text={detail.body} linking={linking} onPath={onPath} /> : <p className="muted">No note recorded.</p>)}
               </div>
-            )}
-            <div className="sec">
-              <span className="sech">Note</span>
-              {loadError && <p className="error-text">Could not load the full card: {loadError}</p>}
-              {!detail && !loadError && <p className="muted">Loading…</p>}
-              {detail && (detail.body ? <Markdown text={detail.body} linking={linking} onPath={onPath} /> : <p className="muted">No note recorded.</p>)}
-            </div>
-            <KeyLinks links={links} statuses={statuses} onAll={() => showTab("links")} />
-            {detail && (
-              <div className="sec facts">
-                {detail.created && <Fact name="Created" value={detail.created} />}
-                {shown.closed && <Fact name="Closed" value={shown.closed} />}
-                {detail.priority && <Fact name="Priority" value={detail.priority} />}
-                <Fact name="State" value={shown.state.replace("_", " ")} />
-              </div>
-            )}
-          </>
-        )}
-        {tab === "links" && (sources ? <LinksTab links={links} statuses={statuses} /> : <p className="tab-empty">Looking for links…</p>)}
-        {tab === "files" && (
-          <FilesTab
-            hasHome={hasHome}
-            files={files}
-            error={filesError}
-            taskFolder={context?.taskFolder ?? null}
-            cardId={card.id}
-            selected={previewing}
-            linking={linking}
-            onPreview={preview}
-          />
-        )}
-        {tab === "activity" && <ActivityTab hasHome={hasHome} entries={context?.activity ?? null} linking={linking} onPath={onPath} />}
-      </div>
-
-      <form
-        className="detail-send"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void submit();
-        }}
-      >
-        <div className="send-row">
-          <label className="grow">
-            <span className="sr-only">{cardMessageLabel(source)}</span>
-            <input
-              className="text-input"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder={cardMessagePrompt(source, chatTerminal !== null)}
-              disabled={!chatTerminal}
+              <KeyLinks links={links} statuses={statuses} onAll={() => showTab("links")} />
+              {detail && (
+                <div className="sec facts">
+                  {detail.created && <Fact name="Created" value={detail.created} />}
+                  {shown.closed && <Fact name="Closed" value={shown.closed} />}
+                  {detail.priority && <Fact name="Priority" value={detail.priority} />}
+                  <Fact name="State" value={shown.state.replace("_", " ")} />
+                </div>
+              )}
+            </>
+          )}
+          {tab === "links" && (sources ? <LinksTab links={links} statuses={statuses} /> : <p className="tab-empty">Looking for links…</p>)}
+          {tab === "files" && (
+            <FilesTab
+              hasHome={hasHome}
+              files={files}
+              error={filesError}
+              taskFolder={context?.taskFolder ?? null}
+              cardId={card.id}
+              selected={previewing}
+              linking={linking}
+              onPreview={preview}
             />
-          </label>
-          <button className="btn btn-dark" type="submit" disabled={!canSend}>
-            {send.kind === "sending" ? "Sending…" : "Send"}
-          </button>
+          )}
+          {tab === "activity" && <ActivityTab hasHome={hasHome} entries={context?.activity ?? null} linking={linking} onPath={onPath} />}
         </div>
-        {send.kind === "sent" && <span className="send-note">Sent to {send.to}.</span>}
-        {send.kind === "failed" && <span className="send-note error-text">Not sent: {send.error}</span>}
-      </form>
+      )}
+
+      {tab !== "agent" && (
+        <form
+          className="detail-send"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submit();
+          }}
+        >
+          <div className="send-row">
+            <label className="grow">
+              <span className="sr-only">{cardMessageLabel(source)}</span>
+              <input
+                className="text-input"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder={cardMessagePrompt(source, chatTerminal !== null)}
+                disabled={!chatTerminal}
+              />
+            </label>
+            <button className="btn btn-dark" type="submit" disabled={!canSend}>
+              {send.kind === "sending" ? "Sending…" : "Send"}
+            </button>
+          </div>
+          {send.kind === "sent" && <span className="send-note">Sent to {send.to}.</span>}
+          {send.kind === "failed" && <span className="send-note error-text">Not sent: {send.error}</span>}
+        </form>
+      )}
     </section>
   );
 }
 
-function TabBar({ tab, counts, onChange }: { tab: Tab; counts: Record<Tab, number | null>; onChange: (tab: Tab) => void }) {
+interface TabBarProps {
+  tabs: TabEntry[];
+  tab: Tab;
+  counts: Record<Tab, number | null>;
+  worker: Worker | null;
+  source: SourceKind;
+  onChange: (tab: Tab) => void;
+}
+
+function TabBar({ tabs, tab, counts, worker, source, onChange }: TabBarProps) {
   const refs = useRef(new Map<Tab, HTMLButtonElement>());
   const step = (e: KeyboardEvent, by: number) => {
     e.preventDefault();
-    const at = TABS.findIndex((t) => t.tab === tab);
-    const next = TABS[(at + by + TABS.length) % TABS.length].tab;
+    const at = Math.max(0, tabs.findIndex((t) => t.tab === tab));
+    const next = tabs[(at + by + tabs.length) % tabs.length].tab;
     onChange(next);
     refs.current.get(next)?.focus();
   };
@@ -300,11 +340,12 @@ function TabBar({ tab, counts, onChange }: { tab: Tab; counts: Record<Tab, numbe
         if (e.key === "ArrowLeft") step(e, -1);
       }}
     >
-      {TABS.map(({ tab: key, name }) => (
+      {tabs.map(({ tab: key, name }) => (
         <button
           key={key}
           ref={(node) => {
             if (node) refs.current.set(key, node);
+            else refs.current.delete(key);
           }}
           type="button"
           role="tab"
@@ -313,9 +354,16 @@ function TabBar({ tab, counts, onChange }: { tab: Tab; counts: Record<Tab, numbe
           aria-controls={`detail-panel-${key}`}
           tabIndex={tab === key ? 0 : -1}
           className={`detail-tab ${tab === key ? "on" : ""}`}
+          title={key === "agent" && worker ? sailorLabel(source, worker.status) : undefined}
           onClick={() => onChange(key)}
         >
+          {key === "agent" && worker && (
+            <span className={`sailor ${worker.status}`} aria-hidden="true">
+              <Sailor size={TAB_SAILOR_SIZE} />
+            </span>
+          )}
           {name}
+          {key === "agent" && worker && <span className="sr-only">, {worker.status}</span>}
           {counts[key] !== null && counts[key] > 0 && <span className="tab-count">{counts[key]}</span>}
         </button>
       ))}

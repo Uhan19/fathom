@@ -107,6 +107,7 @@ const SHELL_VIEW_PREFIX: &str = "shell:";
 pub enum View {
     Chat,
     Worker,
+    Agent,
     Helper,
     Shell(String),
 }
@@ -116,6 +117,7 @@ impl View {
         match self {
             View::Chat => "chat".into(),
             View::Worker => "worker".into(),
+            View::Agent => "agent".into(),
             View::Helper => "helper".into(),
             View::Shell(terminal) => format!("{SHELL_VIEW_PREFIX}{terminal}"),
         }
@@ -133,6 +135,7 @@ impl TryFrom<String> for View {
         match name.as_str() {
             "chat" => Ok(View::Chat),
             "worker" => Ok(View::Worker),
+            "agent" => Ok(View::Agent),
             "helper" => Ok(View::Helper),
             _ => match name.strip_prefix(SHELL_VIEW_PREFIX) {
                 Some(terminal) if !terminal.is_empty() => Ok(View::Shell(terminal.to_string())),
@@ -863,10 +866,37 @@ done
     }
 
     #[test]
+    fn the_agent_tab_and_the_worker_view_watch_one_worker_without_taking_it_from_each_other() {
+        let _hc = fake_hc();
+        let herdr = Herdr::new(Connection::default(), Arc::new(|_| {}));
+        let (worker, worker_sink) = screen_sink();
+        let (agent, agent_sink) = screen_sink();
+        herdr
+            .attach(View::Agent, "t-crew", 60, 30, agent_sink)
+            .unwrap();
+        herdr
+            .attach(View::Worker, "t-crew", 100, 30, worker_sink)
+            .unwrap();
+        let shows = |screen: &Arc<Mutex<Screen>>, text: &str| {
+            String::from_utf8_lossy(&screen.lock().unwrap().bytes).contains(text)
+        };
+        wait_for("both attaches", || {
+            shows(&agent, "attached:t-crew") && shows(&worker, "attached:t-crew")
+        });
+
+        herdr.detach(&View::Worker);
+        herdr.write_input(&View::Agent, b"from the tab\r").unwrap();
+        wait_for("the agent tab to stay attached", || {
+            shows(&agent, "t-crew got:from the tab")
+        });
+    }
+
+    #[test]
     fn a_view_travels_as_its_name_and_a_shell_view_carries_its_terminal() {
         let views = [
             View::Chat,
             View::Worker,
+            View::Agent,
             View::Helper,
             View::Shell("t12".into()),
         ];
@@ -876,6 +906,7 @@ done
             [
                 json!("chat"),
                 json!("worker"),
+                json!("agent"),
                 json!("helper"),
                 json!("shell:t12")
             ]

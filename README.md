@@ -9,6 +9,7 @@ When no terminal is there yet, the chat panel opens Claude Code, Codex or Firstm
 Cards can be dragged to arrange them, and a drag to another row asks the agent to move the task.
 A small sailor on a card shows that a crewmate is on the task: its red visor glows and blinks while it works and dims while idle.
 Clicking the sailor opens that crewmate's live terminal.
+While a crewmate is on a card, the card's details also show an Agent tab with the same sailor, where you can watch its terminal and message it directly.
 When an agent reports something new on a card you have not read yet, its colored bar turns magenta and blinks until you open the card and close it again.
 
 ## Requirements

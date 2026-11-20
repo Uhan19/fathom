@@ -449,7 +449,7 @@ export default function App() {
             />
           )}
         </div>
-        {selected && (
+        {selected && appearance && (
           <>
             <div
               className="panel-handle"
@@ -476,6 +476,10 @@ export default function App() {
               request={shownRequest(selected.id, overlay.requests)}
               width={detailWidth}
               chatTerminal={chatTerminal}
+              worker={workerByTask[selected.id] ?? null}
+              fontFamily={chatFontStack(appearance)}
+              fontSize={appearance.chatFontSize}
+              theme={theme}
               linking={linking}
               mark={updates.marks[selected.id] ?? ""}
               onClose={() => openCard(null)}

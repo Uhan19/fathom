@@ -428,7 +428,7 @@ mockIPC(
         outputs.set(args.view, output);
         const screen = String(args.view).startsWith("shell:")
           ? shellOutput(args.terminal as string)
-          : args.view === "worker"
+          : args.view === "worker" || args.view === "agent"
             ? (backlog ? backlogWorkerScreen : workerScreen)(args.terminal as string)
             : args.view === "helper"
               ? helperScreen(helperShown)

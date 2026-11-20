@@ -1621,6 +1621,160 @@ button.sailor:focus-visible {
   text-align: center;
 }
 
+.detail-tab .sailor {
+  align-self: center;
+  margin: -6px 1px -6px -2px;
+}
+
+.detail-agent {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.composer {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 18px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--panel-bg);
+}
+
+.composer-to {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.composer-to-label {
+  margin-right: 2px;
+  font-family: var(--heading);
+  font-size: calc(11px * var(--board-scale));
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.composer-recipient {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 28px;
+  padding: 2px 8px 2px 7px;
+  border: 1px solid var(--ctrl-line);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: calc(12px * var(--board-scale));
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.composer-recipient:hover {
+  background: var(--ctrl-hover);
+  color: var(--panel-ink);
+}
+
+.composer-recipient.on {
+  border-color: var(--azure);
+  background: var(--chip-bg);
+  color: var(--panel-ink);
+}
+
+.composer-recipient:focus-visible {
+  outline: 2px solid var(--azure);
+  outline-offset: 1px;
+}
+
+.composer-recipient .sailor {
+  align-self: center;
+  margin: -4px 0;
+}
+
+.composer-recipient .terminal-chip {
+  padding: 0 6px;
+}
+
+.composer-recipient.on .terminal-chip {
+  background: var(--panel-bg);
+}
+
+.composer-box {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--field-line);
+  border-radius: 6px;
+  background: var(--field-bg);
+}
+
+.composer-box:focus-within {
+  border-color: var(--azure);
+  outline: 2px solid var(--azure);
+  outline-offset: -1px;
+}
+
+.composer-box.off {
+  background: var(--field-disabled);
+}
+
+.composer-field {
+  max-height: calc(13px * var(--board-scale) * 1.45 * 8 + 13px);
+  padding: 9px 11px 4px;
+  border: 0;
+  outline: none;
+  resize: none;
+  overflow-y: auto;
+  background: transparent;
+  color: var(--field-ink);
+  font: inherit;
+  font-size: calc(13px * var(--board-scale));
+  line-height: 1.45;
+}
+
+.composer-field::placeholder {
+  color: var(--field-placeholder);
+}
+
+.composer-field:disabled {
+  color: var(--muted);
+}
+
+.composer-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 6px 6px 11px;
+}
+
+.composer-hint {
+  flex: 1;
+  min-width: 0;
+  font-size: calc(11px * var(--board-scale));
+  color: var(--muted);
+}
+
+.composer-hint kbd {
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--quiet-bg);
+  font-family: var(--mono);
+  font-size: calc(10px * var(--board-scale));
+}
+
+.composer-foot .btn {
+  min-height: 30px;
+  padding: 5px 14px;
+}
+
 h3.sech {
   margin: 0;
 }
