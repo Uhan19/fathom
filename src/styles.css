@@ -509,8 +509,8 @@ code,
 
 .brand-mark {
   flex: none;
-  width: calc(26px * var(--board-scale));
-  height: calc(26px * var(--board-scale));
+  width: calc(32px * var(--board-scale));
+  height: calc(32px * var(--board-scale));
 }
 
 .brand-mark-gap {
