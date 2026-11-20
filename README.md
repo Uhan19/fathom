@@ -583,3 +583,7 @@ The panel switches to the new size first and then draws the fresh repaint, so th
 Attaching at the current size changes nothing for the Herdr app.
 While the Herdr app owns the size, the panel shows blank space or scrolls, and the view follows the cursor.
 When the Herdr app leaves, the size stays where it was until you press a key in the panel or resize it.
+
+## License
+
+Fathom is released under the [MIT License](LICENSE).
