@@ -58,7 +58,7 @@ Add `?late` to have a card arrive in a column at the moment you confirm deleting
 Add `?theme=dark` to start in the dark theme, `?nochat` to start with the chat panel closed, and `?filter=harbor-web,keel-cli` to start with a project filter.
 Add `?agents=withAgent` or `?agents=withActiveAgent` to start with that agent filter, and `?rows=deep,landed` to start with those rows collapsed.
 Add `?unseen` to light the cards that have an update you have not read, and `?folded=pilot-infra,keel-cli` to start with those columns collapsed; `?unseen&folded=pilot-infra&rows=deep` shows a lit card, a lit column header and a lit row band at once.
-Add `?bosun=` with `notstarted`, `dormant`, `starting`, `ready`, `working`, `asking`, `signedout`, `missing`, `failed` or `stopped` to see that Bosun state; open the drawer with the Bosun button.
+Add `?bosun=` with `notstarted`, `dormant`, `starting`, `ready`, `working`, `asking`, `signedout`, `missing`, `failed` or `stopped` to see that Bosun state; open the drawer with the Bosun rail under the board.
 
 ## Run the checks
 
@@ -250,7 +250,7 @@ With the home left empty it reads its own backlog; see [Fathom's own backlog](#f
 - Columns are seeded one per project the first time a project appears; collapse and width are saved per column.
 - Clicking a row's name collapses the row to a thin band that still shows its name and how many cards it holds; clicking it again expands the row.
   Which rows are collapsed is saved, and the last open row stretches to the bottom of the board.
-  "Expand all" in the header opens every folded column and collapsed row.
+  The "Expand all" switch in the header opens every folded column and collapsed row; switching it off again folds back what it opened.
 - Every column has a generated numeric id, so an added column can never clash with a project name.
 - Clicking a column's name in its header renames the column in Fathom.
   Enter or a click elsewhere saves, Escape cancels, and an empty name returns to the project's name.
@@ -454,7 +454,7 @@ Fathom asks your login shell for its PATH once at startup and uses it to find he
   An added font joins that menu and is selected; the same list removes it again.
   Changes show at once while the dialog is open; Save keeps them across launches and Cancel puts them back.
 
-The "Dark mode" button in the header switches the panels, cards and terminals to dark colors, and "Light mode" switches back.
+The "Dark mode" switch in the header turns the panels, cards and terminals dark, and switching it off turns them light again.
 The board rows keep their light bands in both themes.
 Fathom remembers the theme, whether the chat panel is open, the chat and card panel widths, which rows are collapsed and the agent filter across launches.
 The selected card and the crewmate view you are watching are not remembered.
@@ -489,7 +489,7 @@ Asked to show only some rows, such as only what is in progress, it collapses the
 It is Claude Code running in a terminal Fathom opens, with only the [helper tools](#the-helper-tools).
 Fathom never types into Bosun's terminal and never reads answers from it; Bosun changes Fathom only through the tools.
 
-The "Bosun" button in the header, or ⌘J on macOS and Ctrl+J on Linux, opens and closes a drawer under the board.
+The Bosun rail under the board, or ⌘J on macOS and Ctrl+J on Linux, opens and closes a drawer under the board.
 Drag the drawer's top edge to change its height.
 While the drawer is closed, a rail under the board shows Bosun's state.
 The dot beside Bosun's name is green when it is ready, blue while it works, and yellow while Claude Code asks before a change.
@@ -513,6 +513,9 @@ Fathom writes both files on every start and never changes Claude Code's own conf
 
 All herdr-core calls (`ls`, `get`, `events`, `attach`, `send`) live in `src-tauri/src/herdr.rs`.
 Fathom talks only to herdr-core, never to the Herdr app.
+
+The chevron at the right of the panel's tab strip hides the chat, and the rail left at the window's edge shows it again; the show-or-hide shortcut does both.
+Dragging the chat's edge wider takes room from the board until the board is one column wide, then from open card details down to their narrowest.
 
 The chat panel attaches to the terminal that carries the configured label, or else to a terminal Fathom opened (`fathom.role=chat`).
 If none carries either, the panel offers to open a terminal and also lists the terminals herdr-core knows so you can pick one.

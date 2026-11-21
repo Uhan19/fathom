@@ -29,6 +29,7 @@ interface ChatPanelProps {
   theme: Theme;
   connectionKey: string;
   mac: boolean;
+  hideTitle: string;
   open: boolean;
   onTerminal: (terminal: Terminal | null) => void;
   onActiveTab: (name: string | null) => void;
@@ -37,7 +38,7 @@ interface ChatPanelProps {
 }
 
 export function ChatPanel(props: ChatPanelProps) {
-  const { width, label, source, agent, agentFolder, onAgent, fontFamily, fontSize, theme, connectionKey, mac, open, onTerminal, onActiveTab, onShow, onCollapse } = props;
+  const { width, label, source, agent, agentFolder, onAgent, fontFamily, fontSize, theme, connectionKey, mac, hideTitle, open, onTerminal, onActiveTab, onShow, onCollapse } = props;
   const [phase, setPhase] = useState<Phase>({ kind: "finding" });
   const [opening, setOpening] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
@@ -208,6 +209,7 @@ export function ChatPanel(props: ChatPanelProps) {
         active={active}
         launcherOpen={launcher}
         shortcut={launcherShortcutLabel(mac)}
+        hideTitle={hideTitle}
         stripRef={stripRef}
         addRef={addRef}
         onActivate={setActive}

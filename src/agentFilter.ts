@@ -15,6 +15,17 @@ export const AGENT_FILTER_TITLE: Record<AgentFilter, string> = {
   withActiveAgent: "Show only cards with an active agent",
 };
 
+const STEP: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+
+export function steppedFilter(filter: AgentFilter, key: string): AgentFilter | null {
+  if (key === "Home") return AGENT_FILTERS[0];
+  if (key === "End") return AGENT_FILTERS[AGENT_FILTERS.length - 1];
+  const step = STEP[key];
+  if (step === undefined) return null;
+  const count = AGENT_FILTERS.length;
+  return AGENT_FILTERS[(AGENT_FILTERS.indexOf(filter) + step + count) % count];
+}
+
 const WHAT: Record<AgentFilter, string> = {
   all: "",
   withAgent: "an agent",

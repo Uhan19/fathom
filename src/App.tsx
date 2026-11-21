@@ -20,12 +20,13 @@ import {
   type Worker,
 } from "./api";
 import { appearanceOf, boardStyle, chatFontStack, type Appearance } from "./appearance";
-import { placeLocally, rowCounts, shownRequest } from "./board";
+import { oneColumnWidth, placeLocally, rowCounts, shownRequest } from "./board";
 import { emptyBoardText } from "./source";
 import { moveTo } from "./columnOrder";
-import { resizer, startDrag } from "./drag";
+import { startDrag } from "./drag";
 import { Board } from "./components/Board";
 import { AgentFilterToggle } from "./components/AgentFilterToggle";
+import { Switch } from "./components/Switch";
 import { agentFilterText } from "./agentFilter";
 import { Brand } from "./components/Brand";
 import { CardDetail } from "./components/CardDetail";
@@ -35,14 +36,19 @@ import { WorkerTerminal, type Watched } from "./components/WorkerTerminal";
 import { ChatRail } from "./components/TabStrip";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { BosunDrawer } from "./components/BosunDrawer";
-import { BOSUN, DRAWER_HEIGHT, dotOf, isMac, isToggleShortcut, shortcutLabel, summaryOf, type BosunState } from "./bosun";
+import { DRAWER_HEIGHT, isMac, isToggleShortcut, shortcutLabel } from "./bosun";
 import { filterText, indexAmongAll, shownColumns } from "./projectFilter";
-import { DEFAULT_THEME, otherTheme, themeToggleLabel } from "./theme";
+import { DEFAULT_THEME, otherTheme } from "./theme";
 import { comboLabel, listenForShortcuts, type ShortcutAction } from "./shortcuts";
-import { CHAT_WIDTH, DETAIL_WIDTH } from "./windowSettings";
+import { chatResizer, detailResizer } from "./windowSettings";
 import { isUnseen, leftCard, NO_UPDATES, seenLocally, type CardUpdates } from "./updates";
 
 const NO_HELPER: HelperStatus = { terminal: null, status: "", asking: false };
+
+interface Folded {
+  columns: number[];
+  rows: RowKey[];
+}
 const MAC = isMac(navigator.platform);
 const SHORTCUT = shortcutLabel(MAC);
 
@@ -68,8 +74,8 @@ export default function App() {
   const [helper, setHelper] = useState<HelperStatus>(NO_HELPER);
   const [bosunOpen, setBosunOpen] = useState(false);
   const [bosunHeight, setBosunHeight] = useState(DRAWER_HEIGHT.initial);
-  const [bosunState, setBosunState] = useState<BosunState>("finding");
   const [activeTabName, setActiveTabName] = useState<string | null>(null);
+  const [unfolded, setUnfolded] = useState<Folded | null>(null);
   const launchLogged = useRef(false);
   const shortcutActions = useRef<Record<ShortcutAction, () => void> | null>(null);
   const mainRef = useRef<HTMLElement>(null);
@@ -140,12 +146,16 @@ export default function App() {
   const projectFilter = settings?.projectFilter ?? [];
   const agentFilter = settings?.agentFilter ?? "all";
 
-  const panelRoom = (width: number) => {
+  const boardRoom = () => {
     const main = mainRef.current;
     const board = boardColumnRef.current;
-    if (!main || !board) return width;
-    const hidden = main.scrollWidth - main.clientWidth;
-    return width + board.getBoundingClientRect().width - hidden;
+    if (!main || !board) return { shown: 0, min: 0 };
+    const scroll = board.querySelector(".board-scroll");
+    const scrollbar = scroll ? scroll.getBoundingClientRect().width - scroll.clientWidth : 0;
+    return {
+      shown: board.getBoundingClientRect().width - (main.scrollWidth - main.clientWidth),
+      min: oneColumnWidth(columns) + scrollbar,
+    };
   };
 
   useEffect(() => {
@@ -213,6 +223,7 @@ export default function App() {
   const cards = view?.cards ?? [];
   const counts = rowCounts(cards);
   const selected = cards.find((c) => c.id === selectedId) ?? null;
+  const detailShown = selected !== null && appearance !== null;
 
   const changeColumn = (id: number, change: { width?: number; collapsed?: boolean }) => {
     setView((v) => v && { ...v, columns: v.columns.map((c) => (c.id === id ? { ...c, ...change } : c)) });
@@ -277,9 +288,21 @@ export default function App() {
 
   const columns = shownColumns(view?.columns ?? [], projectFilter);
   const anyCollapsed = columns.some((c) => c.collapsed) || collapsedRows.length > 0;
-  const expandAll = () => {
-    columns.filter((c) => c.collapsed).forEach((c) => changeColumn(c.id, { collapsed: false }));
-    if (collapsedRows.length > 0) collapseRows(collapsedRows, false);
+  useEffect(() => {
+    if (anyCollapsed) setUnfolded(null);
+  }, [anyCollapsed]);
+  const fold = (folded: Folded, collapsed: boolean) => {
+    folded.columns.forEach((id) => changeColumn(id, { collapsed }));
+    if (folded.rows.length > 0) collapseRows(folded.rows, collapsed);
+  };
+  const expandAll = (expand: boolean) => {
+    if (!expand) {
+      if (unfolded) fold(unfolded, true);
+      return;
+    }
+    const folded = { columns: columns.filter((c) => c.collapsed).map((c) => c.id), rows: collapsedRows };
+    fold(folded, false);
+    setUnfolded(folded);
   };
 
   const onSettingsSaved = (saved: Settings) => {
@@ -327,40 +350,26 @@ export default function App() {
         <span className={`herdr-dot${herdr.connected ? " up" : ""}`} title={herdr.connected ? "herdr-core connected" : herdr.message}>
           <span className="herdr-label">herdr-core</span>
         </span>
-        <AgentFilterToggle filter={agentFilter} disabled={!settings} onChange={changeAgentFilter} />
-        {anyCollapsed && (
-          <button className="btn btn-header" onClick={expandAll}>
-            Expand all
-          </button>
-        )}
-        <button
-          className="btn btn-header"
-          onClick={() => changeWindow({ theme: otherTheme(theme) })}
-          disabled={!settings}
-          title={withShortcut("Switch light and dark", shortcuts?.toggleTheme)}
-        >
-          {themeToggleLabel(theme)}
-        </button>
+        <div className="header-toggles">
+          <AgentFilterToggle filter={agentFilter} disabled={!settings} onChange={changeAgentFilter} />
+          {(anyCollapsed || unfolded) && (
+            <Switch
+              label="Expand all"
+              checked={!anyCollapsed}
+              title={anyCollapsed ? "Open every folded column and collapsed row" : "Fold back what Expand all opened"}
+              onChange={expandAll}
+            />
+          )}
+          <Switch
+            label="Dark mode"
+            checked={theme === "dark"}
+            disabled={!settings}
+            title={withShortcut("Switch light and dark", shortcuts?.toggleTheme)}
+            onChange={(dark) => changeWindow({ theme: dark ? "dark" : "light" })}
+          />
+        </div>
         <button className="btn btn-header" onClick={() => setSettingsOpen(true)} disabled={!settings} title={withShortcut("Settings", shortcuts?.openSettings)}>
           Settings
-        </button>
-        <button
-          className={`btn btn-header bosun-button${bosunOpen ? " on" : ""}`}
-          onClick={() => setBosunOpen((o) => !o)}
-          disabled={!settings}
-          aria-expanded={bosunOpen}
-          title={`${summaryOf(bosunState)} (${SHORTCUT})`}
-        >
-          <span className={`bosun-dot ${dotOf(bosunState)}`} aria-hidden="true" />
-          {BOSUN}
-        </button>
-        <button
-          className="btn btn-dark"
-          onClick={() => changeWindow({ chatOpen: !chatOpen })}
-          disabled={!settings}
-          title={withShortcut(chatOpen ? "Hide chat" : "Show chat", shortcuts?.toggleChat)}
-        >
-          {chatOpen ? "Hide chat" : "Show chat"}
         </button>
       </header>
       {readError && (
@@ -445,18 +454,17 @@ export default function App() {
               connectionKey={connectionKey}
               onHeight={setBosunHeight}
               onToggle={() => setBosunOpen((o) => !o)}
-              onState={setBosunState}
             />
           )}
         </div>
-        {selected && appearance && (
+        {detailShown && (
           <>
             <div
               className="panel-handle"
               role="separator"
               aria-label="Resize card panel"
               onPointerDown={(e) => {
-                const width = resizer(detailWidth, panelRoom(detailWidth), DETAIL_WIDTH);
+                const width = detailResizer(detailWidth, boardRoom());
                 startDrag(
                   e,
                   (dx) => setDetailDrag(width(-dx)),
@@ -496,13 +504,19 @@ export default function App() {
               role="separator"
               aria-label="Resize chat"
               onPointerDown={(e) => {
-                const width = resizer(chatWidth, panelRoom(chatWidth), CHAT_WIDTH);
+                const widths = chatResizer({ chat: chatWidth, detail: detailShown ? detailWidth : null }, boardRoom());
                 startDrag(
                   e,
-                  (dx) => setChatDrag(width(-dx)),
                   (dx) => {
+                    const next = widths(-dx);
+                    setChatDrag(next.chat);
+                    setDetailDrag(next.detail);
+                  },
+                  (dx) => {
+                    const next = widths(-dx);
                     setChatDrag(null);
-                    changeWindow({ chatWidth: width(-dx) });
+                    setDetailDrag(null);
+                    changeWindow(next.detail === null ? { chatWidth: next.chat } : { chatWidth: next.chat, detailWidth: next.detail });
                   },
                 );
               }}
@@ -521,6 +535,7 @@ export default function App() {
               theme={theme}
               connectionKey={connectionKey}
               mac={MAC}
+              hideTitle={withShortcut("Hide chat", shortcuts?.toggleChat)}
               open={chatOpen}
               onTerminal={setChatTerminal}
               onActiveTab={setActiveTabName}
@@ -529,7 +544,7 @@ export default function App() {
             />
           </div>
         )}
-        {settings && !chatOpen && <ChatRail name={activeTabName ?? chatName} onOpen={() => changeWindow({ chatOpen: true })} />}
+        {settings && !chatOpen && <ChatRail name={activeTabName ?? chatName} title={withShortcut("Show chat", shortcuts?.toggleChat)} onOpen={() => changeWindow({ chatOpen: true })} />}
       </main>
       {watched && settings && (
         <WorkerTerminal
