@@ -45,6 +45,11 @@ const ACTIVITY: Record<string, StatusEntry[]> = {
     { state: "working", atMs: at(40 * MINUTE), key: null, text: "read and write paths split, running the invoice tests" },
     { state: "paused", atMs: at(9 * DAY), key: null, text: "waiting for the schema freeze to lift" },
   ],
+  "atl-02": [
+    { state: "done", atMs: at(7 * DAY), key: null, text: "Receipts are now keyed by the payment id, so a retry after a timeout no longer sends a second one. PR https://github.com/example/atlas-api/pull/402" },
+    { state: "working", atMs: at(8 * DAY), key: null, text: "reproduced the duplicate with a forced timeout in the sandbox" },
+  ],
+  "atl-03": [{ state: "done", atMs: at(8 * DAY), key: null, text: "report written to data/atl-03/report.md" }],
 };
 
 const RECORDED_PR: Record<string, string> = {
@@ -69,6 +74,7 @@ const TASK_FILES: Record<string, Seed[]> = {
     ["runs", "none", null, 3 * DAY, "folder"],
   ],
   "atl-12": [["options.md", "markdown", 3_100, 6 * HOUR]],
+  "atl-03": [["report.md", "markdown", 4_870, 8 * DAY]],
 };
 
 const MENTIONED: Record<string, string> = {
@@ -144,13 +150,39 @@ const REPORT = [
   "![remote image](https://example.com/tracker.png)",
 ].join("\n");
 
+const RETRIES_REPORT = [
+  "# Webhook retries on Mondays",
+  "",
+  "## Answer",
+  "",
+  "The Monday spike comes from the weekly settlement batch, not from the webhook code. The batch opens 4,000 payouts at 06:00 and the payment provider rate-limits our callbacks for about twenty minutes.",
+  "",
+  "- Retries rise from about 40 an hour to 2,300 between 06:00 and 06:20, then fall back.",
+  "- Every retried call succeeds within three attempts; no receipts were lost.",
+  "- Spreading the batch over an hour would remove the spike.",
+  "",
+  "## Method",
+  "",
+  "Six weeks of webhook logs, grouped by hour and response code.",
+  "",
+  "## Next steps",
+  "",
+  "Move the settlement batch to a rolling schedule in the payouts service.",
+].join("\n");
+
+const TASK_PREVIEWS: Record<string, Omit<FilePreview, "size">> = {
+  [`${HOME}/data/atl-03/report.md`]: { kind: "markdown", text: RETRIES_REPORT, dataUrl: null, truncated: false },
+};
+
+const svgUrl = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+
 const LATENCY_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="320" viewBox="0 0 640 320"><rect width="640" height="320" fill="#f6f4ef"/><g stroke="#d9d4c7"><line x1="48" y1="40" x2="608" y2="40"/><line x1="48" y1="120" x2="608" y2="120"/><line x1="48" y1="200" x2="608" y2="200"/><line x1="48" y1="280" x2="608" y2="280"/></g><polyline fill="none" stroke="#c2553b" stroke-width="4" points="48,210 128,190 208,230 288,120 368,210 448,200 528,90 608,205"/><polyline fill="none" stroke="#2f6f8f" stroke-width="4" points="48,220 128,215 208,222 288,205 368,218 448,214 528,208 608,216"/><text x="48" y="28" font-family="sans-serif" font-size="16" fill="#3b3a36">p99 latency during bursts (ms)</text></svg>`;
 
 const PREVIEWS: Record<string, Omit<FilePreview, "size">> = {
   "report.md": { kind: "markdown", text: REPORT, dataUrl: null, truncated: false },
   "options.md": { kind: "markdown", text: "# Two options\n\n**A**: cap at 8 retries.\n\n**B**: cap at 4 retries and alert a minute later.", dataUrl: null, truncated: false },
   "limits.md": { kind: "markdown", text: "# Limits\n\nEach API key gets 600 requests a minute with bursts up to 50.", dataUrl: null, truncated: false },
-  "latency.png": { kind: "image", text: null, dataUrl: `data:image/svg+xml;base64,${btoa(LATENCY_SVG)}`, truncated: false },
+  "latency.png": { kind: "image", text: null, dataUrl: svgUrl(LATENCY_SVG), truncated: false },
   "canary-plan.txt": { kind: "text", text: "09:30  enable limiter.v2 for 5% of keys\n10:30  check error rate < 0.1%\n11:00  widen to 50%\n", dataUrl: null, truncated: false },
   "worker.log": {
     kind: "text",
@@ -165,21 +197,34 @@ const SCREEN_THEMES = {
   dark: { page: "#0f1424", panel: "#182038", ink: "#e8eaec", line: "#2a3452" },
 };
 
-function settingsScreen(theme: keyof typeof SCREEN_THEMES, after: boolean): string {
+const SCREEN_PAGES = ["settings", "profile", "team", "billing"];
+const PAGES_WITH_BEFORE = ["settings", "profile"];
+
+function summaryPanel(c: (typeof SCREEN_THEMES)["light"], title: string): string {
+  const rows = [0, 1, 2]
+    .map((i) => `<rect x="744" y="${172 + i * 56}" width="440" height="40" rx="4" fill="${c.page}" stroke="${c.line}"/><text x="760" y="${197 + i * 56}" font-family="sans-serif" font-size="14" fill="${c.ink}">Recent change ${i + 1}</text>`)
+    .join("");
+  return `<rect x="720" y="88" width="488" height="300" rx="6" fill="${c.panel}" stroke="${c.line}"/><text x="744" y="136" font-family="sans-serif" font-size="17" font-weight="700" fill="${c.ink}">${title} summary</text>${rows}`;
+}
+
+function pageScreen(page: string, theme: keyof typeof SCREEN_THEMES, after: boolean): string {
   const c = SCREEN_THEMES[theme];
+  const title = page.charAt(0).toUpperCase() + page.slice(1);
   const fields = [0, 1, 2, 3]
     .map((i) => {
       const y = 150 + i * (after ? 78 : 60);
       const width = after ? 520 : 300 + ((i * 97) % 220);
-      return `<text x="80" y="${y}" font-family="sans-serif" font-size="15" fill="${c.ink}">Setting ${i + 1}</text><rect x="${after ? 80 : 260}" y="${y + (after ? 12 : -18)}" width="${width}" height="34" rx="4" fill="${c.panel}" stroke="${c.line}"/>`;
+      return `<text x="80" y="${y}" font-family="sans-serif" font-size="15" fill="${c.ink}">${title} field ${i + 1}</text><rect x="${after ? 80 : 260}" y="${y + (after ? 12 : -18)}" width="${width}" height="34" rx="4" fill="${c.panel}" stroke="${c.line}"/>`;
     })
     .join("");
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720"><rect width="1280" height="720" fill="${c.page}"/><rect x="0" y="0" width="1280" height="56" fill="#1b4f77"/><text x="32" y="36" font-family="sans-serif" font-size="20" font-weight="700" fill="#ffffff">Harbor · Settings</text><rect x="48" y="88" width="${after ? 640 : 1184}" height="${after ? 480 : 360}" rx="6" fill="${c.panel}" stroke="${c.line}"/>${fields}<rect x="80" y="${after ? 500 : 400}" width="120" height="36" rx="4" fill="#f2c230"/><text x="104" y="${after ? 523 : 423}" font-family="sans-serif" font-size="14" font-weight="700" fill="#111315">SAVE</text></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720"><rect width="1280" height="720" fill="${c.page}"/><rect x="0" y="0" width="1280" height="56" fill="#1b4f77"/><text x="32" y="36" font-family="sans-serif" font-size="20" font-weight="700" fill="#ffffff">Harbor · ${title}</text><rect x="48" y="88" width="${after ? 640 : 1184}" height="${after ? 480 : 360}" rx="6" fill="${c.panel}" stroke="${c.line}"/>${fields}${after ? summaryPanel(c, title) : ""}<rect x="80" y="${after ? 500 : 400}" width="120" height="36" rx="4" fill="#f2c230"/><text x="104" y="${after ? 523 : 423}" font-family="sans-serif" font-size="14" font-weight="700" fill="#111315">SAVE</text></svg>`;
 }
 
 const SCREENS: Record<string, string> = Object.fromEntries(
-  (["before", "after"] as const).flatMap((phase) =>
-    (["light", "dark"] as const).map((theme) => [`hrb-18-${phase}-1280-${theme}-settings.svg`, settingsScreen(theme, phase === "after")]),
+  SCREEN_PAGES.flatMap((page) =>
+    (["before", "after"] as const)
+      .filter((phase) => phase === "after" || PAGES_WITH_BEFORE.includes(page))
+      .flatMap((phase) => (["light", "dark"] as const).map((theme) => [`hrb-18-${phase}-1280-${theme}-${page}.svg`, pageScreen(page, theme, phase === "after")])),
   ),
 );
 
@@ -201,8 +246,8 @@ export function fixtureImages(id: string): FileEntry[] {
 export function fixturePreview(path: string, files: FileEntry[]): FilePreview {
   const name = path.split("/").pop() ?? "";
   const screen = SCREENS[name];
-  if (screen) return { kind: "image", text: null, dataUrl: `data:image/svg+xml;base64,${btoa(screen)}`, truncated: false, size: screen.length };
-  const found = PREVIEWS[name];
+  if (screen) return { kind: "image", text: null, dataUrl: svgUrl(screen), truncated: false, size: screen.length };
+  const found = TASK_PREVIEWS[path] ?? PREVIEWS[name];
   if (!found) throw `Fathom cannot preview ${name}; open it in its app instead.`;
   return { ...found, size: files.find((f) => f.path === path)?.size ?? 0 };
 }
@@ -217,6 +262,7 @@ const PR_STATUS: Record<string, Pick<PrStatus, "state" | "checks">> = {
 
 const PR_TITLES: Record<string, string> = {
   "https://github.com/example/harbor-web/pull/233": "Settings page: one column on the new form kit, labels above fields",
+  "https://github.com/example/atlas-api/pull/402": "Key receipts by payment id so a retried timeout sends one receipt",
 };
 
 export function fixturePrStatus(url: string, signedIn: boolean): PrStatus {
