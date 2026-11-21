@@ -80,7 +80,7 @@ function ShotsBody({ set, cardId }: { set: ShotSet; cardId: string }) {
         </button>
         {scale && <span className="shot-scale">whole frame · {scaleText(scale)}</span>}
       </div>
-      {!single && (set.axes.phase.length > 0 || set.axes.width.length > 0 || set.axes.theme.length > 0) && (
+      {!single && switchable(set, current) && (
         <div className="shot-axes">
           <AxisSwitches axes={set.axes} shots={set.shots} current={current} onPick={setCurrent} />
         </div>
@@ -113,6 +113,9 @@ function ShotsBody({ set, cardId }: { set: ShotSet; cardId: string }) {
     </>
   );
 }
+
+const switchable = (set: ShotSet, shot: Shot) =>
+  (set.axes.phase.length > 0 && shot.phase !== null) || (set.axes.width.length > 0 && shot.width !== null) || (set.axes.theme.length > 0 && shot.theme !== null);
 
 function PrList({ urls, statuses, boxed }: { urls: string[]; statuses: PrStatuses; boxed: boolean }) {
   const links = urls.flatMap((url) => {

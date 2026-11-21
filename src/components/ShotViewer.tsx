@@ -150,13 +150,13 @@ export function AxisSwitches({ axes, shots, current, onPick }: { axes: Axes; sho
   const reachable = <K extends Axis>(axis: K, value: Shot[K]) => pickShot(shots, current, { [axis]: value, state: current.state }) !== null;
   return (
     <>
-      {axes.phase.length > 0 && (
+      {axes.phase.length > 0 && current.phase && (
         <Segment label="Before or after" values={axes.phase} current={current.phase} name={(p) => PHASE_NAMES[p]} enabled={(p) => reachable("phase", p)} onPick={(p) => choose("phase", p)} />
       )}
-      {axes.width.length > 0 && (
+      {axes.width.length > 0 && current.width && (
         <Segment label="Width" values={axes.width} current={current.width} name={String} enabled={(w) => reachable("width", w)} onPick={(w) => choose("width", w)} />
       )}
-      {axes.theme.length > 0 && (
+      {axes.theme.length > 0 && current.theme && (
         <Segment label="Theme" values={axes.theme} current={current.theme} name={capital} enabled={(t) => reachable("theme", t)} onPick={(t) => choose("theme", t)} />
       )}
     </>
@@ -262,7 +262,6 @@ export function ViewerLayer({ set, start, title, onClose }: ShotViewerProps) {
           ) : (
             <button type="button" className="viewer-frame" onClick={() => setZoomed((z) => !z)} title={zoomed ? "Fit to window" : "Show at full size"}>
               <ShotImage shot={current} className="viewer-img" onScale={setScale} />
-              {current.phase && <PhaseBadge phase={current.phase} />}
             </button>
           )}
           {!comparing && <span className="viewer-scale">{zoomed ? "1:1" : `fit · ${scaleText(scale)}`}</span>}
@@ -338,7 +337,13 @@ function Slider({ before, after, split, onSplit }: { before: Shot; after: Shot; 
       <div className="viewer-slider-top" style={clip}>
         <ShotImage shot={before} className="viewer-img" />
       </div>
-      <span className="viewer-split" style={{ left: `${split}%` }} />
+      <span className="viewer-split" style={{ left: `${split}%` }}>
+        <span className="viewer-knob">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M6 4.5L2.5 8L6 11.5M10 4.5L13.5 8L10 11.5" />
+          </svg>
+        </span>
+      </span>
       <span className="shot-badge phase-before viewer-phase">Before</span>
       <span className="shot-badge phase-after viewer-phase right">After</span>
       <input

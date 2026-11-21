@@ -30,7 +30,7 @@ function entry(state: string, text: string, atMs = 1_000): StatusEntry {
 
 function input(overrides: Partial<ResultInput> = {}): ResultInput {
   return {
-    card: { id: "web-7", kind: "task", holdKind: "", holdReason: "" },
+    card: { id: "web-7", kind: "task", state: "queued", holdKind: "", holdReason: "" },
     activity: [],
     report: null,
     prBody: null,
@@ -63,6 +63,19 @@ describe("the lead of a report", () => {
     expect(leadSection(text)).toEqual({ heading: "Verdict", items: ["Ship it today."] });
   });
 
+  it("keeps a bold list item that reads like a subhead", () => {
+    expect(leadSection("## Summary\n\n**Changes**\n\n- **Bosun is gone from the header.**\n- Rows fold.")?.items).toEqual(["**Bosun is gone from the header.**", "Rows fold."]);
+  });
+
+  it("stops before a list introduced later in the section, but keeps one the section opens with", () => {
+    expect(leadSection("## Summary\n\nAdds a setup sheet.\n\nThe sheet tells the agent to:\n\n- ask once;\n- install it.")?.items).toEqual(["Adds a setup sheet."]);
+    expect(leadSection("## Result\n\nThree things changed in the header:\n\n- rows fold\n- chat hides")?.items).toEqual(["Three things changed in the header:", "rows fold", "chat hides"]);
+  });
+
+  it("skips link-only metadata lines and short labels", () => {
+    expect(leadSection("Linear: [ENG-5036](https://linear.app/x/issue/ENG-5036)\n\nENG-5207.\n\nBottom line:\n\n- Adds a minimum deposit.\n\n## More")?.items).toEqual(["Adds a minimum deposit."]);
+  });
+
   it("prefers the opening paragraph when the report starts with prose", () => {
     expect(leadSection("CI is slow because of the cold cache.\n\n## Detail\n\nMore.")).toEqual({ heading: null, items: ["CI is slow because of the cold cache."] });
   });
@@ -77,14 +90,15 @@ describe("the lead of a report", () => {
 });
 
 describe("the done line", () => {
-  it("uses the newest done entry when it says more than a PR link", () => {
+  it("uses the newest done entry and lets its PR link name itself", () => {
     expect(doneLine([entry("done", "Settings page redesigned with a dark theme PR " + PR), entry("done", "older")])).toBe(
-      "Settings page redesigned with a dark theme PR " + PR,
+      "Settings page redesigned with a dark theme " + PR,
     );
   });
 
-  it("is skipped when it only carries a PR link", () => {
+  it("is skipped when it is mostly links, paths and figures", () => {
     expect(doneLine([entry("done", `PR ${PR}`)])).toBeNull();
+    expect(doneLine([entry("done", `PR ${PR} - model qwen3.5:9b (~7.6 GB); screenshots /tmp/a.png, /tmp/b.png`)])).toBeNull();
     expect(doneLine([entry("working", "Halfway through the settings page")])).toBeNull();
   });
 });
@@ -203,7 +217,7 @@ describe("a set of screenshots", () => {
 
 describe("the Result for each kind of card", () => {
   it("answers an investigation from its report", () => {
-    const model = buildResult(input({ card: { id: "web-7", kind: "investigation", holdKind: "", holdReason: "" }, report: reportFile("r.md", REPORT) }));
+    const model = buildResult(input({ card: { id: "web-7", kind: "scout", state: "done", holdKind: "", holdReason: "" }, report: reportFile("r.md", REPORT) }));
     expect(model).toMatchObject({
       label: "Answer",
       headline: "The feed is safe to use.",
@@ -216,8 +230,13 @@ describe("the Result for each kind of card", () => {
   it("shows screenshots and the PR for UI work", () => {
     const model = buildResult(input({ activity: [entry("done", `Settings page redesigned with a dark theme PR ${PR}`)], prs: [PR], images: [image("web-7-after-1280-light-settings.png")] }));
     expect(model?.label).toBe("Result");
-    expect(model?.headline).toBe(`Settings page redesigned with a dark theme PR ${PR}`);
+    expect(model?.headline).toBe(`Settings page redesigned with a dark theme ${PR}`);
     expect(model?.body).toMatchObject({ kind: "shots", prs: [PR] });
+  });
+
+  it("never cuts the headline inside bold or code", () => {
+    const report = reportFile("r.md", "## Short answer\n\n**No. The listing is not live yet.** It waits on review. Then `v1. 2` ships.");
+    expect(buildResult(input({ report }))).toMatchObject({ headline: "**No. The listing is not live yet.**", points: ["It waits on review. Then `v1. 2` ships."] });
   });
 
   it("falls back from the done line to the PR body and then the PR title for code work", () => {
@@ -228,13 +247,15 @@ describe("the Result for each kind of card", () => {
   });
 
   it("turns a captain hold with options into a call and keeps plain holds out", () => {
-    const call = buildResult(input({ card: { id: "web-7", kind: "task", holdKind: "captain", holdReason: "Go? (a) yes (b) no" }, report: reportFile("r.md", REPORT) }));
+    const call = buildResult(input({ card: { id: "web-7", kind: "task", state: "queued", holdKind: "captain", holdReason: "Go? (a) yes (b) no" }, report: reportFile("r.md", REPORT) }));
     expect(call).toMatchObject({ label: "Your call", headline: null, body: { kind: "call" }, report: { path: "r.md" } });
-    expect(buildResult(input({ card: { id: "web-7", kind: "task", holdKind: "captain", holdReason: "Approve the key rotation?" } }))).toBeNull();
+    expect(buildResult(input({ card: { id: "web-7", kind: "task", state: "queued", holdKind: "captain", holdReason: "Approve the key rotation?" } }))).toBeNull();
+    const answered = buildResult(input({ card: { id: "web-7", kind: "captain", state: "done", holdKind: "captain", holdReason: "Go? (a) yes (b) no" }, report: reportFile("r.md", REPORT) }));
+    expect(answered).toMatchObject({ label: "Answer", body: { kind: "none" } });
   });
 
   it("shows a watch's newest update with a tone", () => {
-    const model = buildResult(input({ card: { id: "web-7", kind: "watch", holdKind: "", holdReason: "" }, activity: [entry("blocked", "RPC is down"), entry("working", "All clear")] }));
+    const model = buildResult(input({ card: { id: "web-7", kind: "watch", state: "in_flight", holdKind: "", holdReason: "" }, activity: [entry("blocked", "RPC is down"), entry("working", "All clear")] }));
     expect(model).toMatchObject({ label: "Watch", headline: null, body: { kind: "watch", tone: "warn", entry: { text: "RPC is down" } } });
   });
 

@@ -74,7 +74,7 @@ export interface ResultModel {
 }
 
 export interface ResultInput {
-  card: Pick<Card, "id" | "kind" | "holdKind" | "holdReason">;
+  card: Pick<Card, "id" | "kind" | "state" | "holdKind" | "holdReason">;
   activity: StatusEntry[];
   report: (ReportFile & { text: string }) | null;
   prBody: string | null;
@@ -87,6 +87,7 @@ export interface ResultInput {
 export const MAX_POINTS = 3;
 const MIN_HEADLINE_WORDS = 4;
 const SUBHEAD_MAX_WORDS = 6;
+const LABEL_MAX_WORDS = 3;
 const MIN_SCREEN_WIDTH = 240;
 const MAX_SCREEN_WIDTH = 3840;
 
@@ -97,8 +98,11 @@ const LABEL_BY_HEADING: [RegExp, ResultLabel][] = [
   [/\b(verdicts?|findings)\b/i, "Verdict"],
   [/\brecommendation\b/i, "Recommendation"],
 ];
-const URL = /https?:\/\/\S+/g;
-const SENTENCE_END = /(?<=[.!?])\s+(?=[A-Z0-9"“(`*])/;
+const PROSE_WORD = /^[("“]?[A-Za-z][a-z'’-]*[,.;:!?)"”]*$/;
+const PR_BEFORE_LINK = /\bPR:?\s+(?=https:\/\/\S+\/pull\/\d+)/g;
+const LIST_MARKER = /^([-*+]|\d+[.)])\s+/;
+const META_LINE = /^(?:[A-Z][\w ]{0,20}:\s*)?(?:\[[^\]]+\]\([^)\s]+\)|https?:\/\/\S+|[A-Z][A-Z0-9]*-\d+)\.?$/;
+const SENTENCE_END = /(?<=[.!?]["”')*_`]*)\s+(?=[A-Z0-9"“(`*])/;
 const STATE_TONES: Record<string, Tone> = {
   working: "ok",
   done: "ok",
@@ -114,7 +118,8 @@ export function buildResult(input: ResultInput): ResultModel | null {
   const prLead = input.prBody ? leadSection(input.prBody) ?? openingItems(input.prBody) : null;
   const done = doneLine(input.activity);
   const report = input.report ? { path: input.report.path, sections: input.report.sections, lines: input.report.lines } : null;
-  const call = input.card.holdKind === "captain" ? parseCall(input.card.holdReason) : null;
+  const waiting = input.card.holdKind === "captain" && input.card.state !== "done";
+  const call = waiting ? parseCall(input.card.holdReason) : null;
 
   if (call) return { label: "Your call", headline: null, points: [], body: { kind: "call", call }, report };
 
@@ -144,10 +149,19 @@ function tellStory(lead: ReportLead | null, done: string | null, prLead: ReportL
 
 function split(items: string[]) {
   const [first, ...rest] = items;
-  const [sentence, ...more] = first.split(SENTENCE_END);
-  const remainder = more.join(" ").trim();
+  const [sentence, remainder] = firstSentence(first);
   return { headline: sentence, points: [...(remainder ? [remainder] : []), ...rest].slice(0, MAX_POINTS) };
 }
+
+function firstSentence(text: string): [string, string] {
+  const parts = text.split(SENTENCE_END);
+  let head = parts[0];
+  let next = 1;
+  while (next < parts.length && !balanced(head)) head = `${head} ${parts[next++]}`;
+  return [head, parts.slice(next).join(" ").trim()];
+}
+
+const balanced = (text: string) => [/\*\*/g, /`/g].every((mark) => (text.match(mark)?.length ?? 0) % 2 === 0);
 
 function prTitle(prs: string[], statuses: Map<string, PrStatus | null>): string | null {
   for (const url of prs) {
@@ -165,8 +179,8 @@ export function labelFor(heading: string | null): ResultLabel {
 export function doneLine(activity: StatusEntry[]): string | null {
   const done = activity.find((entry) => entry.state === "done");
   if (!done) return null;
-  const words = done.text.replace(URL, " ").replace(/\bPR\b/g, " ").trim().split(/\s+/).filter(Boolean);
-  return words.length >= MIN_HEADLINE_WORDS ? done.text.trim() : null;
+  const prose = done.text.split(/\s+/).filter((word) => PROSE_WORD.test(word));
+  return prose.length >= MIN_HEADLINE_WORDS ? done.text.replace(PR_BEFORE_LINK, "").trim() : null;
 }
 
 export function reportFile(path: string, text: string): ReportFile & { text: string } {
@@ -212,16 +226,21 @@ function leadItems(lines: string[]): string[] {
     if (fenced || /^\s{2,}\S/.test(raw) && items.length > 0 && /^\s/.test(raw)) continue;
     const line = raw.trim();
     if (!line || /^(#|\||<!--|!\[|---|>)/.test(line)) continue;
-    const text = line.replace(/^([-*+]|\d+[.)])\s+/, "").trim();
-    if (text && !isSubhead(text)) items.push(text);
+    const text = line.replace(LIST_MARKER, "").trim();
+    if (!text || META_LINE.test(text) || (text === line && isSubhead(text))) continue;
+    if (items.length > 0 && text.endsWith(":")) break;
+    items.push(text);
   }
   return items;
 }
 
 function isSubhead(text: string): boolean {
   const bold = text.match(/^\*\*([^*]+)\*\*:?$/);
-  return bold !== null && bold[1].trim().split(/\s+/).length <= SUBHEAD_MAX_WORDS;
+  if (bold) return words(bold[1]) <= SUBHEAD_MAX_WORDS;
+  return text.endsWith(":") && words(text) <= LABEL_MAX_WORDS;
 }
+
+const words = (text: string) => text.trim().split(/\s+/).length;
 
 type MarkerStyle = { pattern: RegExp; lower: boolean };
 

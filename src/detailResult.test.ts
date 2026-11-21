@@ -17,7 +17,7 @@ function image(name: string): FileEntry {
 
 function model(overrides: Partial<ResultInput>): ResultModel {
   return buildResult({
-    card: { id: "web-7", kind: "task", holdKind: "", holdReason: "" },
+    card: { id: "web-7", kind: "task", state: "queued", holdKind: "", holdReason: "" },
     activity: [],
     report: null,
     prBody: null,
@@ -70,6 +70,14 @@ describe("the Result section", () => {
     expect(text(html)).toContain("All 7");
   });
 
+  it("leaves out a switch the shown screenshot has no tag for", () => {
+    const images = [image("web-7-home.png"), image("web-7-team-light.png"), image("web-7-team-dark.png")];
+    const html = section(model({ images, theme: "dark", activity: [{ state: "done", atMs: 1, key: null, text: "Home and team pages redesigned" }] }));
+    expect(html).toContain('aria-label="Theme"');
+    const untagged = section(model({ images: [image("web-7-home.png"), image("web-7-team-1440.png"), image("web-7-team-390.png")], activity: [{ state: "done", atMs: 1, key: null, text: "Home and team pages redesigned" }] }));
+    expect(untagged).not.toContain("shot-axes");
+  });
+
   it("drops the switches and strip for a single screenshot", () => {
     const html = section(model({ images: [image("web-7-home.png")], activity: [{ state: "done", atMs: 1, key: null, text: "Home page redesigned for mobile" }] }));
     expect(html).toContain('class="shot-lead"');
@@ -86,7 +94,7 @@ describe("the Result section", () => {
   });
 
   it("offers a captain call as options to pick, with the recommended one tagged", () => {
-    const html = section(model({ card: { id: "web-7", kind: "task", holdKind: "captain", holdReason: "212 rows have no account. Options: (a) delete them; (b) archive them (recommended); (c) keep them." } }));
+    const html = section(model({ card: { id: "web-7", kind: "task", state: "queued", holdKind: "captain", holdReason: "212 rows have no account. Options: (a) delete them; (b) archive them (recommended); (c) keep them." } }));
     expect(html).toContain("result-call");
     expect(html).toContain('<span class="sech">Your call</span>');
     expect(html.match(/role="radio"/g)).toHaveLength(3);
@@ -95,14 +103,14 @@ describe("the Result section", () => {
   });
 
   it("opens one question at a time when a call has several", () => {
-    const html = section(model({ card: { id: "web-7", kind: "task", holdKind: "captain", holdReason: "(1) Name: (a) Fathom (b) Depth (recommended) (2) Color: (a) blue (b) green" } }));
+    const html = section(model({ card: { id: "web-7", kind: "task", state: "queued", holdKind: "captain", holdReason: "(1) Name: (a) Fathom (b) Depth (recommended) (2) Color: (a) blue (b) green" } }));
     expect(text(html)).toContain("0 of 2 picked");
     expect(html.match(/role="radio"/g)).toHaveLength(2);
     expect(html).toContain('class="call-row"');
   });
 
   it("shows a watch's latest update with its state", () => {
-    const html = section(model({ card: { id: "web-7", kind: "watch", holdKind: "", holdReason: "" }, activity: [{ state: "blocked", atMs: Date.now(), key: null, text: "RPC is down" }] }));
+    const html = section(model({ card: { id: "web-7", kind: "watch", state: "in_flight", holdKind: "", holdReason: "" }, activity: [{ state: "blocked", atMs: Date.now(), key: null, text: "RPC is down" }] }));
     expect(html).toContain("result-watch tone-warn");
     expect(text(html)).toContain("Blocked last update");
   });
