@@ -273,6 +273,7 @@ export const api = {
   cardDetail: (id: string) => invoke<Detail>("card_detail", { id }),
   cardContext: (id: string) => invoke<CardContext>("card_context", { id }),
   cardFiles: (id: string, mentioned: string[]) => invoke<FileEntry[]>("card_files", { id, mentioned }),
+  cardImages: (id: string) => invoke<FileEntry[]>("card_images", { id }),
   filePreview: (path: string) => invoke<FilePreview>("file_preview", { path }),
   openFile: (path: string) => invoke<void>("open_file", { path }),
   revealFile: (path: string) => invoke<void>("reveal_file", { path }),

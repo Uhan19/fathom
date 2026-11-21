@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, Metadata};
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
@@ -17,6 +17,8 @@ const ARCHIVED_LOG: &str = "status";
 const ARCHIVED_LOG_EXTENSION: &str = "log";
 const RECORDED_PR_KEY: &str = "pr";
 const MAX_FOLDER_ENTRIES: usize = 200;
+const MAX_IMAGES: usize = 5000;
+pub const SCREENSHOTS_FOLDER: &str = "Documents/screenshots";
 const MAX_MENTIONS: usize = 200;
 const SNIFF_BYTES: usize = 4096;
 pub const TEXT_PREVIEW_BYTES: u64 = 256 * 1024;
@@ -165,6 +167,72 @@ pub fn card_files(
         entries.push(entry);
     }
     Ok(entries)
+}
+
+pub fn card_images(places: &Places, id: &str) -> Result<Vec<FileEntry>, String> {
+    let id = checked_id(id)?;
+    let folder = task_folder(places.home, id);
+    let mut found = images_within(places, &folder, true);
+    if let Some(shots) = places.user_home.map(|home| home.join(SCREENSHOTS_FOLDER)) {
+        found.extend(images_within(places, &shots.join(id), false));
+        found.extend(
+            images_in(places, &shots)
+                .into_iter()
+                .filter(|e| starts_with_id(&e.name, id)),
+        );
+    }
+    let mut seen = HashSet::new();
+    found.retain(|e| seen.insert((e.name.clone(), e.size)));
+    found.truncate(MAX_IMAGES);
+    Ok(found)
+}
+
+fn starts_with_id(name: &str, id: &str) -> bool {
+    name.strip_prefix(id)
+        .is_some_and(|rest| rest.starts_with(['-', '_', '.']))
+}
+
+fn images_within(places: &Places, folder: &Path, in_task_folder: bool) -> Vec<FileEntry> {
+    let mut found = images_in(places, folder);
+    for sub in subfolders(folder) {
+        found.extend(images_in(places, &sub));
+    }
+    for entry in &mut found {
+        entry.in_task_folder = in_task_folder;
+    }
+    found
+}
+
+fn subfolders(folder: &Path) -> Vec<PathBuf> {
+    let Ok(read) = fs::read_dir(folder) else {
+        return vec![];
+    };
+    let mut dirs: Vec<PathBuf> = read
+        .flatten()
+        .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .map(|e| e.path())
+        .collect();
+    dirs.sort();
+    dirs
+}
+
+fn images_in(places: &Places, folder: &Path) -> Vec<FileEntry> {
+    let Ok(read) = fs::read_dir(folder) else {
+        return vec![];
+    };
+    let mut images: Vec<FileEntry> = read
+        .flatten()
+        .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
+        .filter(|e| image_mime(&e.path()).is_some())
+        .filter_map(|e| {
+            let path = e.path();
+            let meta = fs::metadata(&path).ok()?;
+            meta.is_file().then(|| entry_for(places, &path, &meta))
+        })
+        .collect();
+    images.sort_by(|a, b| a.name.cmp(&b.name));
+    images
 }
 
 pub fn preview(path: &Path) -> Result<Preview, String> {
@@ -678,6 +746,49 @@ mod tests {
         assert!(!files[2].in_task_folder);
         assert_eq!(files[3].folder, "data/other-task");
         assert_eq!(files[4].preview, PreviewKind::Image);
+    }
+
+    #[test]
+    fn images_come_from_the_task_folder_one_level_deep_and_id_prefixed_screenshots() {
+        let f = Fixture::new();
+        let data = f.home.join(DATA_DIR).join("atl-07");
+        write(&data.join("report.md"), "# Report");
+        write(&data.join("after-light.png"), "a");
+        write(&data.join("shots/before-dark.png"), "bb");
+        write(&data.join("shots/deeper/too-deep.png"), "c");
+        write(&data.join(".hidden.png"), "d");
+        let shots = f.user.join(SCREENSHOTS_FOLDER);
+        write(&shots.join("atl-07-1440-hero.png"), "e");
+        write(&shots.join("atl-07_390.jpg"), "f");
+        write(&shots.join("atl-070-other-task.png"), "g");
+        write(&shots.join("atl-07-notes.txt"), "h");
+        write(&shots.join("atl-07/01-top.png"), "i");
+        write(&shots.join("after-light.png"), "a");
+
+        let images = card_images(&f.places(), "atl-07").unwrap();
+        let names: Vec<&str> = images.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "after-light.png",
+                "before-dark.png",
+                "01-top.png",
+                "atl-07-1440-hero.png",
+                "atl-07_390.jpg"
+            ]
+        );
+        assert!(images[0].in_task_folder && images[1].in_task_folder);
+        assert_eq!(images[1].folder, "data/atl-07/shots");
+        assert!(!images[3].in_task_folder);
+        assert_eq!(images[3].folder, "~/Documents/screenshots");
+        assert!(images.iter().all(|e| e.preview == PreviewKind::Image));
+    }
+
+    #[test]
+    fn a_task_without_images_has_none_and_unsafe_ids_are_refused() {
+        let f = Fixture::new();
+        assert!(card_images(&f.places(), "atl-08").unwrap().is_empty());
+        assert!(card_images(&f.places(), "../atl-08").is_err());
     }
 
     #[test]

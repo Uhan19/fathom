@@ -65,6 +65,7 @@ pub fn run() {
             commands::card_detail,
             commands::card_context,
             commands::card_files,
+            commands::card_images,
             commands::file_preview,
             commands::open_file,
             commands::reveal_file,

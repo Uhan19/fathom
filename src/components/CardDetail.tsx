@@ -4,10 +4,12 @@ import { cardMessage, holdHeading } from "../board";
 import { cardLinkSources, findLinks, findPaths, RECORDED_PR, topLinks, type Linking, type Source } from "../links";
 import { cardMessageLabel, cardMessagePrompt, moveCopy, sailorLabel } from "../source";
 import type { Theme } from "../theme";
+import { buildResult, PR_BODY_FILE, reportEntry, reportFile, shownPrs, taskFile } from "../result";
 import { ActivityTab } from "./DetailActivity";
 import { AgentTab } from "./DetailAgent";
 import { FilesTab, openEntry } from "./DetailFiles";
 import { LinkRow, LinksTab, usePrStatuses, type PrStatuses } from "./DetailLinks";
+import { ResultSection } from "./DetailResult";
 import { Close, Sailor } from "./Icons";
 import { Markdown, type PathAction } from "./Markdown";
 import { RichText } from "./RichText";
@@ -84,6 +86,40 @@ function useCardFiles(id: string, paths: string[] | null) {
   return { files, error };
 }
 
+function useCardImages(id: string, wanted: boolean) {
+  const [images, setImages] = useState<FileEntry[] | null>(null);
+  useEffect(() => {
+    setImages(null);
+    if (!wanted) return;
+    let alive = true;
+    api
+      .cardImages(id)
+      .then((found) => alive && setImages(found))
+      .catch(() => alive && setImages([]));
+    return () => {
+      alive = false;
+    };
+  }, [id, wanted]);
+  return wanted ? images : [];
+}
+
+function useFileText(path: string | null) {
+  const [text, setText] = useState<{ path: string; text: string | null } | null>(null);
+  useEffect(() => {
+    if (!path) return;
+    let alive = true;
+    api
+      .filePreview(path)
+      .then((p) => alive && setText({ path, text: p.text }))
+      .catch(() => alive && setText({ path, text: null }));
+    return () => {
+      alive = false;
+    };
+  }, [path]);
+  if (!path) return null;
+  return text?.path === path ? text.text : undefined;
+}
+
 function cardSources(card: Card, body: string, context: CardContext): Source[] {
   return [
     ...(context.recordedPr ? [{ name: RECORDED_PR, text: context.recordedPr }] : []),
@@ -137,6 +173,31 @@ export function CardDetail(props: CardDetailProps) {
   const { files, error: filesError } = useCardFiles(card.id, paths);
   const prUrls = useMemo(() => links.filter((l) => l.kind === "pr").map((l) => l.url), [links]);
   const statuses = usePrStatuses(prUrls);
+  const images = useCardImages(card.id, context?.hasHome ?? false);
+  const taskFolder = context?.taskFolder ?? null;
+  const report = useMemo(() => (files ? reportEntry(shown.links, files, taskFolder) : null), [files, shown.links, taskFolder]);
+  const prBody = useMemo(() => (files ? taskFile(files, taskFolder, PR_BODY_FILE) : null), [files, taskFolder]);
+  const reportText = useFileText(report?.path ?? null);
+  const prBodyText = useFileText(prBody?.path ?? null);
+  const filesSettled = !context?.hasHome || files !== null || filesError !== null;
+  const resultReady = settled && filesSettled && images !== null && reportText !== undefined && prBodyText !== undefined;
+  const result = useMemo(
+    () =>
+      resultReady && context
+        ? buildResult({
+            card: shown,
+            activity: context.activity,
+            report: report && reportText ? reportFile(report.path, reportText) : null,
+            prBody: prBodyText ?? null,
+            prs: prUrls,
+            prStatuses: statuses,
+            images: images ?? [],
+            theme,
+          })
+        : null,
+    [resultReady, context, shown, report, reportText, prBodyText, prUrls, statuses, images, theme],
+  );
+  const callShown = result?.body.kind === "call";
 
   const byMention = useMemo(() => {
     const map = new Map<string, FileEntry>();
@@ -225,7 +286,22 @@ export function CardDetail(props: CardDetailProps) {
           {tab === "overview" && (
             <>
               {request && <MoveSection request={request} source={source} rowNames={rowNames} onResend={onResend} onDismiss={onDismiss} />}
-              {hold && (
+              {result && (
+                <ResultSection
+                  model={result}
+                  cardId={shown.id}
+                  holdUntil={shown.holdUntil}
+                  statuses={statuses}
+                  linking={linking}
+                  onPath={onPath}
+                  onOpenReport={preview}
+                  onAnswer={(text) => {
+                    setDraft(text);
+                    setSend({ kind: "idle" });
+                  }}
+                />
+              )}
+              {hold && !callShown && (
                 <div className={`sec hold hold-${shown.holdKind}`}>
                   <span className="sech">{hold}</span>
                   {shown.holdReason ? (
@@ -253,7 +329,7 @@ export function CardDetail(props: CardDetailProps) {
                 {!detail && !loadError && <p className="muted">Loading…</p>}
                 {detail && (detail.body ? <Markdown text={detail.body} linking={linking} onPath={onPath} /> : <p className="muted">No note recorded.</p>)}
               </div>
-              <KeyLinks links={links} statuses={statuses} onAll={() => showTab("links")} />
+              <KeyLinks links={links} hidden={shownPrs(result)} statuses={statuses} onAll={() => showTab("links")} />
               {detail && (
                 <div className="sec facts">
                   {detail.created && <Fact name="Created" value={detail.created} />}
@@ -371,8 +447,15 @@ function TabBar({ tabs, tab, counts, worker, source, onChange }: TabBarProps) {
   );
 }
 
-function KeyLinks({ links, statuses, onAll }: { links: ReturnType<typeof findLinks>; statuses: PrStatuses; onAll: () => void }) {
-  const top = topLinks(links);
+interface KeyLinksProps {
+  links: ReturnType<typeof findLinks>;
+  hidden: string[];
+  statuses: PrStatuses;
+  onAll: () => void;
+}
+
+function KeyLinks({ links, hidden, statuses, onAll }: KeyLinksProps) {
+  const top = topLinks(links.filter((link) => !hidden.includes(link.url)));
   if (top.length === 0) return null;
   return (
     <div className="sec">

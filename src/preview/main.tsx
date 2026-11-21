@@ -30,7 +30,7 @@ import {
   shellScreen,
   workerScreen,
 } from "./fixture";
-import { FIXTURE_NOTES, fixtureContext, fixtureFiles, fixturePreview, fixturePrStatus } from "./detailFixture";
+import { FIXTURE_NOTES, fixtureContext, fixtureFiles, fixtureImages, fixturePreview, fixturePrStatus } from "./detailFixture";
 
 const params = new URLSearchParams(location.search);
 const noLabel = params.has("nolabel");
@@ -311,6 +311,8 @@ mockIPC(
       case "card_files":
         detailFiles = backlog ? [] : fixtureFiles(args.id as string, args.mentioned as string[]);
         return detailFiles;
+      case "card_images":
+        return backlog ? [] : fixtureImages(args.id as string);
       case "file_preview":
         return fixturePreview(args.path as string, detailFiles);
       case "open_file":
