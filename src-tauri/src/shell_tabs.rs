@@ -139,8 +139,8 @@ mod tests {
     use super::*;
     use crate::herdr::Connection;
     use crate::herdr::tests::FAKE_HC;
+    use crate::test_support::write_script;
     use crate::workers::WorkerStatus;
-    use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
     use std::sync::Arc;
 
@@ -161,8 +161,7 @@ esac
     fn fake_herdr() -> (tempfile::TempDir, Herdr) {
         let bin = tempfile::tempdir().unwrap();
         let script = bin.path().join("hc");
-        std::fs::write(&script, FAKE_HC_SCRIPT).unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        write_script(&script, FAKE_HC_SCRIPT);
         FAKE_HC.with(|fake| *fake.borrow_mut() = Some(script));
         (bin, Herdr::new(Connection::default(), Arc::new(|_| {})))
     }
@@ -335,8 +334,7 @@ done
 
     fn stub_shell(dir: &Path) -> PathBuf {
         let path = dir.join("stub-zsh");
-        std::fs::write(&path, STUB_SHELL).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        write_script(&path, STUB_SHELL);
         path
     }
 

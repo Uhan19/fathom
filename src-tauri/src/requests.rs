@@ -118,7 +118,7 @@ fn failure(stderr: &[u8], stdout: &str, fallback: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
+    use crate::test_support::write_script;
 
     #[test]
     fn request_ids_are_valid_inbox_ids() {
@@ -147,8 +147,7 @@ mod tests {
         let bin = home.path().join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         let path = bin.join("fm-inbox.sh");
-        std::fs::write(&path, format!("#!/bin/sh\n{script}\n")).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        write_script(&path, &format!("#!/bin/sh\n{script}\n"));
         home
     }
 

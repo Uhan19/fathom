@@ -800,11 +800,9 @@ done
 "#;
 
     fn fake_hc() -> tempfile::TempDir {
-        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         let script = dir.path().join("hc");
-        std::fs::write(&script, FAKE_ATTACH).unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        crate::test_support::write_script(&script, FAKE_ATTACH);
         FAKE_HC.with(|fake| *fake.borrow_mut() = Some(script));
         dir
     }

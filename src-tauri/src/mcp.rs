@@ -1033,7 +1033,6 @@ esac
 
     impl WorkerLab {
         fn new() -> WorkerLab {
-            use std::os::unix::fs::PermissionsExt;
             let dir = tempfile::tempdir().unwrap();
             let bin = dir.path().join("bin");
             let folder = dir.path().join("reef map");
@@ -1047,8 +1046,7 @@ esac
                 ("zsh", "#!/bin/sh\n"),
             ] {
                 let script = bin.join(tool);
-                std::fs::write(&script, body).unwrap();
-                std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+                crate::test_support::write_script(&script, body);
             }
             crate::herdr::tests::FAKE_HC.with(|fake| *fake.borrow_mut() = Some(bin.join("hc")));
             let store = data.join("fathom.sqlite");
