@@ -11,6 +11,7 @@ interface TabStripProps {
   active: string;
   launcherOpen: boolean;
   shortcut: string;
+  hideTitle: string;
   stripRef: RefObject<HTMLDivElement | null>;
   addRef?: Ref<HTMLButtonElement>;
   onActivate: (key: string) => void;
@@ -47,7 +48,7 @@ function scrollSideways(e: WheelEvent<HTMLDivElement>) {
   if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY;
 }
 
-export function TabStrip({ title, chip, canChange, tabs, active, launcherOpen, shortcut, stripRef, addRef, onActivate, onCloseTab, onLauncher, onChange, onCollapse }: TabStripProps) {
+export function TabStrip({ title, chip, canChange, tabs, active, launcherOpen, shortcut, hideTitle, stripRef, addRef, onActivate, onCloseTab, onLauncher, onChange, onCollapse }: TabStripProps) {
   const chatActive = active === CHAT_TAB;
   const tabClass = (key: string) => (key === active ? "tab on" : "tab");
   const edges = useStripEdges(stripRef, [active, chip, ...tabs.map((t) => t.name)].join("\n"));
@@ -88,17 +89,19 @@ export function TabStrip({ title, chip, canChange, tabs, active, launcherOpen, s
           Change
         </button>
       )}
-      <button className="ico" onClick={onCollapse} aria-label="Collapse chat" title="Collapse chat">
+      <button className="chat-hide" onClick={onCollapse} aria-label="Hide chat" title={hideTitle}>
         <ChevronRight />
       </button>
     </div>
   );
 }
 
-export function ChatRail({ name, onOpen }: { name: string; onOpen: () => void }) {
+export function ChatRail({ name, title, onOpen }: { name: string; title: string; onOpen: () => void }) {
   return (
-    <button className="chat-rail" onClick={onOpen} aria-label={`Open ${name}`}>
-      <ChevronLeft />
+    <button className="chat-rail" onClick={onOpen} aria-label={`Show chat: ${name}`} title={title}>
+      <span className="chat-rail-caret">
+        <ChevronLeft />
+      </span>
       <span className="vname">{name}</span>
     </button>
   );

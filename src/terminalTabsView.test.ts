@@ -21,6 +21,7 @@ function strip(active: string, tabs: ShellTab[] = TABS) {
       active,
       launcherOpen: false,
       shortcut: "⌘T",
+      hideTitle: "Hide chat (⌘B)",
       stripRef: { current: null },
       onActivate: ignore,
       onCloseTab: ignore,
@@ -35,11 +36,15 @@ const textOf = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, "
 const order = (html: string, needles: string[]) => needles.map((n) => html.indexOf(n));
 
 describe("tab strip", () => {
-  it("shows the chat, each shell, the + and the collapse chevron in order", () => {
+  it("shows the chat, each shell, the + and the hide chevron in order", () => {
     const html = strip(CHAT_TAB);
-    const at = order(html, ['data-tab="chat"', ...TABS.map((t) => `data-tab="${t.terminal}"`), 'aria-label="Open a terminal"', 'aria-label="Collapse chat"']);
+    const at = order(html, ['data-tab="chat"', ...TABS.map((t) => `data-tab="${t.terminal}"`), 'aria-label="Open a terminal"', 'aria-label="Hide chat"']);
     expect(at.every((i) => i >= 0)).toBe(true);
     expect(at).toEqual([...at].sort((a, b) => a - b));
+  });
+
+  it("names the hide chevron with its shortcut", () => {
+    expect(strip(CHAT_TAB)).toContain('aria-label="Hide chat" title="Hide chat (⌘B)"');
   });
 
   it("gives every shell a close button but not the chat", () => {
@@ -72,9 +77,10 @@ describe("tab strip", () => {
 
 describe("hidden panel rail", () => {
   it("shows the active tab name", () => {
-    const html = renderToStaticMarkup(createElement(ChatRail, { name: "zsh · atlas-api", onOpen: ignore }));
+    const html = renderToStaticMarkup(createElement(ChatRail, { name: "zsh · atlas-api", title: "Show chat (⌘B)", onOpen: ignore }));
     expect(html).toContain('<span class="vname">zsh · atlas-api</span>');
-    expect(html).toContain('aria-label="Open zsh · atlas-api"');
+    expect(html).toContain('aria-label="Show chat: zsh · atlas-api"');
+    expect(html).toContain('title="Show chat (⌘B)"');
   });
 });
 

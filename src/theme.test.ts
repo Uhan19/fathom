@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_THEME, otherTheme, themeToggleLabel } from "./theme";
+import { DEFAULT_THEME, otherTheme } from "./theme";
 import { TERMINAL_THEMES } from "./terminalOptions";
 
 describe("theme", () => {
@@ -7,9 +7,8 @@ describe("theme", () => {
     expect(DEFAULT_THEME).toBe("light");
   });
 
-  it("labels the toggle with the theme it switches to", () => {
-    expect(themeToggleLabel("light")).toBe("Dark mode");
-    expect(themeToggleLabel(otherTheme("light"))).toBe("Light mode");
+  it("switches between the two themes", () => {
+    expect(otherTheme("light")).toBe("dark");
     expect(otherTheme(otherTheme("light"))).toBe("light");
   });
 

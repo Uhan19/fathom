@@ -2,7 +2,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ROW_ORDER, type AgentFilter, type Card, type RowKey, type SourceKind, type Worker } from "./api";
-import { agentFilterText, noMatchText, shownByAgent } from "./agentFilter";
+import { AGENT_FILTERS, agentFilterText, noMatchText, shownByAgent, steppedFilter } from "./agentFilter";
+import { AgentFilterToggle } from "./components/AgentFilterToggle";
 import { insertAmongShown } from "./board";
 import { Board } from "./components/Board";
 import { shownColumns } from "./projectFilter";
@@ -176,5 +177,39 @@ describe("filter wording", () => {
   it("names the shown projects in the empty message only when they are filtered", () => {
     expect(noMatchText("withAgent", false)).toBe("No card has an agent right now.");
     expect(noMatchText("withActiveAgent", true)).toBe("No card in the shown projects has an active agent right now.");
+  });
+});
+
+describe("AgentFilterToggle", () => {
+  const toggle = (filter: AgentFilter) => renderToStaticMarkup(createElement(AgentFilterToggle, { filter, disabled: false, onChange: ignore }));
+
+  it("offers all three choices as one radio group with the chosen one checked", () => {
+    const html = toggle("withAgent");
+    expect(html).toContain('role="radiogroup" aria-label="Cards by agent"');
+    expect(html.match(/role="radio"/g)).toHaveLength(3);
+    expect(html).toMatch(/aria-checked="true" tabindex="0"[^>]*>Agent</);
+    expect(html.match(/tabindex="-1"/g)).toHaveLength(2);
+  });
+
+  it("slides the highlight under the chosen choice", () => {
+    expect(toggle("withActiveAgent")).toContain("--selected:2");
+  });
+});
+
+describe("steppedFilter", () => {
+  it("moves with the arrow keys and wraps around the ends", () => {
+    expect(steppedFilter("all", "ArrowRight")).toBe("withAgent");
+    expect(steppedFilter("withActiveAgent", "ArrowRight")).toBe("all");
+    expect(steppedFilter("all", "ArrowLeft")).toBe("withActiveAgent");
+    expect(steppedFilter("withAgent", "ArrowUp")).toBe("all");
+  });
+
+  it("jumps to the first and last choice with Home and End", () => {
+    expect(steppedFilter("withAgent", "Home")).toBe(AGENT_FILTERS[0]);
+    expect(steppedFilter("all", "End")).toBe(AGENT_FILTERS[AGENT_FILTERS.length - 1]);
+  });
+
+  it("ignores other keys", () => {
+    expect(steppedFilter("all", "Enter")).toBeNull();
   });
 });

@@ -15,7 +15,6 @@ import {
   hintOf,
   summaryOf,
   type BosunPhase,
-  type BosunState,
 } from "../bosun";
 import { resizer, startDrag } from "../drag";
 import { useLiveTerminal } from "../liveTerminal";
@@ -39,14 +38,13 @@ interface BosunDrawerProps {
   connectionKey: string;
   onHeight: (height: number) => void;
   onToggle: () => void;
-  onState: (state: BosunState) => void;
 }
 
 const missesClaude = (error: unknown) =>
   typeof error === "object" && error !== null && "kind" in error && error.kind === "missing" && "tool" in error && error.tool === CLAUDE;
 
 export function BosunDrawer(props: BosunDrawerProps) {
-  const { open, helper, helperStarted, fontFamily, fontSize, theme, connectionKey, onState } = props;
+  const { open, helper, helperStarted, fontFamily, fontSize, theme, connectionKey } = props;
   const [phase, setPhase] = useState<BosunPhase>({ kind: "finding" });
   const { hostRef, scrollRef, attach: attachLive, release, focus } = useLiveTerminal("helper", fontFamily, fontSize, theme);
   const startedRef = useRef(helperStarted);
@@ -148,7 +146,6 @@ export function BosunDrawer(props: BosunDrawerProps) {
   }, [runningTerminal, signedOut, helper.status]);
 
   const state = bosunState(phase, helper);
-  useEffect(() => onState(state), [onState, state]);
 
   useEffect(() => {
     if (open && phase.kind === "running") focus();
