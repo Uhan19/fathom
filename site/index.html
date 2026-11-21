@@ -159,7 +159,9 @@ pre{background:var(--code);color:var(--codeink)}td,th{border-bottom:1px solid va
 [data-scheme="bp5"] body,body[data-scheme="bp5"]{background:radial-gradient(1200px 600px at 75% -10%,rgba(70,175,255,.10),transparent 60%),var(--bg)}
 body[data-scheme="bp5"]::before{background-image:radial-gradient(rgba(27,79,119,.16) 1px,transparent 1.2px);background-size:32px 32px;mask-image:linear-gradient(180deg,#000,rgba(0,0,0,.35))}
 body[data-scheme="bp5"] .nav{background:#1b4f77;padding:12px 32px}
-body[data-scheme="bp5"] .nav a.l{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.16em;text-transform:uppercase;font-weight:400}
+body[data-scheme="bp5"] .nav a.l{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.16em;text-transform:uppercase;font-weight:400;white-space:nowrap}
+main{overflow-x:clip}
+@media (max-width:1180px){.nav a.l[href="#why"],.nav a.l[href="#customize"]{display:none}}
 body[data-scheme="bp5"] .btn{border-radius:2px;font-size:13px;letter-spacing:.14em;text-transform:uppercase;padding:12px 22px;border-width:1px}
 body[data-scheme="bp5"] .btn-primary{box-shadow:0 0 0 1px #f2c230,0 8px 24px -10px rgba(242,194,48,.8)}
 body[data-scheme="bp5"] .hero h1{font-family:'Michroma',sans-serif;font-weight:400;font-size:clamp(34px,4.3vw,58px);letter-spacing:.01em;line-height:1.18}
@@ -203,14 +205,23 @@ body[data-scheme="bp5"] .why h2{font-family:'Michroma',sans-serif;font-weight:40
 body[data-scheme="bp5"] .wp{border-radius:2px}
 body[data-scheme="bp5"] .why{background-image:linear-gradient(90deg,#46afff,transparent 30%);background-size:100% 1px;background-repeat:no-repeat}
 @media (max-width:900px){.why-grid{grid-template-columns:minmax(0,1fr);gap:24px}.why-points{padding-top:0}}
+.setup{padding:120px 0;border-top:1px solid var(--rule)}
+.setup-grid{display:grid;grid-template-columns:1fr 1.15fr;gap:56px;align-items:start}
+.setup .sec-head{margin-bottom:0}
+.setup-list{list-style:none;margin:28px 0 0;padding:0;display:grid;gap:10px}
+.setup-list li{position:relative;padding-left:22px;font-size:16px;color:var(--muted)}
+.setup-list li::before{content:"";position:absolute;left:0;top:.62em;width:7px;height:7px;background:#46afff}
+.setup-card{gap:16px}.setup-card pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.setup-actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+@media (max-width:900px){.setup-grid{grid-template-columns:minmax(0,1fr);gap:32px}}
 @media (max-width:900px){.cust-grid{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:900px){.hero{grid-template-columns:minmax(0,1fr);padding-left:32px;padding-right:32px;overflow-x:clip}.mb-body{position:relative;height:372px}.mb-chat{position:absolute;top:0;right:0;bottom:0;box-shadow:-8px 0 20px -12px rgba(6,20,40,.4)}.hero .mb-chat{display:none}.foot{flex-wrap:wrap;row-gap:12px}.foot .brand{flex-basis:100%}.schemes span{display:none}}
-</style></head><body id="top" data-scheme="bp5"><header class="nav"><a class="brand" href="#top"><svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true"><path class="mk-a" d="M50.38 13.62 A26 26 0 0 0 13.62 50.38 Z" fill="#F4F1EA"/><path d="M50.38 13.62 A26 26 0 0 1 13.62 50.38 Z" fill="#C9A45C"/><path d="M51.09 12.91 L12.91 51.09" style="stroke:var(--bg)" stroke-width="2.6"/></svg><b>FATHOM</b></a><a class="l" href="#why">Why Fathom</a><a class="l" href="#how">How it works</a><a class="l" href="#customize">Customize</a><a class="l" href="#docs">Docs</a><a class="l" href="https://github.com/Uhan19/fathom">GitHub</a><a class="btn btn-primary" href="#download">Download</a></header><main>
+</style></head><body id="top" data-scheme="bp5"><header class="nav"><a class="brand" href="#top"><svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true"><path class="mk-a" d="M50.38 13.62 A26 26 0 0 0 13.62 50.38 Z" fill="#F4F1EA"/><path d="M50.38 13.62 A26 26 0 0 1 13.62 50.38 Z" fill="#C9A45C"/><path d="M51.09 12.91 L12.91 51.09" style="stroke:var(--bg)" stroke-width="2.6"/></svg><b>FATHOM</b></a><a class="l" href="#why">Why Fathom</a><a class="l" href="#how">How it works</a><a class="l" href="#customize">Customize</a><a class="l" href="#agent-setup">Agent setup</a><a class="l" href="#docs">Docs</a><a class="l" href="https://github.com/Uhan19/fathom">GitHub</a><a class="btn btn-primary" href="#download">Download</a></header><main>
 <section class="wrap hero"><div>
 <p class="eyebrow">Organize and orchestrate your agent crew</p>
 <h1>Stop holding it all <em>in your head.</em></h1>
 <p class="lede">Run a few coding agents and keeping track becomes a job of its own. Fathom takes that job. Hand off work as fast as it comes to you, and Fathom lays out what needs you, what is moving, what is stuck and what is done, so you can take it in at a glance.</p>
-<div class="cta"><a class="btn btn-primary" href="#download">Download for macOS</a><a class="btn" href="#docs">Read the docs</a></div>
+<div class="cta"><a class="btn btn-primary" href="#agent-setup">Set up with your agent</a><a class="btn" href="#download">Download for macOS</a></div>
 <p class="coords">MACOS 13+ · LINUX · OPEN SOURCE</p>
 </div><div class="sound"><svg class="contour" viewBox="0 0 600 500" preserveAspectRatio="none" aria-hidden="true" fill="none" stroke-opacity=".2"><path d="M-20 420 C 150 380, 280 470, 620 360"/><path d="M-12 386 C 150 340, 280 440, 620 322"/><path d="M-4 352 C 150 300, 280 410, 620 284"/><path d="M4 318 C 150 260, 280 380, 620 246"/><path d="M12 284 C 150 220, 280 350, 620 208"/><path d="M20 250 C 150 180, 280 320, 620 170"/><path d="M28 216 C 150 140, 280 290, 620 132"/><path d="M36 182 C 150 100, 280 260, 620 94"/><path d="M44 148 C 150 60, 280 230, 620 56"/><path d="M52 114 C 150 20, 280 200, 620 18"/></svg><div class="mb" aria-hidden="true">
 <div class="mb-top"><svg width="14" height="14" viewBox="0 0 64 64" aria-hidden="true"><path class="mk-a" d="M50.38 13.62 A26 26 0 0 0 13.62 50.38 Z" fill="#F4F1EA"/><path d="M50.38 13.62 A26 26 0 0 1 13.62 50.38 Z" fill="#C9A45C"/><path d="M51.09 12.91 L12.91 51.09" stroke="#1b4f77" stroke-width="2.6"/></svg><b>FATHOM</b><span class="mb-count">5</span><span class="mb-btn">BOSUN</span><span class="mb-btn y">CHAT</span></div>
@@ -272,8 +283,14 @@ body[data-scheme="bp5"] .why{background-image:linear-gradient(90deg,#46afff,tran
 <h3>Ask Bosun for the rest</h3><p>Bosun can hide or show the chat panel and filter the board to the projects you name, all in plain words.</p></article>
 </div>
 
-</section><div class="wrap"><section id="download" class="dl">
-<div class="sec-head"><p class="eyebrow">Download</p><h2>Get Fathom</h2><p class="lede">Free and open source under the <a href="https://github.com/Uhan19/fathom/blob/main/LICENSE">MIT license</a>. Version <span data-cfg="version">[VERSION]</span>.</p></div>
+</section><div class="wrap"><section id="agent-setup" class="setup"><div class="setup-grid">
+<div class="sec-head"><p class="eyebrow">Set up with your agent</p><h2>Let your agent install Fathom</h2><p class="lede">Paste one line into Codex, Claude Code or another coding agent on the macOS or Linux computer where you want Fathom. It follows the setup sheet and tells you at the end what it did and what is left for you.</p>
+<ul class="setup-list"><li>Asks whether Fathom should use Codex or Claude Code.</li><li>Asks before every install, and skips what is already there.</li><li>Recommends herdr-core, which runs the agent terminals in the chat panel.</li><li>Installs Firstmate only if you ask for it.</li></ul></div>
+<article class="dl-card primary setup-card"><h3>Paste this into your agent</h3>
+<pre><code id="setup-prompt">Set up Fathom on this computer by following https://raw.githubusercontent.com/Uhan19/fathom/main/docs/<wbr>agent-setup.md</code></pre>
+<div class="setup-actions"><button class="btn btn-primary" type="button" data-copy="setup-prompt">Copy prompt</button><a class="btn" href="https://github.com/Uhan19/fathom/blob/main/docs/agent-setup.md">Read the full sheet ↗</a></div>
+</article></div></section><section id="download" class="dl">
+<div class="sec-head"><p class="eyebrow">Download</p><h2>Get Fathom</h2><p class="lede">Free and open source under the <a href="https://github.com/Uhan19/fathom/blob/main/LICENSE">MIT license</a>. Version <span data-cfg="version">[VERSION]</span>. To install by hand, use the files below, or <a href="#agent-setup">let your agent set it up</a>.</p></div>
 <div class="dl-grid">
 <article class="dl-card primary">
 <h3>macOS</h3><p class="dl-req">macOS 13 Ventura or newer</p>
@@ -301,6 +318,7 @@ body[data-scheme="bp5"] .why{background-image:linear-gradient(90deg,#46afff,tran
 </nav>
 <div class="docs-body">
 <article id="d-install"><h3>Install</h3>
+<p><b>With your agent.</b> Paste the <a href="#agent-setup">setup prompt</a> into Codex or Claude Code. It installs Fathom and what it needs, and asks before every install.</p>
 <p><b>macOS.</b> Open the .dmg and drag Fathom into Applications. Fathom needs macOS 13 or newer.</p>
 <p><b>Linux.</b> Install the package, or make the AppImage executable and run it:</p>
 <pre><code>sudo apt install ./Fathom_amd64.deb
@@ -369,6 +387,20 @@ const FATHOM_LINKS = { version: "0.1.0", mac: "https://github.com/Uhan19/fathom/
     var url = FATHOM_LINKS[a.getAttribute('data-dl')];
     if (url) { a.href = url; return; }
     a.addEventListener('click', function(e){ e.preventDefault(); if (msg) msg.textContent = 'This download link is not set yet.'; });
+  });
+  document.querySelectorAll('[data-copy]').forEach(function(b){
+    var label = b.textContent;
+    var source = document.getElementById(b.getAttribute('data-copy'));
+    function copied(){ b.textContent = 'Copied'; setTimeout(function(){ b.textContent = label; }, 2000); }
+    function selectAndCopy(){
+      var range = document.createRange(); range.selectNodeContents(source);
+      var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+      if (document.execCommand('copy')) copied();
+    }
+    b.addEventListener('click', function(){
+      if (navigator.clipboard) navigator.clipboard.writeText(source.textContent).then(copied, selectAndCopy);
+      else selectAndCopy();
+    });
   });
   var boards = document.querySelectorAll('.stage .mb');
   var steps = document.querySelectorAll('[data-step-for]');
