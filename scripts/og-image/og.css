@@ -1,0 +1,13 @@
+html,body{width:1200px;height:630px;overflow:hidden}
+main>*:not(.hero),body>*:not(header):not(main){display:none!important}
+.nav{position:static;padding:16px 56px}
+.nav a.l,.nav .btn{display:none}
+.nav .brand svg{width:34px;height:34px}
+.nav .brand b{font-size:19px}
+.hero{max-width:none;height:560px;padding:40px 56px 48px;grid-template-columns:1fr 1fr;gap:48px}
+body[data-scheme="bp5"] .hero h1{font-size:48px;margin-bottom:0}
+.hero .eyebrow{font-size:15px;margin-bottom:22px}
+.hero .lede,.hero .cta{display:none}
+.hero .coords{margin-top:36px;font-size:15px}
+.hero .mb{max-width:none;zoom:1.12}
+.hero .mb-chat{display:none}
