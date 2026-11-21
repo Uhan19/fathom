@@ -25,7 +25,7 @@ const SEEDS: Seed[] = [
   ["lan-31", "lantern-docs", "shallows", "Write the migration guide for v3", { state: "in_flight" }],
   ["lan-29", "lantern-docs", "deep", "Record the quick start screencast", { holdKind: "captain", holdUntil: "2026-11-28", holdReason: "Needs a quiet afternoon with a microphone." }],
   ["lan-27", "lantern-docs", "seabed", "Publish the v3 announcement", { blockedBy: ["lan-31", "kel-07"] }],
-  ["led-44", "ledger-sync", "surface", "Decide what to do with orphaned ledger rows", { holdKind: "captain", holdReason: "There are 212 rows with no account. Delete, archive, or keep?" }],
+  ["led-44", "ledger-sync", "surface", "Decide what to do with orphaned ledger rows", { holdKind: "captain", holdReason: "There are 212 rows with no account. Options: (a) delete them; (b) archive them to cold storage (recommended); (c) keep them and flag them in the report." }],
   ["led-40", "ledger-sync", "deep", "Backfill currency codes for 2023", { holdKind: "parked" }],
   ["led-38", "ledger-sync", "deep", "Rewrite the reconciliation job in batches", { holdKind: "parked", holdReason: "Waiting for a quieter week." }],
   ["led-37", "ledger-sync", "landed", "Survey the flaky tests in the sync job", { state: "done", kind: "scout", closed: "2026-11-17" }],

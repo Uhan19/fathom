@@ -92,6 +92,23 @@ pub async fn card_files(
     .await
 }
 
+#[tauri::command]
+pub async fn card_images(state: AppStateRef<'_>, id: String) -> Result<Vec<FileEntry>, String> {
+    let state = Arc::clone(&state);
+    blocking(move || {
+        let Source::Firstmate { home } = state.source() else {
+            return Ok(vec![]);
+        };
+        let user_home = std::env::home_dir();
+        let places = Places {
+            home: &home,
+            user_home: user_home.as_deref(),
+        };
+        context::card_images(&places, &id)
+    })
+    .await
+}
+
 fn local_file(path: &str) -> Result<std::path::PathBuf, String> {
     context::existing_path(path, std::env::home_dir().as_deref())
 }

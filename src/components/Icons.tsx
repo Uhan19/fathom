@@ -225,3 +225,11 @@ export function RevealIcon() {
     </Glyph>
   );
 }
+
+export function ExpandIcon() {
+  return (
+    <Glyph>
+      <path d="M8.5 2.5h3v3M11.5 2.5L8 6M5.5 11.5h-3v-3M2.5 11.5L6 8" />
+    </Glyph>
+  );
+}

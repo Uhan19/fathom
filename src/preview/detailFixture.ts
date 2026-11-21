@@ -160,8 +160,48 @@ const PREVIEWS: Record<string, Omit<FilePreview, "size">> = {
   },
 };
 
+const SCREEN_THEMES = {
+  light: { page: "#f4f6fb", panel: "#ffffff", ink: "#1a1d20", line: "#d5dbe8" },
+  dark: { page: "#0f1424", panel: "#182038", ink: "#e8eaec", line: "#2a3452" },
+};
+
+function settingsScreen(theme: keyof typeof SCREEN_THEMES, after: boolean): string {
+  const c = SCREEN_THEMES[theme];
+  const fields = [0, 1, 2, 3]
+    .map((i) => {
+      const y = 150 + i * (after ? 78 : 60);
+      const width = after ? 520 : 300 + ((i * 97) % 220);
+      return `<text x="80" y="${y}" font-family="sans-serif" font-size="15" fill="${c.ink}">Setting ${i + 1}</text><rect x="${after ? 80 : 260}" y="${y + (after ? 12 : -18)}" width="${width}" height="34" rx="4" fill="${c.panel}" stroke="${c.line}"/>`;
+    })
+    .join("");
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720"><rect width="1280" height="720" fill="${c.page}"/><rect x="0" y="0" width="1280" height="56" fill="#1b4f77"/><text x="32" y="36" font-family="sans-serif" font-size="20" font-weight="700" fill="#ffffff">Harbor · Settings</text><rect x="48" y="88" width="${after ? 640 : 1184}" height="${after ? 480 : 360}" rx="6" fill="${c.panel}" stroke="${c.line}"/>${fields}<rect x="80" y="${after ? 500 : 400}" width="120" height="36" rx="4" fill="#f2c230"/><text x="104" y="${after ? 523 : 423}" font-family="sans-serif" font-size="14" font-weight="700" fill="#111315">SAVE</text></svg>`;
+}
+
+const SCREENS: Record<string, string> = Object.fromEntries(
+  (["before", "after"] as const).flatMap((phase) =>
+    (["light", "dark"] as const).map((theme) => [`hrb-18-${phase}-1280-${theme}-settings.svg`, settingsScreen(theme, phase === "after")]),
+  ),
+);
+
+export function fixtureImages(id: string): FileEntry[] {
+  if (id !== "hrb-18") return [];
+  return Object.keys(SCREENS).map((name) => ({
+    path: `/home/demo/Documents/screenshots/${name}`,
+    name,
+    folder: "~/Documents/screenshots",
+    kind: "file",
+    preview: "image",
+    size: SCREENS[name].length,
+    modifiedMs: ago(2 * HOUR),
+    inTaskFolder: false,
+    mentions: [],
+  }));
+}
+
 export function fixturePreview(path: string, files: FileEntry[]): FilePreview {
   const name = path.split("/").pop() ?? "";
+  const screen = SCREENS[name];
+  if (screen) return { kind: "image", text: null, dataUrl: `data:image/svg+xml;base64,${btoa(screen)}`, truncated: false, size: screen.length };
   const found = PREVIEWS[name];
   if (!found) throw `Fathom cannot preview ${name}; open it in its app instead.`;
   return { ...found, size: files.find((f) => f.path === path)?.size ?? 0 };
@@ -175,8 +215,12 @@ const PR_STATUS: Record<string, Pick<PrStatus, "state" | "checks">> = {
   "https://github.com/example/ledger-sync/pull/97": { state: "closed", checks: "none" },
 };
 
+const PR_TITLES: Record<string, string> = {
+  "https://github.com/example/harbor-web/pull/233": "Settings page: one column on the new form kit, labels above fields",
+};
+
 export function fixturePrStatus(url: string, signedIn: boolean): PrStatus {
   const known = PR_STATUS[url];
   if (!signedIn || !known) return { url, state: "unknown", checks: "unknown", title: null, note: "the GitHub CLI is not signed in" };
-  return { url, ...known, title: null, note: null };
+  return { url, ...known, title: PR_TITLES[url] ?? null, note: null };
 }
