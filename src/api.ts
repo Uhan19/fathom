@@ -228,7 +228,7 @@ export interface Size {
   rows: number;
 }
 
-export type View = "chat" | "worker" | "helper" | `shell:${string}`;
+export type View = "chat" | "worker" | "agent" | "helper" | `shell:${string}`;
 
 export interface ShellTab {
   terminal: string;

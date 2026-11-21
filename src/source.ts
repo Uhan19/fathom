@@ -30,6 +30,8 @@ const OWNERS: Record<SourceKind, Owner> = {
   },
 };
 
+const capitalized = (word: string) => `${word[0].toUpperCase()}${word.slice(1)}`;
+
 export function moveCopy(source: SourceKind, status: MoveStatus, move: string): MoveCopy | null {
   const owner = OWNERS[source];
   switch (status) {
@@ -83,8 +85,24 @@ export interface WorkerViewCopy {
 export function workerViewCopy(source: SourceKind, title: string): WorkerViewCopy {
   const worker = OWNERS[source].worker;
   return {
-    label: `${worker[0].toUpperCase()}${worker.slice(1)} terminal for ${title}`,
+    label: `${capitalized(worker)} terminal for ${title}`,
     close: `Close the ${worker} terminal`,
     closeHint: `Close (the ${worker} keeps running)`,
   };
+}
+
+export function workerTitle(source: SourceKind): string {
+  return capitalized(OWNERS[source].worker);
+}
+
+export function chatAgentTitle(source: SourceKind): string {
+  return source === "firstmate" ? OWNERS.firstmate.agent : "Chat agent";
+}
+
+export function workerMessageLabel(source: SourceKind, terminal: string): string {
+  return `Message the ${OWNERS[source].worker} on ${terminal}`;
+}
+
+export function workerMessagePrompt(source: SourceKind, terminal: string, reachable: boolean): string {
+  return reachable ? `${workerMessageLabel(source, terminal)}…` : `The ${OWNERS[source].worker}'s terminal ${terminal} is not reachable`;
 }
