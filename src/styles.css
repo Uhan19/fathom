@@ -1648,11 +1648,22 @@ button.sailor:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  container-type: inline-size;
 }
 
 .send-row {
   display: flex;
   gap: 8px;
+}
+
+@container (max-width: 380px) {
+  .send-row {
+    flex-direction: column;
+  }
+
+  .send-row .btn {
+    align-self: flex-end;
+  }
 }
 
 .send-note {

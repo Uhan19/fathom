@@ -11,6 +11,7 @@ import {
   headTemplate,
   holdHeading,
   insertAt,
+  oneColumnWidth,
   outcomeTag,
   renamedColumn,
   placeLocally,
@@ -89,6 +90,13 @@ describe("board helpers", () => {
     expect(columnTemplate(columns)).toBe("150px 280px 44px");
     expect(headTemplate(columns)).toBe("150px 280px 44px 180px");
     expect(boardMinWidth(columns)).toBe(150 + 180 + 10 + 32 + 290 + 54);
+  });
+
+  it("fits the row names and the first open column, with any folded columns before it", () => {
+    expect(oneColumnWidth([column(1, "a"), column(2, "b")])).toBe(150 + 10 + 280 + 32);
+    expect(oneColumnWidth([column(1, "a", { collapsed: true }), column(2, "b")])).toBe(150 + 10 + 44 + 10 + 280 + 32);
+    expect(oneColumnWidth([column(1, "a", { collapsed: true })])).toBe(150 + 10 + 44 + 32);
+    expect(oneColumnWidth([])).toBe(150 + 32);
   });
 
   it("notes what a queued card waits for and a deferred date", () => {

@@ -20,7 +20,7 @@ import {
   type Worker,
 } from "./api";
 import { appearanceOf, boardStyle, chatFontStack, type Appearance } from "./appearance";
-import { placeLocally, rowCounts, shownRequest } from "./board";
+import { oneColumnWidth, placeLocally, rowCounts, shownRequest } from "./board";
 import { emptyBoardText } from "./source";
 import { moveTo } from "./columnOrder";
 import { startDrag } from "./drag";
@@ -146,11 +146,16 @@ export default function App() {
   const projectFilter = settings?.projectFilter ?? [];
   const agentFilter = settings?.agentFilter ?? "all";
 
-  const boardShown = () => {
+  const boardRoom = () => {
     const main = mainRef.current;
     const board = boardColumnRef.current;
-    if (!main || !board) return 0;
-    return board.getBoundingClientRect().width - (main.scrollWidth - main.clientWidth);
+    if (!main || !board) return { shown: 0, min: 0 };
+    const scroll = board.querySelector(".board-scroll");
+    const scrollbar = scroll ? scroll.getBoundingClientRect().width - scroll.clientWidth : 0;
+    return {
+      shown: board.getBoundingClientRect().width - (main.scrollWidth - main.clientWidth),
+      min: oneColumnWidth(columns) + scrollbar,
+    };
   };
 
   useEffect(() => {
@@ -459,7 +464,7 @@ export default function App() {
               role="separator"
               aria-label="Resize card panel"
               onPointerDown={(e) => {
-                const width = detailResizer(detailWidth, boardShown());
+                const width = detailResizer(detailWidth, boardRoom());
                 startDrag(
                   e,
                   (dx) => setDetailDrag(width(-dx)),
@@ -499,7 +504,7 @@ export default function App() {
               role="separator"
               aria-label="Resize chat"
               onPointerDown={(e) => {
-                const widths = chatResizer({ chat: chatWidth, detail: detailShown ? detailWidth : null }, boardShown());
+                const widths = chatResizer({ chat: chatWidth, detail: detailShown ? detailWidth : null }, boardRoom());
                 startDrag(
                   e,
                   (dx) => {

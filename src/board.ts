@@ -13,6 +13,7 @@ import {
 export const ROW_LABEL_WIDTH = 150;
 export const COLLAPSED_WIDTH = 44;
 export const COLUMN_GAP = 10;
+export const ROW_PADDING = 16;
 export const MIN_COLUMN_WIDTH = 180;
 export const MAX_COLUMN_WIDTH = 640;
 export const ADD_COLUMN_WIDTH = MIN_COLUMN_WIDTH;
@@ -138,8 +139,15 @@ export function renamedColumn(column: Pick<Column, "project" | "name">, input: s
 export function boardMinWidth(columns: Column[]): number {
   return columns.reduce(
     (sum, c) => sum + (c.collapsed ? COLLAPSED_WIDTH : c.width) + COLUMN_GAP,
-    ROW_LABEL_WIDTH + ADD_COLUMN_WIDTH + COLUMN_GAP + 32,
+    ROW_LABEL_WIDTH + ADD_COLUMN_WIDTH + COLUMN_GAP + 2 * ROW_PADDING,
   );
+}
+
+export function oneColumnWidth(columns: Column[]): number {
+  const firstOpen = columns.findIndex((c) => !c.collapsed);
+  const shown = firstOpen < 0 ? columns : columns.slice(0, firstOpen + 1);
+  const width = shown.reduce((sum, c) => sum + COLUMN_GAP + (c.collapsed ? COLLAPSED_WIDTH : c.width), ROW_LABEL_WIDTH);
+  return width + 2 * ROW_PADDING;
 }
 
 export function cellCount(cells: Cells, column: number): number {

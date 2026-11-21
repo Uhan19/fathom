@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Settings } from "./api";
 import { defaultShortcuts } from "./shortcuts";
-import { BOARD_MIN_WIDTH, CHAT_WIDTH, DETAIL_WIDTH, chatResizer, detailResizer, withLatestWindow } from "./windowSettings";
+import { CHAT_WIDTH, DETAIL_WIDTH, chatResizer, detailResizer, withLatestWindow } from "./windowSettings";
 
 const settings = (over: Partial<Settings> = {}): Settings => ({
   home: "/home/demo/firstmate",
@@ -52,37 +52,47 @@ const WINDOW = 1440;
 const HANDLES = 16;
 const CHAT = 600;
 const DETAIL = 460;
+const BOARD_MIN = 424;
 const BOARD_WITH_DETAIL = WINDOW - HANDLES - CHAT - DETAIL;
+const WIDE_WINDOW = 1920;
+const BOARD_WIDE = WIDE_WINDOW - HANDLES - CHAT - DETAIL;
+const board = (shown: number) => ({ shown, min: BOARD_MIN });
 
 describe("chatResizer", () => {
   it("grows the chat the same way with card details open as without, until the board would get too narrow", () => {
-    const withDetail = chatResizer({ chat: CHAT, detail: DETAIL }, BOARD_WITH_DETAIL);
-    const without = chatResizer({ chat: CHAT, detail: null }, BOARD_WITH_DETAIL + DETAIL);
-    expect([1, 10, 20].map((g) => withDetail(g).chat)).toEqual([1, 10, 20].map((g) => without(g).chat));
-    expect(withDetail(20).detail).toBe(DETAIL);
+    const withDetail = chatResizer({ chat: CHAT, detail: DETAIL }, board(BOARD_WIDE));
+    const without = chatResizer({ chat: CHAT, detail: null }, board(BOARD_WIDE + DETAIL));
+    expect([1, 10, 200].map((g) => withDetail(g).chat)).toEqual([1, 10, 200].map((g) => without(g).chat));
+    expect(withDetail(200).detail).toBe(DETAIL);
   });
 
-  it("takes room from card details once the board is at its narrowest, instead of squeezing the board away", () => {
-    const width = chatResizer({ chat: CHAT, detail: DETAIL }, BOARD_WITH_DETAIL);
-    const boardSpare = BOARD_WITH_DETAIL - BOARD_MIN_WIDTH;
+  it("takes room from card details once the board is down to one column, instead of squeezing the board away", () => {
+    const width = chatResizer({ chat: CHAT, detail: DETAIL }, board(BOARD_WIDE));
+    const boardSpare = BOARD_WIDE - BOARD_MIN;
     expect(width(boardSpare + 50)).toEqual({ chat: CHAT + boardSpare + 50, detail: DETAIL - 50 });
   });
 
-  it("stops when the board and card details are both at their narrowest", () => {
-    const width = chatResizer({ chat: CHAT, detail: DETAIL }, BOARD_WITH_DETAIL);
+  it("stops when the board is down to one column and card details are at their narrowest", () => {
+    const width = chatResizer({ chat: CHAT, detail: DETAIL }, board(BOARD_WIDE));
     const widest = width(5000);
     expect(widest.detail).toBe(DETAIL_WIDTH.min);
-    expect(WINDOW - HANDLES - widest.chat - (widest.detail ?? 0)).toBe(BOARD_MIN_WIDTH);
+    expect(WIDE_WINDOW - HANDLES - widest.chat - (widest.detail ?? 0)).toBe(BOARD_MIN);
+  });
+
+  it("still takes room from card details when the board is already narrower than one column", () => {
+    const width = chatResizer({ chat: CHAT, detail: DETAIL }, board(BOARD_WITH_DETAIL));
+    expect(BOARD_WITH_DETAIL).toBeLessThan(BOARD_MIN);
+    expect(width(5000)).toEqual({ chat: CHAT + DETAIL - DETAIL_WIDTH.min, detail: DETAIL_WIDTH.min });
   });
 
   it("shrinks the chat without growing card details back", () => {
-    const width = chatResizer({ chat: CHAT, detail: DETAIL }, BOARD_WITH_DETAIL);
+    const width = chatResizer({ chat: CHAT, detail: DETAIL }, board(BOARD_WIDE));
     expect(width(-100)).toEqual({ chat: CHAT - 100, detail: DETAIL });
     expect(width(-5000)).toEqual({ chat: CHAT_WIDTH.min, detail: DETAIL });
   });
 
-  it("does not jump when grabbed while the board is already narrower than its minimum", () => {
-    const width = chatResizer({ chat: CHAT, detail: DETAIL_WIDTH.min }, BOARD_MIN_WIDTH - 100);
+  it("does not jump when grabbed while neither the board nor card details have room to give", () => {
+    const width = chatResizer({ chat: CHAT, detail: DETAIL_WIDTH.min }, board(BOARD_MIN - 100));
     expect(width(0)).toEqual({ chat: CHAT, detail: DETAIL_WIDTH.min });
     expect(width(50)).toEqual({ chat: CHAT, detail: DETAIL_WIDTH.min });
     expect(width(-50).chat).toBe(CHAT - 50);
@@ -90,13 +100,12 @@ describe("chatResizer", () => {
 
   it("starts from the shown width when the panels overflow the window", () => {
     const hidden = 200;
-    const width = chatResizer({ chat: CHAT, detail: null }, -hidden);
-    expect(width(0).chat).toBe(CHAT - hidden);
+    expect(chatResizer({ chat: CHAT, detail: null }, board(-hidden))(0).chat).toBe(CHAT - hidden);
   });
 });
 
 describe("detailResizer", () => {
-  it("keeps the board at its narrowest instead of squeezing it away", () => {
-    expect(detailResizer(DETAIL, BOARD_WITH_DETAIL)(5000)).toBe(DETAIL + BOARD_WITH_DETAIL - BOARD_MIN_WIDTH);
+  it("keeps one board column instead of squeezing the board away", () => {
+    expect(detailResizer(DETAIL, board(BOARD_WIDE))(5000)).toBe(Math.min(DETAIL_WIDTH.max, DETAIL + BOARD_WIDE - BOARD_MIN));
   });
 });
