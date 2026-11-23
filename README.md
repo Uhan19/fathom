@@ -125,6 +125,9 @@ chmod +x release/<version>/Fathom_<version>_<arch>.AppImage
 release/<version>/Fathom_<version>_<arch>.AppImage
 ```
 
+An AppImage run this way has no app menu entry, and the dock shows a generic icon while it runs.
+For a menu entry with Fathom's icon, add the AppImage with [Gear Lever](https://github.com/mijorus/gearlever) or [AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher).
+
 ## Publish a release
 
 Pushing a version tag publishes a GitHub Release with three downloads:

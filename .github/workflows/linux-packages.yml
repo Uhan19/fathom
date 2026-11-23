@@ -34,6 +34,8 @@ jobs:
       - name: Read the version
         id: version
         run: echo "version=$(node -p 'require("./src-tauri/tauri.conf.json").version')" >> "$GITHUB_OUTPUT"
+      - name: Check the desktop entry and icons
+        run: scripts/check-linux-packages.sh "release/${{ steps.version.outputs.version }}"
       - uses: actions/upload-artifact@v7
         with:
           name: fathom-${{ steps.version.outputs.version }}-linux-deb
