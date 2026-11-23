@@ -38,6 +38,7 @@ import { SettingsDialog } from "./components/SettingsDialog";
 import { BosunDrawer } from "./components/BosunDrawer";
 import { DRAWER_HEIGHT, isMac, isToggleShortcut, shortcutLabel } from "./bosun";
 import { filterText, indexAmongAll, shownColumns } from "./projectFilter";
+import { focusText } from "./taskRef";
 import { DEFAULT_THEME, otherTheme } from "./theme";
 import { comboLabel, listenForShortcuts, type ShortcutAction } from "./shortcuts";
 import { chatResizer, detailResizer } from "./windowSettings";
@@ -145,6 +146,7 @@ export default function App() {
   const detailWidth = detailDrag ?? settings?.detailWidth ?? 0;
   const projectFilter = settings?.projectFilter ?? [];
   const agentFilter = settings?.agentFilter ?? "all";
+  const focus = settings?.focus ?? [];
 
   const boardRoom = () => {
     const main = mainRef.current;
@@ -201,6 +203,14 @@ export default function App() {
       .catch(() => api.getSettings().then(setSettings));
   };
 
+  const clearFocus = () => {
+    setSettings((s) => s && { ...s, focus: [] });
+    void api
+      .clearFocus()
+      .then(setSettings)
+      .catch(() => api.getSettings().then(setSettings));
+  };
+
   const changeAgentFilter = (filter: AgentFilter) => {
     setSettings((s) => s && { ...s, agentFilter: filter });
     void api
@@ -248,9 +258,9 @@ export default function App() {
       })
       .catch((e) => setColumnError(errorText(e)));
 
-  const moveColumn = (id: number, shownIndex: number) => {
+  const moveColumn = (id: number, shownIndex: number, shown: Column[]) => {
     if (!view) return;
-    const index = indexAmongAll(view.columns, shownColumns(view.columns, projectFilter), id, shownIndex);
+    const index = indexAmongAll(view.columns, shown, id, shownIndex);
     setView((v) => v && { ...v, columns: moveTo(v.columns, id, index) });
     void replaceColumns(api.moveColumn(id, index));
   };
@@ -389,8 +399,16 @@ export default function App() {
       )}
       <main className="main" ref={mainRef}>
         <div className="board-column" ref={boardColumnRef}>
-          {(projectFilter.length > 0 || agentFilter !== "all") && (
+          {(focus.length > 0 || projectFilter.length > 0 || agentFilter !== "all") && (
             <div className="filter-strip" role="status">
+              {focus.length > 0 && (
+                <div className="filter-part">
+                  <span>{focusText(focus)}</span>
+                  <button className="mini" onClick={clearFocus}>
+                    Clear focus
+                  </button>
+                </div>
+              )}
               {projectFilter.length > 0 && (
                 <div className="filter-part">
                   <span>{filterText(projectFilter)}</span>
@@ -421,15 +439,17 @@ export default function App() {
                 rowNames={rowNames}
                 collapsedRows={collapsedRows}
                 agentFilter={agentFilter}
+                focus={focus}
                 projectsFiltered={projectFilter.length > 0}
                 selectedId={selectedId}
                 onSelect={selectCard}
                 onColumnChange={changeColumn}
                 onRowCollapse={(row, collapsed) => collapseRows([row], collapsed)}
                 onShowEveryCard={() => changeAgentFilter("all")}
+                onClearFocus={clearFocus}
                 onColumnRename={renameColumn}
                 onColumnMove={moveColumn}
-                onColumnAdd={projectFilter.length > 0 ? undefined : (name) => void replaceColumns(api.addColumn(name))}
+                onColumnAdd={projectFilter.length > 0 || focus.length > 0 ? undefined : (name) => void replaceColumns(api.addColumn(name))}
                 onColumnDelete={deleteColumn}
                 onPlace={placeCard}
                 onWatch={(card, worker) => setWatched({ taskId: card.id, title: card.title, terminal: worker.terminal })}

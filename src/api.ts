@@ -28,6 +28,7 @@ export interface Card {
   blockedBy: string[];
   links: Link[];
   closed: string;
+  number: number | null;
 }
 
 export interface Detail {
@@ -185,6 +186,7 @@ export interface Settings {
   detailWidth: number;
   projectFilter: string[];
   agentFilter: AgentFilter;
+  focus: number[];
   helperStarted: boolean;
   shortcuts: Shortcuts;
   linearWorkspace: string;
@@ -297,6 +299,7 @@ export const api = {
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
   changeWindow: (change: WindowChange) => invoke<Settings>("change_window", { change }),
   showAllProjects: () => invoke<Settings>("show_all_projects"),
+  clearFocus: () => invoke<Settings>("clear_focus"),
   setAgentFilter: (filter: AgentFilter) => invoke<Settings>("set_agent_filter", { filter }),
   dataInfo: () => invoke<DataInfo>("data_info"),
   installedFonts: () => invoke<string[]>("installed_fonts"),

@@ -1,4 +1,5 @@
 pub mod backlog;
+pub mod numbers;
 pub mod shells;
 pub mod updates;
 
@@ -16,7 +17,7 @@ pub const FILE_NAME: &str = "fathom.sqlite";
 pub const DEFAULT_COLUMN_WIDTH: i64 = 240;
 pub const COLUMN_WIDTHS: std::ops::RangeInclusive<i64> = 180..=640;
 
-const MIGRATIONS: [&str; 7] = [
+const MIGRATIONS: [&str; 8] = [
     include_str!("../migrations/0001_init.sql"),
     include_str!("../migrations/0002_card_moves.sql"),
     include_str!("../migrations/0003_column_ids.sql"),
@@ -24,6 +25,7 @@ const MIGRATIONS: [&str; 7] = [
     include_str!("../migrations/0005_shell_tabs.sql"),
     include_str!("../migrations/0006_collapsed_rows.sql"),
     include_str!("../migrations/0007_card_updates.sql"),
+    include_str!("../migrations/0008_task_numbers.sql"),
 ];
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const COLUMN_FIELDS: &str = "id, project, name, position, width, collapsed";
@@ -876,6 +878,7 @@ mod tests {
             blocked_by: vec![],
             links: vec![],
             closed: String::new(),
+            number: None,
         }
     }
 

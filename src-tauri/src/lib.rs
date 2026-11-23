@@ -87,6 +87,7 @@ pub fn run() {
             commands::save_settings,
             commands::change_window,
             commands::show_all_projects,
+            commands::clear_focus,
             commands::set_agent_filter,
             commands::installed_fonts,
             commands::data_info,

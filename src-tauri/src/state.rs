@@ -202,11 +202,16 @@ impl AppState {
         let home = source.home();
         let db = self.db.lock().unwrap();
         let snapshot = db.snapshot()?.filter(|s| s.home == home);
+        let mut cards = snapshot
+            .as_ref()
+            .map(|s| s.cards.clone())
+            .unwrap_or_default();
+        db.number_cards(&home, &mut cards)?;
         Ok(BoardView {
             columns: db.columns()?,
             rows: db.rows()?,
             taken_at_ms: snapshot.as_ref().map(|s| s.taken_at_ms),
-            cards: snapshot.map(|s| s.cards).unwrap_or_default(),
+            cards,
             home,
             source: source.kind(),
             from_cache: true,
@@ -265,6 +270,12 @@ impl AppState {
 
     pub fn show_all_projects(&self) -> Result<Settings, String> {
         let saved = control::show_all_projects(&self.db.lock().unwrap())?;
+        self.adopt_settings(saved.clone());
+        Ok(saved)
+    }
+
+    pub fn clear_focus(&self) -> Result<Settings, String> {
+        let saved = control::clear_focus(&self.db.lock().unwrap())?;
         self.adopt_settings(saved.clone());
         Ok(saved)
     }

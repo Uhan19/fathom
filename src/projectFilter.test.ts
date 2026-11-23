@@ -18,6 +18,7 @@ const card = (id: string, project: string, row: Card["row"]): Card => ({
   blockedBy: [],
   links: [],
   closed: "",
+  number: null,
 });
 
 const HARBOR = column(1, "harbor-web");

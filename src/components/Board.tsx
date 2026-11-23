@@ -18,6 +18,7 @@ import {
 import { anyCard, keepCards, noMatchText, shownByAgent } from "../agentFilter";
 import { columnHasUnseen, isUnseen, rowHasUnseen, type CardUpdates } from "../updates";
 import { projectTasks, sailorLabel } from "../source";
+import { focusMissText, isFocused, taskName } from "../taskRef";
 import { deletePlan, moveTargets, NEW_COLUMN, nextDraft, startDraft } from "../columnDelete";
 import { useCardDrag, type CardDrag } from "../cardDrag";
 import { useColumnDrag, type ColumnDrag } from "../columnDrag";
@@ -35,14 +36,16 @@ interface BoardProps {
   rowNames: Record<RowKey, string>;
   collapsedRows: RowKey[];
   agentFilter: AgentFilter;
+  focus: number[];
   projectsFiltered: boolean;
   selectedId: string | null;
   onSelect: (card: Card) => void;
   onColumnChange: (id: number, change: { width?: number; collapsed?: boolean }) => void;
   onRowCollapse: (row: RowKey, collapsed: boolean) => void;
   onShowEveryCard: () => void;
+  onClearFocus: () => void;
   onColumnRename: (id: number, name: string) => void;
-  onColumnMove: (id: number, index: number) => void;
+  onColumnMove: (id: number, index: number, shown: Column[]) => void;
   onColumnAdd?: (name: string) => void;
   onColumnDelete: (id: number, moveTo?: MoveTo) => Promise<void>;
   onPlace: (placement: Placement) => void;
@@ -50,14 +53,17 @@ interface BoardProps {
 }
 
 export function Board(props: BoardProps) {
-  const { cards, source, columns, overlay, workers, updates, rowNames, collapsedRows, agentFilter, selectedId, onSelect, onColumnChange, onColumnRename, onPlace, onWatch } =
+  const { cards, source, columns, overlay, workers, updates, rowNames, collapsedRows, agentFilter, focus, selectedId, onSelect, onColumnChange, onColumnRename, onPlace, onWatch } =
     props;
+  const focused = focus.length > 0;
   const [liveWidths, setLiveWidths] = useState<Record<number, number>>({});
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const deleting = columns.find((c) => c.id === deletingId);
-  const shown = columns.map((c) => (liveWidths[c.id] ? { ...c, width: liveWidths[c.id] } : c));
-  const allCells = groupCards(cards, shown, overlay);
-  const cells = agentFilter === "all" ? allCells : keepCards(allCells, (card) => shownByAgent(workers[card.id], agentFilter));
+  const sized = columns.map((c) => (liveWidths[c.id] ? { ...c, width: liveWidths[c.id] } : c));
+  const allCells = groupCards(cards, sized, overlay);
+  const focusCells = focused ? keepCards(allCells, (card) => isFocused(card, focus)) : allCells;
+  const cells = agentFilter === "all" ? focusCells : keepCards(focusCells, (card) => shownByAgent(workers[card.id], agentFilter));
+  const shown = focused ? sized.filter((c) => cellCount(cells, c.id) > 0) : sized;
   const template = columnTemplate(shown);
   const scroller = useRef<HTMLDivElement>(null);
 
@@ -76,7 +82,7 @@ export function Board(props: BoardProps) {
       order: insertAmongShown(idsIn(allCells, target.column, target.row), idsAt(target.column, target.row), card.id, target.index),
     });
   });
-  const columnDrag = useColumnDrag(scroller, (column, index) => props.onColumnMove(column.id, index));
+  const columnDrag = useColumnDrag(scroller, (column, index) => props.onColumnMove(column.id, index, shown));
   const liftedColumn = columnDrag.drag?.column.id;
   const headClass = (column: Column, unseen = false) =>
     `column-head${column.collapsed ? " collapsed" : ""}${unseen ? " unseen" : ""}${column.id === liftedColumn ? " column-lifted" : ""}`;
@@ -106,10 +112,21 @@ export function Board(props: BoardProps) {
 
   const lastOpenRow = [...ROW_ORDER].reverse().find((row) => !collapsedRows.includes(row));
 
+  if (focused && !anyCard(focusCells)) {
+    return (
+      <div className="board-empty board-no-match" role="status">
+        <p>{focusMissText(props.projectsFiltered)}</p>
+        <button className="mini" onClick={props.onClearFocus}>
+          Clear focus
+        </button>
+      </div>
+    );
+  }
+
   if (agentFilter !== "all" && !anyCard(cells)) {
     return (
       <div className="board-empty board-no-match" role="status">
-        <p>{noMatchText(agentFilter, props.projectsFiltered)}</p>
+        <p>{noMatchText(agentFilter, props.projectsFiltered, focused)}</p>
         <button className="mini" onClick={props.onShowEveryCard}>
           Show every card
         </button>
@@ -245,7 +262,7 @@ export function Board(props: BoardProps) {
           <div className="drop-slot column-slot" style={{ left: columnDrag.drag.slotX }} aria-hidden="true" />
         )}
       </div>
-      {drag && <Ghost drag={drag} request={shownRequest(drag.card.id, overlay.requests)} worker={workers[drag.card.id]} />}
+      {drag && <Ghost drag={drag} source={source} request={shownRequest(drag.card.id, overlay.requests)} worker={workers[drag.card.id]} />}
       {columnDrag.drag && <ColumnGhost drag={columnDrag.drag} />}
       {deleting && (
         <DeleteColumnDialog
@@ -412,7 +429,7 @@ function withSlot(views: ReactNode[], cards: Card[], drag: CardDrag | null, slot
   return out;
 }
 
-function Ghost({ drag, request, worker }: { drag: CardDrag; request: MoveRequest | null; worker?: Worker }) {
+function Ghost({ drag, source, request, worker }: { drag: CardDrag; source: SourceKind; request: MoveRequest | null; worker?: Worker }) {
   return (
     <div
       className={`card card-${drag.card.row} card-ghost`}
@@ -420,7 +437,7 @@ function Ghost({ drag, request, worker }: { drag: CardDrag; request: MoveRequest
       aria-hidden="true"
     >
       <span className="card-open">
-        <CardFace card={drag.card} request={request} />
+        <CardFace card={drag.card} source={source} request={request} />
       </span>
       {worker && (
         <span className={`sailor ${worker.status}`}>
@@ -510,7 +527,7 @@ function CardView({ card, request, worker, source, unseen, selected, lifted, onP
       onPointerDown={onPointerDown}
     >
       <button className="card-open" onClick={() => onSelect(card)}>
-        <CardFace card={card} request={request} />
+        <CardFace card={card} source={source} request={request} />
         {unseen && <span className="sr-only">New update</span>}
       </button>
       {worker && (
@@ -528,13 +545,20 @@ function CardView({ card, request, worker, source, unseen, selected, lifted, onP
   );
 }
 
-function CardFace({ card, request }: { card: Card; request: MoveRequest | null }) {
+function CardFace({ card, source, request }: { card: Card; source: SourceKind; request: MoveRequest | null }) {
   const note = cardNote(card);
   const tag = outcomeTag(card);
+  const name = taskName(card, source);
   return (
     <>
       <span className="bar" aria-hidden="true" />
       <span className="card-body">
+        {(card.number !== null || name) && (
+          <span className="card-ref">
+            {card.number !== null && <span className="card-number">#{card.number}</span>}
+            {name && <span className="card-name">{name}</span>}
+          </span>
+        )}
         <span className="phrase">{card.title}</span>
         {note && <span className="card-note">{note}</span>}
         {tag && <span className="mark mark-reported">{tag}</span>}

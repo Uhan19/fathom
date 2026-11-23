@@ -3,6 +3,7 @@ import { api, errorText, type Card, type CardContext, type Detail, type FileEntr
 import { cardMessage, holdHeading } from "../board";
 import { cardLinkSources, findLinks, findPaths, RECORDED_PR, topLinks, type Linking, type Source } from "../links";
 import { cardMessageLabel, cardMessagePrompt, moveCopy, sailorLabel } from "../source";
+import { taskRef } from "../taskRef";
 import type { Theme } from "../theme";
 import { buildResult, PR_BODY_FILE, reportEntry, reportFile, shownPrs, taskFile } from "../result";
 import { ActivityTab } from "./DetailActivity";
@@ -263,7 +264,7 @@ export function CardDetail(props: CardDetailProps) {
         <div className="detail-meta">
           <span className={`pill pill-${shown.row}`}>{rowNames[shown.row]}</span>
           <span className="meta-text">
-            {shown.project} · {shown.kind} · <code>{shown.id}</code>
+            {shown.project} · {shown.kind} · <code>{taskRef(shown, source)}</code>
           </span>
         </div>
       </div>
