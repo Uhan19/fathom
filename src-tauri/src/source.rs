@@ -8,6 +8,7 @@ use crate::db::{Db, MoveRequest, MoveStatus};
 use crate::moves::{self, Placement};
 use crate::requests;
 use crate::tasks::{self, Card, Detail};
+use crate::waits::{self, Waits};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -50,6 +51,13 @@ impl Source {
         match self {
             Source::Firstmate { home } => home.display().to_string(),
             Source::Backlog => String::new(),
+        }
+    }
+
+    pub fn waits(&self) -> Waits {
+        match self {
+            Source::Firstmate { home } => waits::read(home),
+            Source::Backlog => Waits::default(),
         }
     }
 

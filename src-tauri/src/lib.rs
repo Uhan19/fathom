@@ -20,6 +20,7 @@ mod tasks;
 mod test_support;
 mod toon;
 mod updates;
+mod waits;
 mod watch;
 mod workers;
 
