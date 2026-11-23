@@ -242,6 +242,21 @@ esac
     }
 
     #[test]
+    fn a_firstmate_home_brings_its_waits_and_the_backlog_has_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        std::fs::create_dir_all(home.join("data")).unwrap();
+        std::fs::write(
+            home.join("data/waits.json"),
+            r#"{"tasks": {"chart-reef": {"waits": [{"kind": "email-reply", "who": []}]}}}"#,
+        )
+        .unwrap();
+        let waits = Source::of(&home.display().to_string()).waits();
+        assert_eq!(waits.tasks["chart-reef"].len(), 1);
+        assert_eq!(Source::Backlog.waits(), Waits::default());
+    }
+
+    #[test]
     fn a_row_drag_stores_a_request_keeps_the_task_and_nudges_the_chat() {
         let (_dir, db, task) = backlog();
         let sent = place(&db, drag(&task, Row::Shallows), 1_000, Some("w1:t1"));

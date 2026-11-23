@@ -61,6 +61,7 @@ Add `?theme=dark` to start in the dark theme, `?nochat` to start with the chat p
 Add `?agents=withAgent` or `?agents=withActiveAgent` to start with that agent filter, and `?rows=deep,landed` to start with those rows collapsed.
 Add `?focus=48,57` to start with the board focused on those task numbers.
 Add `?unseen` to light the cards that have an update you have not read, and `?folded=pilot-infra,keel-cli` to start with those columns collapsed; `?unseen&folded=pilot-infra&rows=deep` shows a lit card, a lit column header and a lit row band at once.
+Add `?narrow=pilot-infra` to start those columns at the minimum width, and `?nowaits` to leave out the invented waits so an external hold shows its own box.
 Add `?bosun=` with `notstarted`, `dormant`, `starting`, `ready`, `working`, `asking`, `signedout`, `missing`, `failed` or `stopped` to see that Bosun state; open the drawer with the Bosun rail under the board.
 
 ## Run the checks

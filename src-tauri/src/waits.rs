@@ -259,6 +259,26 @@ mod tests {
     }
 
     #[test]
+    fn the_board_receives_the_shape_the_frontend_reads() {
+        let waits = parse(SAMPLE).unwrap();
+        let sent = serde_json::to_value(&waits).unwrap();
+        assert_eq!(
+            sent["tasks"]["hrb-31"][1],
+            json!({
+                "kind": "slack-reply",
+                "what": "Phone check of the photo upload",
+                "who": ["Tomas"],
+                "need": "all",
+                "since": "2026-11-20T10:00:00Z",
+                "link": null,
+                "state": {"Tomas": "asked"}
+            })
+        );
+        assert_eq!(sent["tasks"]["hrb-31"][0]["need"], json!(2));
+        assert_eq!(sent["people"]["Tomas"], json!({"github": null}));
+    }
+
+    #[test]
     fn need_serializes_as_a_word_or_a_number() {
         let need = |n| serde_json::to_value(n).unwrap();
         assert_eq!(need(Need::All), json!("all"));

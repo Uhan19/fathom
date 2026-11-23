@@ -384,6 +384,20 @@ mod tests {
                 },
             ]
         );
+        let sent = serde_json::to_value(&status).unwrap();
+        assert_eq!(sent["reviewDecision"], "reviewRequired");
+        assert_eq!(
+            sent["reviews"][0],
+            json!({"login": "mira-k", "state": "approved"})
+        );
+        let changes = parse(
+            URL,
+            &json!({"reviewDecision": "CHANGES_REQUESTED", "latestReviews": [{"author": {"login": "jun-o"}, "state": "CHANGES_REQUESTED"}]}),
+        );
+        assert_eq!(
+            serde_json::to_value(&changes).unwrap()["reviews"][0]["state"],
+            "changesRequested"
+        );
         let quiet = parse(URL, &json!({"state": "OPEN", "reviewDecision": ""}));
         assert_eq!(quiet.review_decision, None);
         assert!(quiet.requested.is_empty() && quiet.reviews.is_empty());
