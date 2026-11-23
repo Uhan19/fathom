@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { api, errorText, type Card, type CardContext, type Detail, type FileEntry, type MoveRequest, type RowKey, type SourceKind, type Terminal, type Worker } from "../api";
+import { api, errorText, type Card, type CardContext, type Detail, type FileEntry, type MoveRequest, type Person, type RowKey, type SourceKind, type Terminal, type Wait, type Worker } from "../api";
 import { cardMessage, holdHeading } from "../board";
 import { cardLinkSources, findLinks, findPaths, RECORDED_PR, topLinks, type Linking, type Source } from "../links";
 import { cardMessageLabel, cardMessagePrompt, moveCopy, sailorLabel } from "../source";
 import { taskRef } from "../taskRef";
 import type { Theme } from "../theme";
 import { buildResult, PR_BODY_FILE, reportEntry, reportFile, shownPrs, taskFile } from "../result";
+import { prLinks } from "../waits";
 import { ActivityTab } from "./DetailActivity";
 import { AgentTab } from "./DetailAgent";
 import { FilesTab, openEntry } from "./DetailFiles";
 import { LinkRow, LinksTab, usePrStatuses, type PrStatuses } from "./DetailLinks";
 import { ResultSection } from "./DetailResult";
+import { WaitingSection } from "./DetailWaits";
 import { Close, Sailor } from "./Icons";
 import { Markdown, type PathAction } from "./Markdown";
 import { RichText } from "./RichText";
@@ -20,6 +22,8 @@ interface CardDetailProps {
   source: SourceKind;
   rowNames: Record<RowKey, string>;
   request: MoveRequest | null;
+  waits: Wait[];
+  people: Record<string, Person>;
   width: number;
   chatTerminal: Terminal | null;
   worker: Worker | null;
@@ -133,7 +137,7 @@ function cardSources(card: Card, body: string, context: CardContext): Source[] {
 }
 
 export function CardDetail(props: CardDetailProps) {
-  const { card, source, rowNames, request, width, chatTerminal, worker, fontFamily, fontSize, theme, linking, mark, onClose, onOpenCard, onResend, onDismiss } =
+  const { card, source, rowNames, request, waits, people, width, chatTerminal, worker, fontFamily, fontSize, theme, linking, mark, onClose, onOpenCard, onResend, onDismiss } =
     props;
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -173,7 +177,8 @@ export function CardDetail(props: CardDetailProps) {
   const paths = useMemo(() => (sources && context?.hasHome ? findPaths(sources) : null), [sources, context?.hasHome]);
   const { files, error: filesError } = useCardFiles(card.id, paths);
   const prUrls = useMemo(() => links.filter((l) => l.kind === "pr").map((l) => l.url), [links]);
-  const statuses = usePrStatuses(prUrls);
+  const waitPrs = useMemo(() => prLinks(waits), [waits]);
+  const statuses = usePrStatuses(useMemo(() => [...new Set([...waitPrs, ...prUrls])], [waitPrs, prUrls]));
   const images = useCardImages(card.id, context?.hasHome ?? false);
   const taskFolder = context?.taskFolder ?? null;
   const report = useMemo(() => (files ? reportEntry(shown.links, files, taskFolder) : null), [files, shown.links, taskFolder]);
@@ -199,6 +204,7 @@ export function CardDetail(props: CardDetailProps) {
     [resultReady, context, shown, report, reportText, prBodyText, prUrls, statuses, images, theme],
   );
   const callShown = result?.body.kind === "call";
+  const waitsReplaceHold = waits.length > 0 && shown.holdKind !== "captain";
 
   const byMention = useMemo(() => {
     const map = new Map<string, FileEntry>();
@@ -286,6 +292,7 @@ export function CardDetail(props: CardDetailProps) {
         <div className="detail-scroll" ref={scrollRef} role="tabpanel" id={`detail-panel-${tab}`} aria-labelledby={`detail-tab-${tab}`}>
           {tab === "overview" && (
             <>
+              {waits.length > 0 && <WaitingSection waits={waits} people={people} statuses={statuses} />}
               {request && <MoveSection request={request} source={source} rowNames={rowNames} onResend={onResend} onDismiss={onDismiss} />}
               {result && (
                 <ResultSection
@@ -302,7 +309,7 @@ export function CardDetail(props: CardDetailProps) {
                   }}
                 />
               )}
-              {hold && !callShown && (
+              {hold && !callShown && !waitsReplaceHold && (
                 <div className={`sec hold hold-${shown.holdKind}`}>
                   <span className="sech">{hold}</span>
                   {shown.holdReason ? (

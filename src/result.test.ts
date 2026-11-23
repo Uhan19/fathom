@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FileEntry, PrStatus, StatusEntry } from "./api";
+import { unknownPrStatus, type FileEntry, type PrStatus, type StatusEntry } from "./api";
 import {
   buildResult,
   callAnswer,
@@ -242,7 +242,7 @@ describe("the Result for each kind of card", () => {
   it("falls back from the done line to the PR body and then the PR title for code work", () => {
     const prBody = "## Summary\n\n- Adds retries to the price fetcher.\n- Logs each failure.";
     expect(buildResult(input({ prBody, prs: [PR] }))).toMatchObject({ headline: "Adds retries to the price fetcher.", points: ["Logs each failure."], body: { kind: "prs", prs: [PR] } });
-    const statuses = new Map<string, PrStatus | null>([[PR, { url: PR, state: "open", checks: "passing", title: "Add retries to the fetcher", note: null }]]);
+    const statuses = new Map<string, PrStatus | null>([[PR, { ...unknownPrStatus(PR, null), state: "open", checks: "passing", title: "Add retries to the fetcher" }]]);
     expect(buildResult(input({ prs: [PR], prStatuses: statuses }))?.headline).toBe("Add retries to the fetcher");
   });
 

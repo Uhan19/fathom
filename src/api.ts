@@ -78,12 +78,56 @@ export interface FilePreview {
 export type PrState = "open" | "draft" | "merged" | "closed" | "unknown";
 export type Checks = "passing" | "failing" | "running" | "none" | "unknown";
 
+export type ReviewState = "approved" | "changesRequested" | "commented" | "dismissed";
+export type ReviewDecision = "approved" | "changesRequested" | "reviewRequired";
+
+export interface Review {
+  login: string;
+  state: ReviewState;
+}
+
 export interface PrStatus {
   url: string;
   state: PrState;
   checks: Checks;
   title: string | null;
   note: string | null;
+  reviewDecision: ReviewDecision | null;
+  requested: string[];
+  reviews: Review[];
+}
+
+export const unknownPrStatus = (url: string, note: string | null): PrStatus => ({
+  url,
+  state: "unknown",
+  checks: "unknown",
+  title: null,
+  note,
+  reviewDecision: null,
+  requested: [],
+  reviews: [],
+});
+
+export type WaitKind = "pr-review" | "slack-reply" | "email-reply" | "other";
+export type Need = "all" | "any" | number;
+
+export interface Wait {
+  kind: WaitKind;
+  what: string;
+  who: string[];
+  need: Need;
+  since: string | null;
+  link: string | null;
+  state: Record<string, string>;
+}
+
+export interface Person {
+  github: string | null;
+}
+
+export interface Waits {
+  tasks: Record<string, Wait[]>;
+  people: Record<string, Person>;
 }
 
 export interface Column {
@@ -165,6 +209,7 @@ export interface BoardView extends Overlay {
   source: SourceKind;
   fromCache: boolean;
   error: string | null;
+  waits: Waits;
 }
 
 export interface Settings {

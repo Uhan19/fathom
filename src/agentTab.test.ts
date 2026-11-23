@@ -22,6 +22,8 @@ function detail(worker: Worker | null, source: SourceKind = "firstmate") {
       source,
       rowNames,
       request: null,
+      waits: [],
+      people: {},
       width: 460,
       chatTerminal: chat,
       worker,

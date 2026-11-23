@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { api, errorText, type PrStatus } from "../api";
+import { api, errorText, unknownPrStatus, type PrStatus } from "../api";
 import { groupLinks, type FoundLink, type LinkKind } from "../links";
 import { ChatIcon, CommitIcon, GlobeIcon, IssueIcon, PullRequestIcon, RepoIcon, TicketIcon } from "./Icons";
 import { WebAnchor } from "./RichText";
@@ -39,13 +39,13 @@ export function usePrStatuses(urls: string[]): PrStatuses {
   useEffect(() => {
     let alive = true;
     const wanted = key ? key.split(" ") : [];
-    setStatuses(new Map(wanted.map((url) => [url, null])));
+    setStatuses((known) => new Map(wanted.map((url) => [url, known.get(url) ?? null])));
     const settle = (url: string, status: PrStatus) => alive && setStatuses((prev) => new Map(prev).set(url, status));
     for (const url of wanted) {
       api
         .prStatus(url)
         .then((status) => settle(url, status))
-        .catch((e) => settle(url, { url, state: "unknown", checks: "unknown", title: null, note: errorText(e) }));
+        .catch((e) => settle(url, unknownPrStatus(url, errorText(e))));
     }
     return () => {
       alive = false;

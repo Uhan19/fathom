@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
-import { ROW_ORDER, type AgentFilter, type Card, type Column, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type SourceKind, type Worker } from "../api";
+import { ROW_ORDER, type AgentFilter, type Card, type Column, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type SourceKind, type Wait, type Worker } from "../api";
 import {
   boardMinWidth,
   cardNote,
@@ -24,13 +24,15 @@ import { useCardDrag, type CardDrag } from "../cardDrag";
 import { useColumnDrag, type ColumnDrag } from "../columnDrag";
 import type { DropTarget } from "../dropTarget";
 import { startDrag } from "../drag";
-import { ChevronDown, ChevronLeft, ChevronRight, Plus, Sailor, Trash } from "./Icons";
+import { tagText, waitsOf, waitTitle } from "../waits";
+import { ChevronDown, ChevronLeft, ChevronRight, HandoffIcon, Plus, Sailor, Trash } from "./Icons";
 
 interface BoardProps {
   cards: Card[];
   source: SourceKind;
   columns: Column[];
   overlay: Overlay;
+  waits: Record<string, Wait[]>;
   workers: Record<string, Worker>;
   updates: CardUpdates;
   rowNames: Record<RowKey, string>;
@@ -53,7 +55,7 @@ interface BoardProps {
 }
 
 export function Board(props: BoardProps) {
-  const { cards, source, columns, overlay, workers, updates, rowNames, collapsedRows, agentFilter, focus, selectedId, onSelect, onColumnChange, onColumnRename, onPlace, onWatch } =
+  const { cards, source, columns, overlay, waits, workers, updates, rowNames, collapsedRows, agentFilter, focus, selectedId, onSelect, onColumnChange, onColumnRename, onPlace, onWatch } =
     props;
   const focused = focus.length > 0;
   const [liveWidths, setLiveWidths] = useState<Record<number, number>>({});
@@ -238,6 +240,7 @@ export function Board(props: BoardProps) {
                                 key={card.id}
                                 card={card}
                                 request={shownRequest(card.id, overlay.requests)}
+                                waits={waitsOf(waits, card.id)}
                                 worker={workers[card.id]}
                                 source={source}
                                 unseen={isUnseen(updates, card.id)}
@@ -262,7 +265,9 @@ export function Board(props: BoardProps) {
           <div className="drop-slot column-slot" style={{ left: columnDrag.drag.slotX }} aria-hidden="true" />
         )}
       </div>
-      {drag && <Ghost drag={drag} source={source} request={shownRequest(drag.card.id, overlay.requests)} worker={workers[drag.card.id]} />}
+      {drag && (
+        <Ghost drag={drag} source={source} request={shownRequest(drag.card.id, overlay.requests)} waits={waitsOf(waits, drag.card.id)} worker={workers[drag.card.id]} />
+      )}
       {columnDrag.drag && <ColumnGhost drag={columnDrag.drag} />}
       {deleting && (
         <DeleteColumnDialog
@@ -429,7 +434,7 @@ function withSlot(views: ReactNode[], cards: Card[], drag: CardDrag | null, slot
   return out;
 }
 
-function Ghost({ drag, source, request, worker }: { drag: CardDrag; source: SourceKind; request: MoveRequest | null; worker?: Worker }) {
+function Ghost({ drag, source, request, waits, worker }: { drag: CardDrag; source: SourceKind; request: MoveRequest | null; waits: Wait[]; worker?: Worker }) {
   return (
     <div
       className={`card card-${drag.card.row} card-ghost`}
@@ -437,7 +442,7 @@ function Ghost({ drag, source, request, worker }: { drag: CardDrag; source: Sour
       aria-hidden="true"
     >
       <span className="card-open">
-        <CardFace card={drag.card} source={source} request={request} />
+        <CardFace card={drag.card} source={source} request={request} waits={waits} />
       </span>
       {worker && (
         <span className={`sailor ${worker.status}`}>
@@ -509,6 +514,7 @@ function ColumnName({ column, onRename }: { column: Column; onRename: (name: str
 interface CardViewProps {
   card: Card;
   request: MoveRequest | null;
+  waits: Wait[];
   worker?: Worker;
   source: SourceKind;
   unseen: boolean;
@@ -519,7 +525,7 @@ interface CardViewProps {
   onWatch: (card: Card, worker: Worker) => void;
 }
 
-function CardView({ card, request, worker, source, unseen, selected, lifted, onPointerDown, onSelect, onWatch }: CardViewProps) {
+function CardView({ card, request, waits, worker, source, unseen, selected, lifted, onPointerDown, onSelect, onWatch }: CardViewProps) {
   return (
     <div
       className={`card card-${card.row}${unseen ? " unseen" : ""}${selected ? " selected" : ""}${lifted ? " lifted" : ""}`}
@@ -527,7 +533,7 @@ function CardView({ card, request, worker, source, unseen, selected, lifted, onP
       onPointerDown={onPointerDown}
     >
       <button className="card-open" onClick={() => onSelect(card)}>
-        <CardFace card={card} source={source} request={request} />
+        <CardFace card={card} source={source} request={request} waits={waits} />
         {unseen && <span className="sr-only">New update</span>}
       </button>
       {worker && (
@@ -545,7 +551,7 @@ function CardView({ card, request, worker, source, unseen, selected, lifted, onP
   );
 }
 
-function CardFace({ card, source, request }: { card: Card; source: SourceKind; request: MoveRequest | null }) {
+function CardFace({ card, source, request, waits }: { card: Card; source: SourceKind; request: MoveRequest | null; waits: Wait[] }) {
   const note = cardNote(card);
   const tag = outcomeTag(card);
   const name = taskName(card, source);
@@ -563,8 +569,20 @@ function CardFace({ card, source, request }: { card: Card; source: SourceKind; r
         {note && <span className="card-note">{note}</span>}
         {tag && <span className="mark mark-reported">{tag}</span>}
         {request && <RequestMark request={request} />}
+        {waits.length > 0 && <WaitTag waits={waits} />}
       </span>
     </>
+  );
+}
+
+function WaitTag({ waits }: { waits: Wait[] }) {
+  const { names, more } = tagText(waits);
+  return (
+    <span className={names ? "wait-tag" : "wait-tag unnamed"} title={waitTitle(waits)}>
+      <HandoffIcon size={13} />
+      {names && <span className="wait-names">{names}</span>}
+      {more > 0 && <span className="wait-more">+{more}</span>}
+    </span>
   );
 }
 

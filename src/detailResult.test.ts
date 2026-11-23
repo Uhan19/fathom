@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { FileEntry, PrStatus } from "./api";
+import { unknownPrStatus, type FileEntry, type PrStatus } from "./api";
 import { ResultSection } from "./components/DetailResult";
 import { ViewerLayer } from "./components/ShotViewer";
 import { NO_LINKING } from "./links";
@@ -86,7 +86,7 @@ describe("the Result section", () => {
   });
 
   it("lists the PR with its status for code work", () => {
-    const statuses = new Map<string, PrStatus | null>([[PR, { url: PR, state: "merged", checks: "passing", title: "Add retries", note: null }]]);
+    const statuses = new Map<string, PrStatus | null>([[PR, { ...unknownPrStatus(PR, null), state: "merged", checks: "passing", title: "Add retries" }]]);
     const html = section(model({ prs: [PR], prStatuses: statuses }), statuses);
     expect(text(html)).toContain("Add retries");
     expect(html).toContain("result-prs boxed");
