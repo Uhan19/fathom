@@ -32,6 +32,7 @@ const KEY_DETAIL_WIDTH: &str = "detailWidth";
 const KEY_PROJECT_FILTER: &str = "projectFilter";
 const KEY_AGENT_FILTER: &str = "agentFilter";
 const KEY_FOCUS: &str = "focus";
+const KEY_FOCUS_RESTORE: &str = "focusRestore";
 const KEY_HELPER_STARTED: &str = "helperStarted";
 const KEY_HELPER_ASKING: &str = "helperAsking";
 const KEY_SHORTCUTS: &str = "shortcuts";
@@ -545,6 +546,26 @@ pub fn set_font(
     };
     *chosen = format!("{ADDED_FONT_PREFIX}{family}");
     Ok(())
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FocusRestore {
+    pub project_filter: Option<Vec<String>>,
+    pub agent_filter: Option<AgentFilter>,
+}
+
+pub fn focus_restore(db: &Db) -> Result<FocusRestore, String> {
+    Ok(db
+        .settings()?
+        .get(KEY_FOCUS_RESTORE)
+        .and_then(|v| serde_json::from_str(v).ok())
+        .unwrap_or_default())
+}
+
+pub fn set_focus_restore(db: &Db, restore: &FocusRestore) -> Result<(), String> {
+    let json = serde_json::to_string(restore).map_err(|e| e.to_string())?;
+    db.set_setting(KEY_FOCUS_RESTORE, &json)
 }
 
 pub fn helper_asking(db: &Db) -> Result<bool, String> {

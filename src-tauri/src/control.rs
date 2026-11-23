@@ -9,7 +9,7 @@ use crate::db::backlog::{self, Task};
 use crate::db::numbers::BACKLOG_HOME;
 use crate::db::{Column, Db, MoveTo, RowView};
 use crate::moves;
-use crate::settings::{self, AgentFilter, Settings};
+use crate::settings::{self, AgentFilter, FocusRestore, Settings};
 use crate::source::Source;
 use crate::tasks::{Card, Row};
 use crate::workers::AgentState;
@@ -274,7 +274,18 @@ pub fn focus_tasks(
         ));
     }
     let numbers = focus.iter().filter_map(|task| task.number).collect();
-    settings::update(&db.lock().unwrap(), |s| {
+    let db = db.lock().unwrap();
+    let before = settings::load(&db)?;
+    if before.focus.is_empty() {
+        settings::set_focus_restore(
+            &db,
+            &FocusRestore {
+                project_filter: Some(before.project_filter),
+                agent_filter: Some(before.agent_filter),
+            },
+        )?;
+    }
+    settings::update(&db, |s| {
         s.focus = numbers;
         s.project_filter.clear();
         s.agent_filter = AgentFilter::All;
@@ -284,10 +295,27 @@ pub fn focus_tasks(
 }
 
 pub fn clear_focus(db: &Db) -> Result<Settings, String> {
-    settings::update(db, |s| {
+    let restore = settings::focus_restore(db)?;
+    let cleared = settings::update(db, |s| {
+        if !s.focus.is_empty() {
+            if let Some(projects) = restore.project_filter {
+                s.project_filter = projects;
+            }
+            if let Some(filter) = restore.agent_filter {
+                s.agent_filter = filter;
+            }
+        }
         s.focus.clear();
         Ok(())
-    })
+    })?;
+    settings::set_focus_restore(db, &FocusRestore::default())?;
+    Ok(cleared)
+}
+
+fn keep_chosen_filter(db: &Db, forget: impl FnOnce(&mut FocusRestore)) -> Result<(), String> {
+    let mut restore = settings::focus_restore(db)?;
+    forget(&mut restore);
+    settings::set_focus_restore(db, &restore)
 }
 
 fn projects(columns: &[Column]) -> Vec<String> {
@@ -362,6 +390,7 @@ pub fn set_row_view(db: &Db, rows: &[Row], collapsed: bool) -> Result<Vec<RowVie
 }
 
 pub fn set_agent_filter(db: &Db, filter: AgentFilter) -> Result<Settings, String> {
+    keep_chosen_filter(db, |r| r.agent_filter = None)?;
     settings::update(db, |s| {
         s.agent_filter = filter;
         Ok(())
@@ -395,6 +424,7 @@ pub fn show_projects(db: &Db, wanted: &[String]) -> Result<Settings, String> {
     if chosen.is_empty() {
         return Err("name at least one project to show".into());
     }
+    keep_chosen_filter(db, |r| r.project_filter = None)?;
     settings::update(db, |s| {
         s.project_filter = chosen;
         Ok(())
@@ -402,6 +432,7 @@ pub fn show_projects(db: &Db, wanted: &[String]) -> Result<Settings, String> {
 }
 
 pub fn show_all_projects(db: &Db) -> Result<Settings, String> {
+    keep_chosen_filter(db, |r| r.project_filter = None)?;
     settings::update(db, |s| {
         s.project_filter.clear();
         Ok(())

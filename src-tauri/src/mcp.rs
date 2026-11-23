@@ -73,7 +73,7 @@ get_board_layout gives each column its tasks, tasksWithAgent and tasksWithActive
 When asked for only the columns with an active agent, call show_projects with the project of every column whose tasksWithActiveAgent is above 0; for columns with any agent, use tasksWithAgent instead.
 Custom columns have no project, so show_projects cannot keep them; say so when one of them has an agent.
 If get_board_layout has an agentError, Fathom could not read the agents; tell the user instead of guessing.
-focus_tasks shows only the given tasks until clear_focus; it also shows every project and sets the agent filter to all, so the board shows exactly those tasks. Use it when asked to focus on, bring up or show only certain tasks.
+focus_tasks shows only the given tasks until clear_focus; it also shows every project and sets the agent filter to all, so the board shows exactly those tasks. Use it when asked to focus on, bring up or show only certain tasks. clear_focus puts back the project and agent filters from before the focus, unless one was changed during the focus.
 focus_tasks returns the tasks it could not find under unknown; tell the user about them. If a focused task sits in a collapsed row or column, expand that row or column.
 get_board_layout gives the numbers of the focused tasks under focus.
 When asked to show everything again, undo every filter: expand every row with set_row_view, call show_all_projects, set the agent filter to all and call clear_focus.
@@ -574,7 +574,9 @@ impl Fathom {
         reply(control::focus_tasks(&self.db, &source, &wanted, &agents))
     }
 
-    #[tool(description = "Clear the task focus so the board shows every card again.")]
+    #[tool(
+        description = "Clear the task focus and put back the project and agent filters from before the focus, except a filter changed while the focus was on."
+    )]
     fn clear_focus(&self) -> Result<String, String> {
         reply(control::clear_focus(&self.db.lock().unwrap()).map(settings_view))
     }
@@ -1955,6 +1957,86 @@ esac
         assert_eq!(cleared["focus"], json!([]));
         let layout: Value = ok(server.get_board_layout());
         assert_eq!(layout["focus"], json!([]));
+        assert_eq!(layout["projectFilter"], json!(["rigging"]));
+        assert_eq!(layout["agentFilter"], "withAgent");
+    }
+
+    fn own_filters(server: &Fathom) {
+        let _: Value = ok(server.get_board_layout());
+        let _: Value = ok(server.show_projects(Parameters(ShowProjects {
+            projects: vec!["reef-map".into(), "rigging".into()],
+        })));
+        let _: Value = ok(server.set_agent_filter(Parameters(SetAgentFilter {
+            filter: AgentFilter::WithAgent,
+        })));
+    }
+
+    fn filters(server: &Fathom) -> (Value, Value) {
+        let layout: Value = ok(server.get_board_layout());
+        (
+            layout["projectFilter"].clone(),
+            layout["agentFilter"].clone(),
+        )
+    }
+
+    #[test]
+    fn a_second_focus_still_clears_back_to_the_filters_from_before_the_first() {
+        let board = firstmate_board(no_host());
+        let server = &board.server;
+        own_filters(server);
+        let _: Value = ok(focus(server, &[text("atl-1")]));
+        let _: Value = ok(focus(server, &[text("atl-2"), text("atl-3")]));
+        let _: Value = ok(server.clear_focus());
+        assert_eq!(
+            filters(server),
+            (json!(["reef-map", "rigging"]), json!("withAgent"))
+        );
+
+        let _: Value = ok(server.clear_focus());
+        assert_eq!(
+            filters(server),
+            (json!(["reef-map", "rigging"]), json!("withAgent"))
+        );
+    }
+
+    #[test]
+    fn a_filter_chosen_during_the_focus_stays_after_clearing_it() {
+        let board = firstmate_board(no_host());
+        let server = &board.server;
+        own_filters(server);
+        let _: Value = ok(focus(server, &[text("atl-1")]));
+        let _: Value = ok(server.set_agent_filter(Parameters(SetAgentFilter {
+            filter: AgentFilter::WithActiveAgent,
+        })));
+        let _: Value = ok(server.clear_focus());
+        assert_eq!(
+            filters(server),
+            (json!(["reef-map", "rigging"]), json!("withActiveAgent"))
+        );
+    }
+
+    #[test]
+    fn showing_everything_again_ends_open_whatever_the_order() {
+        let board = firstmate_board(no_host());
+        let server = &board.server;
+        let open = (json!([]), json!("all"));
+        own_filters(server);
+        let _: Value = ok(focus(server, &[text("atl-1")]));
+        let _: Value = ok(server.show_all_projects());
+        let _: Value = ok(server.set_agent_filter(Parameters(SetAgentFilter {
+            filter: AgentFilter::All,
+        })));
+        let _: Value = ok(server.clear_focus());
+        assert_eq!(filters(server), open);
+
+        own_filters(server);
+        let _: Value = ok(focus(server, &[text("atl-1")]));
+        let _: Value = ok(server.clear_focus());
+        let _: Value = ok(server.show_all_projects());
+        let _: Value = ok(server.set_agent_filter(Parameters(SetAgentFilter {
+            filter: AgentFilter::All,
+        })));
+        assert_eq!(filters(server), open);
     }
 
     #[test]
@@ -1976,6 +2058,7 @@ esac
         );
         let layout: Value = ok(server.get_board_layout());
         assert_eq!(layout["focus"], json!([1]));
+        assert_eq!(layout["agentFilter"], "all");
     }
 
     #[test]

@@ -356,7 +356,7 @@ The tools write through the same code as the window's own controls and never cha
 | `show_all_projects` | Shows every column again. |
 | `set_agent_filter` | Shows every card (`all`), only cards with an agent (`withAgent`), or only cards with an active agent (`withActiveAgent`). |
 | `focus_tasks` | Shows only the given tasks, each named by number (`42` or `"#42"`) or Firstmate name, and returns them with their `number` and `name`; entries that match no task come back under `unknown`. |
-| `clear_focus` | Shows every card again. |
+| `clear_focus` | Ends the focus and puts back the project and agent filters from before it. |
 | `set_theme` | Switches between the light and dark theme. |
 | `set_fonts` | Changes the chat and board fonts and sizes. |
 | `set_panels` | Opens or closes the chat panel and changes the chat and card detail widths. |
@@ -512,7 +512,10 @@ Fathom remembers the filter across launches, and [Bosun](#bosun) can set it too.
 Ask [Bosun](#bosun) to show some tasks, by [number](#task-numbers) or Firstmate name, and the board keeps only their cards and the columns that hold them.
 Focusing shows every project and turns the agent filter off first, so every named task that is on the board shows.
 Bosun tells you about any number or name that matches no task.
-A strip above the board names the focused tasks, and its "Clear focus" button brings the whole board back.
+A strip above the board names the focused tasks, and its "Clear focus" button ends the focus.
+Clearing the focus, from the strip or through Bosun, puts back the project and agent filters that were on before the focus started.
+Focusing again while a focus is on keeps those filters to come back to.
+A filter changed while the focus is on stays as changed after clearing it, so "show everything again" ends with every card shown.
 The project and agent filters still apply while the focus is on, and the strip then names each of them.
 "Add column" is hidden while the focus is on.
 When none of the focused tasks is on the board any more, the board says so and offers "Clear focus".
