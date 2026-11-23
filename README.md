@@ -59,6 +59,7 @@ Add `?backlog` to see a board of Fathom's own backlog, with one pending and one 
 Add `?late` to have a card arrive in a column at the moment you confirm deleting it, or `?deletefail` to see a delete fail.
 Add `?theme=dark` to start in the dark theme, `?nochat` to start with the chat panel closed, and `?filter=harbor-web,keel-cli` to start with a project filter.
 Add `?agents=withAgent` or `?agents=withActiveAgent` to start with that agent filter, and `?rows=deep,landed` to start with those rows collapsed.
+Add `?focus=48,57` to start with the board focused on those task numbers.
 Add `?unseen` to light the cards that have an update you have not read, and `?folded=pilot-infra,keel-cli` to start with those columns collapsed; `?unseen&folded=pilot-infra&rows=deep` shows a lit card, a lit column header and a lit row band at once.
 Add `?bosun=` with `notstarted`, `dormant`, `starting`, `ready`, `working`, `asking`, `signedout`, `missing`, `failed` or `stopped` to see that Bosun state; open the drawer with the Bosun rail under the board.
 
@@ -202,7 +203,8 @@ The database holds Fathom's own backlog and what Fathom adds on top of either ta
 - backlog tasks (generated id, title, detail, project, row, created and updated times, and when an agent last reported on the task), used when no Firstmate home is set,
 - columns (generated id, project or none for an added column, name, order, width, collapsed, deleted),
 - row names and which rows are collapsed,
-- settings, including the theme, whether the chat panel is open, the panel widths, the project filter and the agent filter,
+- task numbers: each task's number, its task source and its Firstmate name or backlog id, as described in [Task numbers](#task-numbers),
+- settings, including the theme, whether the chat panel is open, the panel widths, the project filter, the agent filter and the task focus,
 - card places: a card's order within its cell and the column the user put it in (by column id),
 - move requests (board requests) and what became of them,
 - the latest agent update you have read on each card, kept per task source, as described in [Unread updates](#unread-updates),
@@ -262,6 +264,21 @@ With the home left empty it reads its own backlog; see [Fathom's own backlog](#f
   An added column has no project name to return to, so emptying its name keeps the current one.
   The project itself and Firstmate's task list keep their names.
 
+## Task numbers
+
+Every task on the board has a short number, such as `#42`, that never changes and is never given to another task.
+One number space covers every task Fathom shows: Firstmate tasks from any home and Fathom's own backlog tasks.
+Fathom keeps the numbers in its own database and never writes them into Firstmate.
+
+A card shows its number, then its Firstmate name, above the title, as in `#42 multiply-chart-timezone`.
+A task from Fathom's own backlog has no name, so its card shows just the number.
+The card detail shows the same line beside the project and kind.
+
+A task gets its number the first time Fathom sees it.
+On the first launch with numbers, existing backlog tasks are numbered in the order they were created, and Firstmate tasks are numbered in the order Firstmate lists them when the board is first read.
+After that, each new task takes the next number.
+A number stays with its task after the task leaves the board, so it is never reused.
+
 ## Fathom's own backlog
 
 A fresh install without Firstmate (no `bin/fm-tasks-axi.sh` under `~/Documents/firstmate`) starts with an empty Firstmate home and uses the backlog stored in Fathom's database.
@@ -277,7 +294,7 @@ Its tools show up in Claude Code as `mcp__fathom__*`:
 
 | Tool | What it does |
 | --- | --- |
-| `list_tasks` | Lists tasks, optionally only one `project` or one `row`. |
+| `list_tasks` | Lists tasks with their numbers, optionally only one `project` or one `row`. |
 | `add_task` | Adds a task with a `title`, a `project`, and optionally a `detail` and a starting `row` (default `seabed`). |
 | `update_task` | Changes a task's `title`, `detail` or `project`. |
 | `move_task` | Moves a task to a `row`; this also answers any board request asking for that row. |
@@ -285,6 +302,7 @@ Its tools show up in Claude Code as `mcp__fathom__*`:
 | `answer_request` | Accepts a request, which moves the task, or declines it with a short `reason`. |
 | `start_worker` | Starts a Claude Code worker on a task in its own terminal, optionally in a given `folder`. |
 
+The tools that change a task take its [number](#task-numbers) as `task`, either `42` or `"#42"`, and every task they return carries its `number`.
 The server's instructions tell the agent to keep its task list in Fathom and to answer board requests.
 Rows use the fixed keys `surface` (needs the user), `shallows` (in progress), `deep` (parked or waiting), `seabed` (queued) and `landed` (done).
 
@@ -324,8 +342,8 @@ The tools write through the same code as the window's own controls and never cha
 
 | Tool | What it does |
 | --- | --- |
-| `get_board_layout` | Reads the columns in order, the rows with their names and whether each is collapsed, the project names, the project filter and the agent filter. |
-| `get_settings` | Reads the theme, fonts and sizes, panel widths, the project filter, the agent filter and the connection settings. |
+| `get_board_layout` | Reads the columns in order, the rows with their names and whether each is collapsed, the project names, the project filter, the agent filter and the task focus. |
+| `get_settings` | Reads the theme, fonts and sizes, panel widths, the project filter, the agent filter, the task focus and the connection settings. |
 | `list_fonts` | Lists the font choices for the chat and the board, their size ranges and the installed font families. |
 | `rename_column` | Renames a column. |
 | `move_column` | Moves a column to a new position. |
@@ -337,6 +355,8 @@ The tools write through the same code as the window's own controls and never cha
 | `show_projects` | Shows only the named projects' columns. |
 | `show_all_projects` | Shows every column again. |
 | `set_agent_filter` | Shows every card (`all`), only cards with an agent (`withAgent`), or only cards with an active agent (`withActiveAgent`). |
+| `focus_tasks` | Shows only the given tasks, each named by number (`42` or `"#42"`) or Firstmate name, and returns them with their `number` and `name`; entries that match no task come back under `unknown`. |
+| `clear_focus` | Shows every card again. |
 | `set_theme` | Switches between the light and dark theme. |
 | `set_fonts` | Changes the chat and board fonts and sizes. |
 | `set_panels` | Opens or closes the chat panel and changes the chat and card detail widths. |
@@ -461,7 +481,7 @@ Fathom asks your login shell for its PATH once at startup and uses it to find he
 
 The "Dark mode" switch in the header turns the panels, cards and terminals dark, and switching it off turns them light again.
 The board rows keep their light bands in both themes.
-Fathom remembers the theme, whether the chat panel is open, the chat and card panel widths, which rows are collapsed and the agent filter across launches.
+Fathom remembers the theme, whether the chat panel is open, the chat and card panel widths, which rows are collapsed, the agent filter and the task focus across launches.
 The selected card and the crewmate view you are watching are not remembered.
 
 ## Showing only some projects
@@ -487,10 +507,21 @@ Column totals and the counts on collapsed rows count only the cards the filters 
 When no card matches, the board says so and offers "Show every card".
 Fathom remembers the filter across launches, and [Bosun](#bosun) can set it too.
 
+## Focusing on some tasks
+
+Ask [Bosun](#bosun) to show some tasks, by [number](#task-numbers) or Firstmate name, and the board keeps only their cards and the columns that hold them.
+Focusing shows every project and turns the agent filter off first, so every named task that is on the board shows.
+Bosun tells you about any number or name that matches no task.
+A strip above the board names the focused tasks, and its "Clear focus" button brings the whole board back.
+The project and agent filters still apply while the focus is on, and the strip then names each of them.
+"Add column" is hidden while the focus is on.
+When none of the focused tasks is on the board any more, the board says so and offers "Clear focus".
+Fathom remembers the focus across launches until it is cleared.
+
 ## Bosun
 
 Bosun is a helper you ask in plain words to change Fathom: columns, rows, which projects and cards show, the theme, fonts and panels.
-Asked to show only some rows, such as only what is in progress, it collapses the other rows; asked for only the cards with an agent or an active agent, it sets the agent filter; asked to show everything again, it expands every row and turns both filters off.
+Asked to show only some rows, such as only what is in progress, it collapses the other rows; asked for only the cards with an agent or an active agent, it sets the agent filter; asked to show only some tasks, it focuses the board on them; asked to show everything again, it expands every row, clears the focus and turns both filters off.
 It is Claude Code running in a terminal Fathom opens, with only the [helper tools](#the-helper-tools).
 Fathom never types into Bosun's terminal and never reads answers from it; Bosun changes Fathom only through the tools.
 

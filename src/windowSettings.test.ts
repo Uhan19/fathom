@@ -22,6 +22,7 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
   detailWidth: 460,
   projectFilter: [],
   agentFilter: "all",
+  focus: [],
   helperStarted: false,
   shortcuts: defaultShortcuts(true),
   linearWorkspace: "",

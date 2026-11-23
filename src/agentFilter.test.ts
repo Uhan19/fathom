@@ -20,9 +20,10 @@ interface BoardOptions {
   projectFilter?: string[];
   cards?: Card[];
   source?: SourceKind;
+  focus?: number[];
 }
 
-function board({ workers = FIXTURE_WORKERS, agentFilter = "all", collapsedRows = [], projectFilter = [], cards = FIXTURE_CARDS, source = "firstmate" }: BoardOptions) {
+function board({ workers = FIXTURE_WORKERS, agentFilter = "all", collapsedRows = [], projectFilter = [], cards = FIXTURE_CARDS, source = "firstmate", focus = [] }: BoardOptions) {
   return renderToStaticMarkup(
     createElement(Board, {
       cards,
@@ -33,6 +34,7 @@ function board({ workers = FIXTURE_WORKERS, agentFilter = "all", collapsedRows =
       rowNames,
       collapsedRows,
       agentFilter,
+      focus,
       projectsFiltered: projectFilter.length > 0,
       updates: NO_UPDATES,
       selectedId: null,
@@ -40,6 +42,7 @@ function board({ workers = FIXTURE_WORKERS, agentFilter = "all", collapsedRows =
       onColumnChange: ignore,
       onRowCollapse: ignore,
       onShowEveryCard: ignore,
+      onClearFocus: ignore,
       onColumnRename: ignore,
       onColumnMove: ignore,
       onColumnAdd: ignore,
@@ -115,6 +118,49 @@ describe("the agent filter on the board", () => {
     const html = board({ agentFilter: "withActiveAgent", collapsedRows: ["shallows"] });
     expect(html).not.toContain("board-no-match");
     expect(rowMarkup(html, "shallows")).toContain('<span class="row-count">2</span>');
+  });
+});
+
+const numberOf = (id: string) => FIXTURE_CARDS.find((c) => c.id === id)?.number ?? 0;
+const shownColumnNames = (html: string) => [...html.matchAll(/title="Rename ([^"]+)"/g)].map((m) => m[1]);
+
+describe("the focus on the board", () => {
+  it("shows only the focused cards and the columns that hold them", () => {
+    const html = board({ focus: [numberOf("hrb-17"), numberOf("pil-08"), numberOf("lan-31")] });
+    expect(shownCards(html)).toEqual(["hrb-17", "lan-31", "pil-08"]);
+    expect(shownColumnNames(html)).toEqual(["harbor-web", "lantern-docs", "pilot-infra"]);
+  });
+
+  it("finds Fathom's own tasks by number too", () => {
+    const backlog = FIXTURE_BACKLOG_CARDS.slice(1, 3);
+    const html = board({ cards: FIXTURE_BACKLOG_CARDS, source: "fathom", focus: backlog.map((c) => c.number ?? 0) });
+    expect(shownCards(html)).toEqual(backlog.map((c) => c.id).sort());
+  });
+
+  it("combines with the agent filter", () => {
+    const focus = [numberOf("hrb-16"), numberOf("hrb-17")];
+    expect(shownCards(board({ focus, agentFilter: "withAgent" }))).toEqual(["hrb-16"]);
+    expect(board({ focus: [numberOf("hrb-17")], agentFilter: "withAgent" })).toContain("No focused task has an agent right now.");
+  });
+
+  it("offers a way back when none of the focused tasks is on the board", () => {
+    const html = board({ focus: [9999] });
+    expect(html).toContain("None of the focused tasks is on the board.");
+    expect(html).toContain('<button class="mini">Clear focus</button>');
+    expect(html).not.toContain('class="column-heads"');
+    expect(board({ focus: [numberOf("hrb-17")], projectFilter: ["atlas-api"] })).toContain("None of the focused tasks is in the shown projects.");
+  });
+});
+
+describe("task numbers on cards", () => {
+  it("show the number, then the Firstmate name, above the title", () => {
+    expect(board({})).toContain(`<span class="card-ref"><span class="card-number">#${numberOf("hrb-17")}</span><span class="card-name">hrb-17</span></span>`);
+  });
+
+  it("show only the number on Fathom's own tasks", () => {
+    const html = board({ cards: FIXTURE_BACKLOG_CARDS, source: "fathom" });
+    expect(html).toContain(`<span class="card-ref"><span class="card-number">#${FIXTURE_BACKLOG_CARDS[0].number}</span></span>`);
+    expect(html).not.toContain("card-name");
   });
 });
 

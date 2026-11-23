@@ -27,6 +27,7 @@ const card = (id: string, project: string): Card => ({
   blockedBy: [],
   links: [],
   closed: "",
+  number: null,
 });
 
 const columns = [column(HARBOR, "harbor"), column(REEF, "reef"), column(LATER, null)];

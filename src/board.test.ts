@@ -32,6 +32,7 @@ const card = (over: Partial<Card>): Card => ({
   blockedBy: [],
   links: [],
   closed: "",
+  number: null,
   ...over,
 });
 

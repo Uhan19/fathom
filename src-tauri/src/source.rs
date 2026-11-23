@@ -72,14 +72,18 @@ impl Source {
     }
 
     pub fn detail(&self, db: &Mutex<Db>, id: &str) -> Result<Detail, String> {
-        match self {
-            Source::Firstmate { home } => tasks::read_detail(home, id),
-            Source::Backlog => Ok(db
+        let mut detail = match self {
+            Source::Firstmate { home } => tasks::read_detail(home, id)?,
+            Source::Backlog => db
                 .lock()
                 .unwrap()
                 .task(backlog::task_id(id)?)?
-                .detail_view()),
-        }
+                .detail_view(),
+        };
+        db.lock()
+            .unwrap()
+            .number_cards(&self.home(), std::slice::from_mut(&mut detail.card))?;
+        Ok(detail)
     }
 
     pub fn place(
@@ -201,7 +205,32 @@ mod tests {
         assert_eq!(cards, vec![task.card()]);
         let detail = Source::Backlog.detail(&db, &task.card_id()).unwrap();
         assert_eq!(detail.card.title, "Chart the reef");
+        assert_eq!(detail.card.number, Some(1));
         assert!(Source::Backlog.detail(&db, "atl-12").is_err());
+    }
+
+    const FAKE_TASKS: &str = r#"#!/bin/sh
+case "$1" in
+  list) printf 'tasks[2]{id,state,kind,repo,title}:\n  chart-reef,queued,ship,reef-map,Chart the reef\n  count-buoys,queued,ship,reef-map,Count the buoys\n' ;;
+  show) printf 'task:\n  id: %s\n  state: queued\n  kind: ship\n  repo: reef-map\n  title: Chart the reef\n' "$2" ;;
+esac
+"#;
+
+    #[test]
+    fn a_firstmate_detail_carries_the_same_number_as_its_card() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        std::fs::create_dir_all(home.join("bin")).unwrap();
+        crate::test_support::write_script(&home.join("bin/fm-tasks-axi.sh"), FAKE_TASKS);
+        let db = Mutex::new(Db::open(dir.path()).unwrap());
+        let source = Source::of(&home.display().to_string());
+
+        let detail = source.detail(&db, "count-buoys").unwrap();
+        assert_eq!(detail.card.number, Some(1));
+        let cards = source.read_cards(&db).unwrap();
+        let numbers: Vec<(&str, Option<i64>)> =
+            cards.iter().map(|c| (c.id.as_str(), c.number)).collect();
+        assert_eq!(numbers, [("chart-reef", Some(2)), ("count-buoys", Some(1))]);
     }
 
     #[test]

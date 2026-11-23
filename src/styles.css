@@ -1307,6 +1307,28 @@ button.column-name:focus-visible,
   gap: 6px;
 }
 
+.card-ref {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: calc(11px * var(--board-scale));
+  line-height: 1.3;
+  color: var(--card-muted);
+}
+
+.card-number {
+  flex: none;
+  font-weight: 600;
+}
+
+.card-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .phrase {
   font-family: var(--heading);
   font-size: calc(15px * var(--board-scale));

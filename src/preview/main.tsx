@@ -100,6 +100,7 @@ let settings: Settings = {
   detailWidth: Number(params.get("detailwidth")) || 460,
   projectFilter: params.get("filter")?.split(",").filter(Boolean) ?? [],
   agentFilter: (params.get("agents") as AgentFilter | null) ?? "all",
+  focus: params.get("focus")?.split(",").filter(Boolean).map(Number) ?? [],
   helperStarted: bosun !== "notstarted",
   shortcuts: params.get("shortcuts") === "custom" ? customShortcuts() : defaultShortcuts(mac),
   linearWorkspace: params.has("nolinear") ? "" : "reef-co",
@@ -378,6 +379,9 @@ mockIPC(
         return settings;
       case "set_agent_filter":
         settings = { ...settings, agentFilter: args.filter as AgentFilter };
+        return settings;
+      case "clear_focus":
+        settings = { ...settings, focus: [] };
         return settings;
       case "find_helper":
         return helperStatus.terminal ? FIXTURE_HELPER : null;

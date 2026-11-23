@@ -39,8 +39,12 @@ const SEEDS: Seed[] = [
   ["son-09", "sonar-mobile", "landed", "Fix the crash on rotating the camera screen", { state: "done", closed: "2026-11-11" }],
 ];
 
-const seeded = ([id, project, row, title, extra]: Seed): Card => ({
+const FIRST_NUMBER = 40;
+const FIRST_BACKLOG_NUMBER = 12;
+
+const seeded = ([id, project, row, title, extra]: Seed, number: number): Card => ({
   id,
+  number,
   title,
   project,
   row,
@@ -55,9 +59,11 @@ const seeded = ([id, project, row, title, extra]: Seed): Card => ({
   ...extra,
 });
 
-export const FIXTURE_CARDS: Card[] = SEEDS.map(seeded);
+export const FIXTURE_CARDS: Card[] = SEEDS.map((seed, i) => seeded(seed, FIRST_NUMBER + i));
 
-export const FIXTURE_LATE_CARD: Card = seeded(["kel-09", "keel-cli", "shallows", "Add a --quiet flag for scripts", { state: "in_flight" }]);
+const nextNumber = FIRST_NUMBER + SEEDS.length;
+
+export const FIXTURE_LATE_CARD: Card = seeded(["kel-09", "keel-cli", "shallows", "Add a --quiet flag for scripts", { state: "in_flight" }], nextNumber);
 
 export const FIXTURE_WORKERS: Worker[] = [
   { taskId: "atl-09", terminal: "t3", status: "working" },
@@ -120,8 +126,8 @@ export const FIXTURE_COLUMNS: Column[] = columnsFor(FIXTURE_CARDS);
 
 export const FIXTURE_UNFILED_CARDS: Card[] = [
   ...FIXTURE_CARDS,
-  seeded(["gen-02", "", "shallows", "Tidy the shared notes folder", { state: "in_flight" }]),
-  seeded(["gen-01", "", "deep", "Sort the inbox of half-written ideas", { holdKind: "parked" }]),
+  seeded(["gen-02", "", "shallows", "Tidy the shared notes folder", { state: "in_flight" }], nextNumber + 1),
+  seeded(["gen-01", "", "deep", "Sort the inbox of half-written ideas", { holdKind: "parked" }], nextNumber + 2),
 ];
 
 export const FIXTURE_UNFILED_COLUMNS: Column[] = columnsFor(FIXTURE_UNFILED_CARDS);
@@ -141,7 +147,7 @@ const BACKLOG_SEEDS: BacklogSeed[] = [
 ];
 
 export const FIXTURE_BACKLOG_CARDS: Card[] = BACKLOG_SEEDS.map(([id, project, row, title]) =>
-  seeded([String(id), project, row, title, { kind: "task", state: row === "landed" ? "done" : "open", closed: row === "landed" ? "2026-11-16" : "" }]),
+  seeded([String(id), project, row, title, { kind: "task", state: row === "landed" ? "done" : "open", closed: row === "landed" ? "2026-11-16" : "" }], FIRST_BACKLOG_NUMBER + id - 1),
 );
 
 export const FIXTURE_BACKLOG_COLUMNS: Column[] = columnsFor(FIXTURE_BACKLOG_CARDS);

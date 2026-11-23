@@ -58,7 +58,8 @@ export function agentFilterText(filter: AgentFilter): string {
   return `Showing only cards with ${WHAT[filter]}.`;
 }
 
-export function noMatchText(filter: AgentFilter, projectsFiltered: boolean): string {
+export function noMatchText(filter: AgentFilter, projectsFiltered: boolean, focused = false): string {
+  if (focused) return `No focused task has ${WHAT[filter]} right now.`;
   const where = projectsFiltered ? " in the shown projects" : "";
   return `No card${where} has ${WHAT[filter]} right now.`;
 }
