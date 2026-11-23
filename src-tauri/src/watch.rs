@@ -3,6 +3,8 @@ use std::time::Duration;
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
+use crate::waits::WAITS_FILE;
+
 pub const TASK_LIST: &str = "backlog.md";
 const STATE_DIR: &str = "state";
 const META_EXTENSION: &str = "meta";
@@ -24,10 +26,10 @@ pub fn watch_task_list(
     let data = home.join("data");
     let mut watcher = notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
         if let Ok(event) = result
-            && event
-                .paths
-                .iter()
-                .any(|p| p.file_name().is_some_and(|n| n == TASK_LIST))
+            && event.paths.iter().any(|p| {
+                p.file_name()
+                    .is_some_and(|n| n == TASK_LIST || n == WAITS_FILE)
+            })
         {
             on_change();
         }
@@ -105,7 +107,7 @@ mod tests {
     use std::sync::mpsc;
 
     #[test]
-    fn reports_changes_to_the_task_list_only() {
+    fn reports_changes_to_the_task_list_and_waits_only() {
         let home = tempfile::tempdir().unwrap();
         let data = home.path().join("data");
         std::fs::create_dir_all(&data).unwrap();
@@ -120,6 +122,9 @@ mod tests {
         std::fs::write(data.join("other.md"), "noise").unwrap();
         assert!(rx.recv_timeout(Duration::from_millis(800)).is_err());
         std::fs::write(data.join(TASK_LIST), "second").unwrap();
+        assert!(rx.recv_timeout(Duration::from_secs(5)).is_ok());
+        while rx.recv_timeout(Duration::from_millis(300)).is_ok() {}
+        std::fs::write(data.join(WAITS_FILE), "{}").unwrap();
         assert!(rx.recv_timeout(Duration::from_secs(5)).is_ok());
     }
 

@@ -30,6 +30,7 @@ function board({ workers = FIXTURE_WORKERS, agentFilter = "all", collapsedRows =
       source,
       columns: shownColumns(source === "fathom" ? FIXTURE_BACKLOG_COLUMNS : FIXTURE_COLUMNS, projectFilter),
       overlay: { places: [], requests: [] },
+      waits: {},
       workers: Object.fromEntries(workers.map((w) => [w.taskId, w])),
       rowNames,
       collapsedRows,

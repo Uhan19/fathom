@@ -20,6 +20,7 @@ function board(updates: CardUpdates, folded: string[] = [], collapsedRows: RowKe
       source: "firstmate",
       columns,
       overlay: { places: [], requests: [] },
+      waits: {},
       workers: {},
       updates,
       rowNames,

@@ -1,5 +1,5 @@
 import { AGENTS, type AgentKey } from "../agents";
-import type { Card, Column, Detail, MoveRequest, RowKey, ShellTab, Terminal, Worker } from "../api";
+import type { Card, Column, Detail, MoveRequest, RowKey, ShellTab, Terminal, Waits, Worker } from "../api";
 import type { CardUpdates } from "../updates";
 
 type Seed = [id: string, project: string, row: RowKey, title: string, extra?: Partial<Card>];
@@ -37,6 +37,7 @@ const SEEDS: Seed[] = [
   ["son-13", "sonar-mobile", "deep", "Prototype offline mode", { holdKind: "parked" }],
   ["son-12", "sonar-mobile", "deep", "Upgrade the push notification library", { holdKind: "parked" }],
   ["son-09", "sonar-mobile", "landed", "Fix the crash on rotating the camera screen", { state: "done", closed: "2026-11-11" }],
+  ["lan-33", "lantern-docs", "seabed", "Move the docs site to the new domain", { holdKind: "external", holdReason: "Waiting for the registrar to confirm the transfer." }],
 ];
 
 const FIRST_NUMBER = 40;
@@ -64,6 +65,77 @@ export const FIXTURE_CARDS: Card[] = SEEDS.map((seed, i) => seeded(seed, FIRST_N
 const nextNumber = FIRST_NUMBER + SEEDS.length;
 
 export const FIXTURE_LATE_CARD: Card = seeded(["kel-09", "keel-cli", "shallows", "Add a --quiet flag for scripts", { state: "in_flight" }], nextNumber);
+
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+export const FIXTURE_WAITS: Waits = {
+  tasks: {
+    "hrb-17": [
+      {
+        kind: "pr-review",
+        what: "Re-review of the keyboard focus order",
+        who: ["Mira", "Tomas", "Priya"],
+        need: 2,
+        since: ago(3 * DAY),
+        link: "https://github.com/example/harbor-web/pull/241",
+        state: {},
+      },
+      {
+        kind: "slack-reply",
+        what: "Screen reader check of the sidebar",
+        who: ["Tomas"],
+        need: "all",
+        since: ago(3 * DAY),
+        link: "https://reef-co.slack.com/archives/C04WEB02/p1795100000000100?thread_ts=1795100000.000100",
+        state: { Tomas: "asked" },
+      },
+    ],
+    "atl-09": [
+      {
+        kind: "pr-review",
+        what: "Review of the read path split",
+        who: ["Sana", "Ollie"],
+        need: "any",
+        since: ago(4 * DAY),
+        link: "https://github.com/example/atlas-api/pull/427",
+        state: {},
+      },
+    ],
+    "pil-08": [
+      {
+        kind: "slack-reply",
+        what: "Which night suits the production certificate swap",
+        who: ["Mira"],
+        need: "all",
+        since: ago(HOUR),
+        link: "https://reef-co.slack.com/archives/C04OPS01/p1795103600000200?thread_ts=1795103600.000200",
+        state: { Mira: "asked" },
+      },
+    ],
+    "lan-33": [
+      {
+        kind: "email-reply",
+        what: "Confirmation of the domain transfer",
+        who: [],
+        need: "all",
+        since: ago(5 * DAY),
+        link: null,
+        state: {},
+      },
+    ],
+  },
+  people: {
+    Mira: { github: "mira-k" },
+    Tomas: { github: "tomas-r" },
+    Priya: { github: "priya-s" },
+    Sana: { github: "sana-p" },
+    Ollie: { github: "ollie-w" },
+  },
+};
+
+export const NO_FIXTURE_WAITS: Waits = { tasks: {}, people: {} };
 
 export const FIXTURE_WORKERS: Worker[] = [
   { taskId: "atl-09", terminal: "t3", status: "working" },

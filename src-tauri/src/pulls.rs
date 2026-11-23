@@ -12,7 +12,8 @@ use crate::shell_path;
 const FRESH_FOR: Duration = Duration::from_secs(60);
 const UNKNOWN_FRESH_FOR: Duration = Duration::from_secs(15);
 const GH_TIMEOUT: Duration = Duration::from_secs(15);
-const GH_FIELDS: &str = "state,isDraft,title,statusCheckRollup";
+const GH_FIELDS: &str =
+    "state,isDraft,title,statusCheckRollup,reviewRequests,latestReviews,reviewDecision";
 const FAILED_CONCLUSIONS: [&str; 6] = [
     "FAILURE",
     "TIMED_OUT",
@@ -44,6 +45,30 @@ pub enum Checks {
     Unknown,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReviewState {
+    Approved,
+    ChangesRequested,
+    Commented,
+    Dismissed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReviewDecision {
+    Approved,
+    ChangesRequested,
+    ReviewRequired,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Review {
+    pub login: String,
+    pub state: ReviewState,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrStatus {
@@ -52,6 +77,9 @@ pub struct PrStatus {
     pub checks: Checks,
     pub title: Option<String>,
     pub note: Option<String>,
+    pub review_decision: Option<ReviewDecision>,
+    pub requested: Vec<String>,
+    pub reviews: Vec<Review>,
 }
 
 #[derive(Default)]
@@ -109,6 +137,9 @@ fn unknown(url: &str, note: &str) -> PrStatus {
         checks: Checks::Unknown,
         title: None,
         note: Some(note.to_string()),
+        review_decision: None,
+        requested: Vec::new(),
+        reviews: Vec::new(),
     }
 }
 
@@ -185,7 +216,39 @@ pub fn parse(url: &str, json: &Value) -> PrStatus {
         checks: checks_of(rollup),
         title: json["title"].as_str().map(str::to_string),
         note: None,
+        review_decision: match json["reviewDecision"].as_str().unwrap_or_default() {
+            "APPROVED" => Some(ReviewDecision::Approved),
+            "CHANGES_REQUESTED" => Some(ReviewDecision::ChangesRequested),
+            "REVIEW_REQUIRED" => Some(ReviewDecision::ReviewRequired),
+            _ => None,
+        },
+        requested: list(&json["reviewRequests"])
+            .filter_map(|request| login(&request["login"]))
+            .collect(),
+        reviews: list(&json["latestReviews"]).filter_map(review_of).collect(),
     }
+}
+
+fn list(value: &Value) -> impl Iterator<Item = &Value> {
+    value.as_array().into_iter().flatten()
+}
+
+fn login(value: &Value) -> Option<String> {
+    value.as_str().filter(|l| !l.is_empty()).map(str::to_string)
+}
+
+fn review_of(review: &Value) -> Option<Review> {
+    let state = match review["state"].as_str()? {
+        "APPROVED" => ReviewState::Approved,
+        "CHANGES_REQUESTED" => ReviewState::ChangesRequested,
+        "COMMENTED" => ReviewState::Commented,
+        "DISMISSED" => ReviewState::Dismissed,
+        _ => return None,
+    };
+    Some(Review {
+        login: login(&review["author"]["login"])?,
+        state,
+    })
 }
 
 pub fn checks_of(rollup: &[Value]) -> Checks {
@@ -285,6 +348,59 @@ mod tests {
         );
         assert_eq!(checks_of(&[queued, failed]), Checks::Failing);
         assert_eq!(checks_of(&[passed, context_error]), Checks::Failing);
+    }
+
+    #[test]
+    fn reviews_list_requested_people_and_each_latest_review() {
+        let status = parse(
+            URL,
+            &json!({
+                "state": "OPEN",
+                "reviewDecision": "REVIEW_REQUIRED",
+                "reviewRequests": [
+                    {"__typename": "User", "login": "tomas-r"},
+                    {"__typename": "Team", "name": "Web", "slug": "web"}
+                ],
+                "latestReviews": [
+                    {"author": {"login": "mira-k"}, "state": "APPROVED"},
+                    {"author": {"login": "priya-s"}, "state": "DISMISSED"},
+                    {"author": {"login": "jun-o"}, "state": "PENDING"},
+                    {"author": {}, "state": "COMMENTED"}
+                ]
+            }),
+        );
+        assert_eq!(status.review_decision, Some(ReviewDecision::ReviewRequired));
+        assert_eq!(status.requested, ["tomas-r"]);
+        assert_eq!(
+            status.reviews,
+            [
+                Review {
+                    login: "mira-k".into(),
+                    state: ReviewState::Approved
+                },
+                Review {
+                    login: "priya-s".into(),
+                    state: ReviewState::Dismissed
+                },
+            ]
+        );
+        let sent = serde_json::to_value(&status).unwrap();
+        assert_eq!(sent["reviewDecision"], "reviewRequired");
+        assert_eq!(
+            sent["reviews"][0],
+            json!({"login": "mira-k", "state": "approved"})
+        );
+        let changes = parse(
+            URL,
+            &json!({"reviewDecision": "CHANGES_REQUESTED", "latestReviews": [{"author": {"login": "jun-o"}, "state": "CHANGES_REQUESTED"}]}),
+        );
+        assert_eq!(
+            serde_json::to_value(&changes).unwrap()["reviews"][0]["state"],
+            "changesRequested"
+        );
+        let quiet = parse(URL, &json!({"state": "OPEN", "reviewDecision": ""}));
+        assert_eq!(quiet.review_decision, None);
+        assert!(quiet.requested.is_empty() && quiet.reviews.is_empty());
     }
 
     #[test]

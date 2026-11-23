@@ -17,6 +17,7 @@ function backlogBoard(workers: Worker[], source: SourceKind = "fathom") {
       source,
       columns: FIXTURE_BACKLOG_COLUMNS,
       overlay: { places: [], requests: [] },
+      waits: {},
       workers: Object.fromEntries(workers.map((w) => [w.taskId, w])),
       rowNames,
       collapsedRows: [],

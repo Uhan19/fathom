@@ -1,4 +1,4 @@
-import type { CardContext, FileEntry, FilePreview, PrStatus, StatusEntry } from "../api";
+import { unknownPrStatus, type CardContext, type FileEntry, type FilePreview, type PrStatus, type StatusEntry } from "../api";
 
 const HOME = "/home/demo/firstmate";
 const MINUTE = 60_000;
@@ -252,12 +252,31 @@ export function fixturePreview(path: string, files: FileEntry[]): FilePreview {
   return { ...found, size: files.find((f) => f.path === path)?.size ?? 0 };
 }
 
-const PR_STATUS: Record<string, Pick<PrStatus, "state" | "checks">> = {
+type FixturePr = Pick<PrStatus, "state" | "checks"> & Partial<Pick<PrStatus, "reviewDecision" | "requested" | "reviews">>;
+
+const PR_STATUS: Record<string, FixturePr> = {
   "https://github.com/example/atlas-api/pull/418": { state: "open", checks: "passing" },
   "https://github.com/example/atlas-api/pull/421": { state: "draft", checks: "running" },
   "https://github.com/example/atlas-api/pull/402": { state: "merged", checks: "passing" },
   "https://github.com/example/harbor-web/pull/233": { state: "open", checks: "failing" },
   "https://github.com/example/ledger-sync/pull/97": { state: "closed", checks: "none" },
+  "https://github.com/example/harbor-web/pull/241": {
+    state: "open",
+    checks: "passing",
+    reviewDecision: "reviewRequired",
+    requested: ["tomas-r", "priya-s"],
+    reviews: [
+      { login: "mira-k", state: "approved" },
+      { login: "tomas-r", state: "dismissed" },
+      { login: "priya-s", state: "dismissed" },
+    ],
+  },
+  "https://github.com/example/atlas-api/pull/427": {
+    state: "open",
+    checks: "running",
+    reviewDecision: "reviewRequired",
+    requested: ["sana-p", "ollie-w"],
+  },
 };
 
 const PR_TITLES: Record<string, string> = {
@@ -267,6 +286,6 @@ const PR_TITLES: Record<string, string> = {
 
 export function fixturePrStatus(url: string, signedIn: boolean): PrStatus {
   const known = PR_STATUS[url];
-  if (!signedIn || !known) return { url, state: "unknown", checks: "unknown", title: null, note: "the GitHub CLI is not signed in" };
-  return { url, ...known, title: PR_TITLES[url] ?? null, note: null };
+  if (!signedIn || !known) return unknownPrStatus(url, "the GitHub CLI is not signed in");
+  return { ...unknownPrStatus(url, null), ...known, title: PR_TITLES[url] ?? null };
 }

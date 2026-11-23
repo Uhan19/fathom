@@ -101,11 +101,38 @@ export function Sailor({ size = SAILOR_SIZE }: { size?: number }) {
   );
 }
 
-function Glyph({ children }: { children: ReactNode }) {
+function Glyph({ children, size = 14 }: { children: ReactNode; size?: number }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {children}
     </svg>
+  );
+}
+
+export function HandoffIcon({ size }: { size?: number }) {
+  return (
+    <Glyph size={size}>
+      <circle cx="10" cy="3.7" r="1.8" />
+      <path d="M7 12.3c0-2 1.3-3.6 3-3.6s3 1.6 3 3.6" />
+      <path d="M1.2 7.4h4.4M3.9 5.6l1.8 1.8-1.8 1.8" />
+    </Glyph>
+  );
+}
+
+export function MailIcon() {
+  return (
+    <Glyph>
+      <rect x="1.6" y="3" width="10.8" height="8" rx="1.2" />
+      <path d="M2.1 3.7L7 7.6l4.9-3.9" />
+    </Glyph>
+  );
+}
+
+export function CheckIcon({ size }: { size?: number }) {
+  return (
+    <Glyph size={size}>
+      <path d="M3.2 7.3l2.5 2.5 5.1-5.3" strokeWidth="1.7" />
+    </Glyph>
   );
 }
 

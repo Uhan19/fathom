@@ -22,6 +22,7 @@ use crate::shell_tabs::{self, LauncherFolders};
 use crate::source::{Source, SourceKind};
 use crate::tasks::Card;
 use crate::updates::{self, CardUpdates};
+use crate::waits::Waits;
 use crate::watch::{self, StateChange};
 use crate::workers::{self, Worker};
 
@@ -54,6 +55,7 @@ pub struct BoardView {
     pub source: SourceKind,
     pub from_cache: bool,
     pub error: Option<String>,
+    pub waits: Waits,
     #[serde(flatten)]
     pub overlay: Overlay,
 }
@@ -216,6 +218,7 @@ impl AppState {
             source: source.kind(),
             from_cache: true,
             error: None,
+            waits: source.waits(),
             overlay: overlay_of(&db)?,
         })
     }
@@ -245,6 +248,7 @@ impl AppState {
                     source: source.kind(),
                     from_cache: false,
                     error: None,
+                    waits: source.waits(),
                     overlay: overlay_of(&db)?,
                 })
             }

@@ -61,6 +61,7 @@ Add `?theme=dark` to start in the dark theme, `?nochat` to start with the chat p
 Add `?agents=withAgent` or `?agents=withActiveAgent` to start with that agent filter, and `?rows=deep,landed` to start with those rows collapsed.
 Add `?focus=48,57` to start with the board focused on those task numbers.
 Add `?unseen` to light the cards that have an update you have not read, and `?folded=pilot-infra,keel-cli` to start with those columns collapsed; `?unseen&folded=pilot-infra&rows=deep` shows a lit card, a lit column header and a lit row band at once.
+Add `?narrow=pilot-infra` to start those columns at the minimum width, and `?nowaits` to leave out the invented waits so an external hold shows its own box.
 Add `?bosun=` with `notstarted`, `dormant`, `starting`, `ready`, `working`, `asking`, `signedout`, `missing`, `failed` or `stopped` to see that Bosun state; open the drawer with the Bosun rail under the board.
 
 ## Run the checks
@@ -239,7 +240,7 @@ With the home left empty it reads its own backlog; see [Fathom's own backlog](#f
   It never parses `data/backlog.md`.
 - Fathom never writes files in Firstmate's home itself.
   The only thing it sends is a move request, through `bin/fm-inbox.sh note`.
-- It watches the task list file and listens to herdr-core events; either one triggers a re-read.
+- It watches the task list file and `data/waits.json` and listens to herdr-core events; any of them triggers a re-read.
   Firstmate's tasks need no polling loop; only Fathom's own database is polled, as described in [Live refresh](#live-refresh).
 - On open it paints the snapshot cache, then refreshes.
 - Each task's row comes from its state and hold:
@@ -444,6 +445,50 @@ Fathom asks your login shell for its PATH once at startup and uses it to find he
 - Escape, a click on the dimmed board around the view, or the close button closes the view.
   Escape closes the view rather than reaching the crewmate's terminal.
   Closing only detaches Fathom; the crewmate and its terminal keep running.
+
+## Waiting on others
+
+- When a task waits on someone other than you, such as a PR review, a Slack reply or an email, its card shows a teal tag with the people it waits on.
+  An either-of wait reads "Sana or Ollie", more than two people end in "+N", and a wait with nobody recorded shows the tag without names.
+  Hovering the tag lists every wait.
+- The card's Overview opens with one group per wait: what is awaited, its link, when it was asked, how many answers it needs, and one row per person with where they stand.
+  For a task with waits, this block replaces the on-hold box, unless the hold is a question for you.
+- For a PR review whose link is a GitHub pull request, each person's state comes live from GitHub through `gh`, matched to names through `people` below.
+  Live data only changes what is shown; Fathom never writes the file.
+- Firstmate writes the waits to `<firstmate home>/data/waits.json`, and Fathom re-reads it whenever it changes.
+  A missing or malformed file shows no waits, and Fathom's own backlog has none.
+
+```json
+{
+  "tasks": {
+    "hrb-17": {
+      "waits": [
+        {
+          "kind": "pr-review",
+          "what": "Re-review of the keyboard focus order",
+          "who": ["Mira", "Tomas", "Priya"],
+          "need": 2,
+          "since": "2026-11-20T09:30:00Z",
+          "link": "https://github.com/example/harbor-web/pull/241"
+        }
+      ]
+    }
+  },
+  "people": { "Mira": { "github": "mira-k" } }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `kind` | `pr-review`, `slack-reply`, `email-reply` or `other`; anything else counts as `other` |
+| `what` | What is awaited, in a few words |
+| `who` | Display names; empty when nobody is recorded |
+| `need` | `all`, `any`, or how many of `who` must answer |
+| `since` | When it was asked, as an ISO 8601 time |
+| `link` | The PR, thread or message, or `null` |
+| `state` | Optional, for Slack and email waits: each person's state, such as `asked` or `replied` |
+
+`people` maps a display name to a GitHub login so live reviews can be matched; a name without an entry is tried as a login itself.
 
 ## Unread updates
 

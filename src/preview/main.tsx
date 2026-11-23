@@ -3,7 +3,7 @@ import { emit } from "@tauri-apps/api/event";
 import type { AgentKey } from "../agents";
 import { ROW_ORDER, type AgentFilter, type BoardView, type Card, type CardPlace, type Column, type FileEntry, type HelperStatus, type Layout, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type Settings, type ShellTab, type Terminal, type WindowChange } from "../api";
 import { presetFonts } from "../appearance";
-import { cellCount, groupCards, type Cells } from "../board";
+import { cellCount, groupCards, MIN_COLUMN_WIDTH, type Cells } from "../board";
 import { moveTo } from "../columnOrder";
 import { isMac } from "../bosun";
 import { defaultShortcuts, type Shortcuts } from "../shortcuts";
@@ -19,6 +19,8 @@ import {
   FIXTURE_SHELL_TABS,
   FIXTURE_UNFILED_CARDS,
   FIXTURE_UNFILED_COLUMNS,
+  FIXTURE_WAITS,
+  NO_FIXTURE_WAITS,
   FIXTURE_COLUMNS, FIXTURE_HELPER, FIXTURE_LATE_CARD, FIXTURE_REQUESTS, FIXTURE_SCREEN, FIXTURE_TERMINALS, FIXTURE_WORKERS,
   agentScreen,
   agentTerminal,
@@ -44,6 +46,8 @@ const lateCard = params.has("late");
 const deleteFails = params.has("deletefail");
 const unseenUpdates = params.has("unseen");
 const foldedColumns = params.get("folded")?.split(",").filter(Boolean) ?? [];
+const narrowColumns = params.get("narrow")?.split(",").filter(Boolean) ?? [];
+const waits = backlog || params.has("nowaits") ? NO_FIXTURE_WAITS : FIXTURE_WAITS;
 const KITTY_PUSH = params.has("kitty") ? "\x1b[>1u" : "";
 const rememberedAgent = (params.get("agent") as AgentKey | null) ?? null;
 const missingTool = params.get("missing");
@@ -119,6 +123,7 @@ const chatScreen = (terminal: string) => (terminal === FIXTURE_AGENT_ADDRESS && 
 const INSTALLED_FONTS = ["American Typewriter", "Andale Mono", "Avenir Next", "Courier New", "Georgia", "Helvetica Neue", "Menlo", "PT Mono", "Times New Roman", "Trebuchet MS"];
 let columns: Column[] = (backlog ? FIXTURE_BACKLOG_COLUMNS : unfiled ? FIXTURE_UNFILED_COLUMNS : FIXTURE_COLUMNS).map((c) => ({
   ...c,
+  width: narrowColumns.includes(c.name) ? MIN_COLUMN_WIDTH : c.width,
   collapsed: foldedColumns.includes(c.name),
 }));
 let updates = empty ? { marks: {}, seen: {} } : (backlog ? fixtureBacklogUpdates : fixtureUpdates)(unseenUpdates);
@@ -282,6 +287,7 @@ const view = (fromCache: boolean): BoardView => ({
   source: settings.home.trim() ? "firstmate" : "fathom",
   fromCache,
   error: failing && !fromCache ? "fm-tasks-axi.sh exited with status 1: error: \"backlog not found\"" : null,
+  waits,
   ...overlay(),
 });
 

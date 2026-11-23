@@ -16,6 +16,7 @@ import {
   type RowKey,
   type Settings,
   type Terminal,
+  type Waits,
   type WindowChange,
   type Worker,
 } from "./api";
@@ -43,8 +44,10 @@ import { DEFAULT_THEME, otherTheme } from "./theme";
 import { comboLabel, listenForShortcuts, type ShortcutAction } from "./shortcuts";
 import { chatResizer, detailResizer } from "./windowSettings";
 import { isUnseen, leftCard, NO_UPDATES, seenLocally, type CardUpdates } from "./updates";
+import { waitsOf } from "./waits";
 
 const NO_HELPER: HelperStatus = { terminal: null, status: "", asking: false };
+const NO_WAITS: Waits = { tasks: {}, people: {} };
 
 interface Folded {
   columns: number[];
@@ -277,6 +280,7 @@ export default function App() {
       });
 
   const overlay: Overlay = { places: view?.places ?? [], requests: view?.requests ?? [] };
+  const waits = view?.waits ?? NO_WAITS;
   const workerByTask = useMemo(() => Object.fromEntries(workers.map((w) => [w.taskId, w])) as Record<string, Worker>, [workers]);
   const watchedWorker = watched ? workers.find((w) => w.terminal === watched.terminal) : undefined;
   const applyOverlay = (next: Overlay) => setView((v) => v && { ...v, ...next });
@@ -434,6 +438,7 @@ export default function App() {
                 source={view.source}
                 columns={columns}
                 overlay={overlay}
+                waits={waits.tasks}
                 workers={workerByTask}
                 updates={updates}
                 rowNames={rowNames}
@@ -502,6 +507,8 @@ export default function App() {
               source={view?.source ?? "firstmate"}
               rowNames={rowNames}
               request={shownRequest(selected.id, overlay.requests)}
+              waits={waitsOf(waits.tasks, selected.id)}
+              people={waits.people}
               width={detailWidth}
               chatTerminal={chatTerminal}
               worker={workerByTask[selected.id] ?? null}

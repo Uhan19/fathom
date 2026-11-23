@@ -16,6 +16,7 @@ function header(columns: Column[]) {
       source: "firstmate",
       columns,
       overlay: { places: [], requests: [] },
+      waits: {},
       workers: {},
       rowNames,
       collapsedRows: [],

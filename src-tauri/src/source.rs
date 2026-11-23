@@ -8,6 +8,7 @@ use crate::db::{Db, MoveRequest, MoveStatus};
 use crate::moves::{self, Placement};
 use crate::requests;
 use crate::tasks::{self, Card, Detail};
+use crate::waits::{self, Waits};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -50,6 +51,13 @@ impl Source {
         match self {
             Source::Firstmate { home } => home.display().to_string(),
             Source::Backlog => String::new(),
+        }
+    }
+
+    pub fn waits(&self) -> Waits {
+        match self {
+            Source::Firstmate { home } => waits::read(home),
+            Source::Backlog => Waits::default(),
         }
     }
 
@@ -231,6 +239,21 @@ esac
         let numbers: Vec<(&str, Option<i64>)> =
             cards.iter().map(|c| (c.id.as_str(), c.number)).collect();
         assert_eq!(numbers, [("chart-reef", Some(2)), ("count-buoys", Some(1))]);
+    }
+
+    #[test]
+    fn a_firstmate_home_brings_its_waits_and_the_backlog_has_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        std::fs::create_dir_all(home.join("data")).unwrap();
+        std::fs::write(
+            home.join("data/waits.json"),
+            r#"{"tasks": {"chart-reef": {"waits": [{"kind": "email-reply", "who": []}]}}}"#,
+        )
+        .unwrap();
+        let waits = Source::of(&home.display().to_string()).waits();
+        assert_eq!(waits.tasks["chart-reef"].len(), 1);
+        assert_eq!(Source::Backlog.waits(), Waits::default());
     }
 
     #[test]
