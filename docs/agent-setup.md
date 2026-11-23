@@ -101,8 +101,23 @@ command -v fusermount3 || command -v fusermount
 
 The AppImage mounts itself with FUSE and uses the desktop's own graphics and font libraries, which a desktop install already has.
 If the last command finds neither `fusermount3` nor `fusermount`, ask whether to install the distribution's FUSE package (see https://github.com/AppImage/AppImageKit/wiki/FUSE).
-If the user declines, Fathom still runs without FUSE: then add `--appimage-extract-and-run` as the first argument wherever this sheet runs the AppImage, in step 7 and step 9.
+If the user declines, Fathom still runs without FUSE: then add `--appimage-extract-and-run` as the first argument wherever this sheet runs the AppImage, in step 7, step 9 and the `Exec=` line of the menu entry below.
 FATHOM_BIN is `~/.local/bin/Fathom.AppImage` written as a full path.
+
+Whether or not the AppImage was already installed, check its app menu entry: an AppImage has none of its own, so the desktop shows a generic icon for it.
+Already set up when `grep -lsx 'StartupWMClass=fathom' ~/.local/share/applications/*.desktop` prints a file, for example one made by Gear Lever or AppImageLauncher.
+Otherwise ask whether to add Fathom to the app menu with its icon, then copy the entry and icons out of the AppImage:
+
+```sh
+tmp="$(mktemp -d)"
+(cd "$tmp" && ~/.local/bin/Fathom.AppImage --appimage-extract 'usr/share/*' >/dev/null)
+mkdir -p ~/.local/share/applications ~/.local/share/icons
+cp -r "$tmp/squashfs-root/usr/share/icons/." ~/.local/share/icons/
+sed "s|^Exec=.*|Exec=$HOME/.local/bin/Fathom.AppImage|" "$tmp/squashfs-root/usr/share/applications/Fathom.desktop" > ~/.local/share/applications/fathom.desktop
+grep -x 'Icon=fathom' ~/.local/share/applications/fathom.desktop && ls ~/.local/share/icons/hicolor/*/apps/fathom.png
+```
+
+The last command must print `Icon=fathom` and the icon files.
 
 ## Step 4: herdr-core (recommended)
 
@@ -211,6 +226,8 @@ Skip the launch if step 3 was skipped, or if on Linux neither `DISPLAY` nor `WAY
 4. Rerun the step 6 check; both tools must show.
 5. If step 7 ran, `claude mcp list` or `codex mcp list` must list `fathom`.
 6. Ask the user to look at Fathom: the herdr-core dot in the header should be green, and the chat panel should offer to open Claude Code or Codex.
+7. On Linux, also ask the user to check that the dock or taskbar shows Fathom's icon, a white and gold disc split by a diagonal line on a dark blue tile, and that Fathom is in the app menu.
+   With the AppImage and no menu entry from step 3, a generic icon is expected; put "add Fathom to the app menu as in step 3" on the left-for-the-user list.
 
 ## Step 10: Report
 
