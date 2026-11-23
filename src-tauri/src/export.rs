@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::db::backlog::Task;
+use crate::db::numbers::TaskNumber;
 use crate::db::{CardPlace, Column, Db, MoveRequest, RowView, Snapshot};
 
 #[derive(Serialize)]
@@ -18,6 +19,7 @@ struct Everything {
     card_places: Vec<CardPlace>,
     move_requests: Vec<MoveRequest>,
     backlog_tasks: Vec<Task>,
+    task_numbers: Vec<TaskNumber>,
 }
 
 pub fn export(db: &Db, parent: &Path, now_ms: i64) -> Result<PathBuf, String> {
@@ -36,6 +38,7 @@ pub fn export(db: &Db, parent: &Path, now_ms: i64) -> Result<PathBuf, String> {
         card_places: db.places()?,
         move_requests: db.all_requests()?,
         backlog_tasks: db.tasks(None, None)?,
+        task_numbers: db.task_numbers()?,
     };
     let json = serde_json::to_string_pretty(&everything).map_err(|e| e.to_string())?;
     std::fs::write(out.join("fathom.json"), json).map_err(|e| e.to_string())?;
@@ -192,6 +195,16 @@ pub fn export(db: &Db, parent: &Path, now_ms: i64) -> Result<PathBuf, String> {
             Ok(())
         },
     )?;
+    write_csv(
+        &out.join("task_numbers.csv"),
+        &["number", "home", "card_id"],
+        |w| {
+            for n in &everything.task_numbers {
+                w.write_record([&n.number.to_string(), &n.home, &n.card_id])?;
+            }
+            Ok(())
+        },
+    )?;
     Ok(out)
 }
 
@@ -234,6 +247,7 @@ mod tests {
                 target: "https://example.com/pull/7".into(),
             }],
             closed: String::new(),
+            number: None,
         };
         db.save_snapshot(&Snapshot {
             taken_at_ms: 1,
@@ -302,6 +316,10 @@ mod tests {
         assert_eq!(json["backlogTasks"][0]["title"], "Chart the reef");
         let tasks = std::fs::read_to_string(out.join("backlog_tasks.csv")).unwrap();
         assert!(tasks.contains("\n1,Chart the reef,Start at the north buoy,reef,surface,7,7\n"));
+        assert_eq!(json["taskNumbers"][0]["number"], 1);
+        assert_eq!(json["backlogTasks"][0]["number"], 1);
+        let numbers = std::fs::read_to_string(out.join("task_numbers.csv")).unwrap();
+        assert!(numbers.contains("\n1,,1\n"), "{numbers}");
         for name in [
             "columns.csv",
             "row_names.csv",

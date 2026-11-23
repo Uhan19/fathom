@@ -84,6 +84,8 @@ pub struct Card {
     pub blocked_by: Vec<String>,
     pub links: Vec<Link>,
     pub closed: String,
+    #[serde(default)]
+    pub number: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -185,6 +187,7 @@ fn card_from(record: &Record) -> Card {
         blocked_by: split_list(&field(record, "blocked_by")),
         links: parse_links(&field(record, "links")),
         closed: field(record, "closed"),
+        number: None,
     }
 }
 

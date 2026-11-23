@@ -109,11 +109,14 @@ fn send(db: &Mutex<Db>, home: &Path, request: &MoveRequest) -> Result<(), String
 
 pub fn cached_cards(db: &Mutex<Db>, home: &Path) -> Result<Vec<Card>, String> {
     let home = home.display().to_string();
-    let snapshot = db.lock().unwrap().snapshot()?;
-    Ok(snapshot
+    let db = db.lock().unwrap();
+    let mut cards = db
+        .snapshot()?
         .filter(|s| s.home == home)
         .map(|s| s.cards)
-        .unwrap_or_default())
+        .unwrap_or_default();
+    db.number_cards(&home, &mut cards)?;
+    Ok(cards)
 }
 
 #[derive(Debug, PartialEq)]
@@ -298,6 +301,7 @@ esac
             blocked_by: vec![],
             links: vec![],
             closed: String::new(),
+            number: None,
         }
     }
 

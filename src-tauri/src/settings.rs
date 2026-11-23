@@ -31,6 +31,7 @@ const KEY_CHAT_WIDTH: &str = "chatWidth";
 const KEY_DETAIL_WIDTH: &str = "detailWidth";
 const KEY_PROJECT_FILTER: &str = "projectFilter";
 const KEY_AGENT_FILTER: &str = "agentFilter";
+const KEY_FOCUS: &str = "focus";
 const KEY_HELPER_STARTED: &str = "helperStarted";
 const KEY_HELPER_ASKING: &str = "helperAsking";
 const KEY_SHORTCUTS: &str = "shortcuts";
@@ -113,6 +114,8 @@ pub struct Settings {
     pub project_filter: Vec<String>,
     #[serde(default)]
     pub agent_filter: AgentFilter,
+    #[serde(default)]
+    pub focus: Vec<i64>,
     #[serde(default)]
     pub helper_started: bool,
     pub shortcuts: Shortcuts,
@@ -334,6 +337,10 @@ pub fn load(db: &Db) -> Result<Settings, String> {
             .get(KEY_AGENT_FILTER)
             .and_then(|key| serde_json::from_value(json!(key)).ok())
             .unwrap_or_default(),
+        focus: stored
+            .get(KEY_FOCUS)
+            .and_then(|v| serde_json::from_str(v).ok())
+            .unwrap_or_default(),
         helper_started: flag(KEY_HELPER_STARTED, false),
         shortcuts: read_shortcuts(stored.get(KEY_SHORTCUTS)),
         linear_workspace: stored
@@ -356,6 +363,7 @@ pub fn store(db: &Db, next: &Settings) -> Result<Settings, String> {
     let theme = serde_json::to_value(next.theme).map_err(|e| e.to_string())?;
     let shortcuts = serde_json::to_string(&next.shortcuts).map_err(|e| e.to_string())?;
     let agent_filter = serde_json::to_value(next.agent_filter).map_err(|e| e.to_string())?;
+    let focus = serde_json::to_string(&next.focus).map_err(|e| e.to_string())?;
     let pairs = [
         (KEY_HOME, next.home.trim().to_string()),
         (KEY_LABEL, next.terminal_label.trim().to_string()),
@@ -373,6 +381,7 @@ pub fn store(db: &Db, next: &Settings) -> Result<Settings, String> {
         (KEY_CHAT_WIDTH, next.chat_width.to_string()),
         (KEY_DETAIL_WIDTH, next.detail_width.to_string()),
         (KEY_PROJECT_FILTER, names_json(&next.project_filter)),
+        (KEY_FOCUS, focus),
         (KEY_SHORTCUTS, shortcuts),
         (KEY_LINEAR_WORKSPACE, workspace),
         (KEY_TICKET_PREFIXES, prefixes),

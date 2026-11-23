@@ -54,20 +54,21 @@ impl Source {
     }
 
     pub fn read_cards(&self, db: &Mutex<Db>) -> Result<Vec<Card>, String> {
-        match self {
-            Source::Firstmate { home } => {
-                let cards = tasks::read_board(home)?;
-                moves::reconcile(db, home, &cards)?;
-                Ok(cards)
-            }
-            Source::Backlog => Ok(db
+        let mut cards = match self {
+            Source::Firstmate { home } => tasks::read_board(home)?,
+            Source::Backlog => db
                 .lock()
                 .unwrap()
                 .tasks(None, None)?
                 .iter()
                 .map(Task::card)
-                .collect()),
+                .collect(),
+        };
+        db.lock().unwrap().number_cards(&self.home(), &mut cards)?;
+        if let Source::Firstmate { home } = self {
+            moves::reconcile(db, home, &cards)?;
         }
+        Ok(cards)
     }
 
     pub fn detail(&self, db: &Mutex<Db>, id: &str) -> Result<Detail, String> {

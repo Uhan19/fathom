@@ -8,9 +8,10 @@ use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::control;
-use crate::db::backlog::{NewTask, TaskChange};
-use crate::db::{Db, MoveTo};
+use crate::control::{self, TaskRef};
+use crate::db::backlog::{NewTask, Task, TaskChange};
+use crate::db::numbers::BACKLOG_HOME;
+use crate::db::{Db, MoveRequest, MoveStatus, MoveTo};
 use crate::fonts;
 use crate::herdr::{Connection, Herdr, Terminal};
 use crate::launch::{self, Agent, FathomServer, Launch};
@@ -31,6 +32,7 @@ const DB_ENV: &str = "FATHOM_DB";
 const SERVER_NAME: &str = "fathom";
 const INSTRUCTIONS: &str = "\
 Fathom is the user's task board. Keep your task list in Fathom instead of a file or a private list.
+Each task has a number such as #42 that never changes; tools that take a task take that number.
 Add a task for each piece of work with add_task, keep its title and detail current with update_task, and move it with move_task whenever its state changes.
 Use a short, stable project name per repository or area so the board can group tasks.
 Rows: surface means the task needs the user, shallows means in progress, seabed means queued (the default), deep means parked or waiting on something, and landed means done.
@@ -38,14 +40,14 @@ The user plans by dragging cards on the board. A drag never moves a task by itse
 When you see a line such as \"1 board request waiting\", call list_requests and answer every request.
 Accept a request with answer_request or by moving the task to the requested row with move_task.
 Decline with answer_request and a short reason; the board shows that reason to the user.
-To hand a task to a worker, call start_worker with its id instead of using your own subagents.
+To hand a task to a worker, call start_worker with its number instead of using your own subagents.
 Each worker is its own Claude Code session in its own terminal: the user sees it as a sailor on the card and can open its terminal.
 Keep your own subagents for quick lookups that finish inside your current turn.
 If you were started as the worker for a task, keep that task current: move it to shallows when you begin, add progress and findings to its detail with update_task, move it to surface with the question in its detail when you need the user, and move it to landed when the work is done.";
 
-pub fn worker_prompt(task: i64) -> String {
+pub fn worker_prompt(number: i64) -> String {
     format!(
-        "You are the Fathom worker for task {task}. \
+        "You are the Fathom worker for task #{number}. \
 Read the task with the fathom list_tasks tool, move it to shallows with move_task, then do the work it describes in this folder. \
 Report through the fathom tools as you go: add progress and findings to the task's detail with update_task, keeping the original request at the top. \
 If you need the user, put the question in the detail and move the task to surface. \
@@ -56,6 +58,8 @@ When the work is done, write a short summary in the detail and move the task to 
 const HELPER_INSTRUCTIONS: &str = "\
 Fathom is the user's task board app. These tools change how Fathom shows the board and its settings; they never change tasks.
 Columns are projects (or custom columns the user added); rows are surface, shallows, seabed, deep and landed.
+Each task has a number such as #42 that never changes, and a task from Firstmate also has a name such as reef-chart-fix. Tools that take a task accept the number (42 or #42) or the name.
+When you mention a task to the user, give its number and name before its title, as in #42 reef-chart-fix.
 Read get_board_layout before changing columns, rows or the filters, and get_settings before changing settings.
 Refer to columns by the id from get_board_layout.
 show_projects hides every column except the named projects; show_all_projects shows every column again.
@@ -69,7 +73,10 @@ get_board_layout gives each column its tasks, tasksWithAgent and tasksWithActive
 When asked for only the columns with an active agent, call show_projects with the project of every column whose tasksWithActiveAgent is above 0; for columns with any agent, use tasksWithAgent instead.
 Custom columns have no project, so show_projects cannot keep them; say so when one of them has an agent.
 If get_board_layout has an agentError, Fathom could not read the agents; tell the user instead of guessing.
-When asked to show everything again, undo every filter: expand every row with set_row_view, call show_all_projects and set the agent filter to all.
+focus_tasks shows only the given tasks until clear_focus; it also shows every project and sets the agent filter to all, so the board shows exactly those tasks. Use it when asked to focus on, bring up or show only certain tasks.
+focus_tasks returns the tasks it could not find under unknown; tell the user about them. If a focused task sits in a collapsed row or column, expand that row or column.
+get_board_layout gives the numbers of the focused tasks under focus.
+When asked to show everything again, undo every filter: expand every row with set_row_view, call show_all_projects, set the agent filter to all and call clear_focus.
 Fathom shows each change within a moment, so there is nothing to refresh.";
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -90,9 +97,32 @@ pub struct AddTask {
     pub row: Option<Row>,
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum TaskKey {
+    Number(i64),
+    Text(String),
+}
+
+impl TaskKey {
+    fn text(&self) -> String {
+        match self {
+            TaskKey::Number(number) => number.to_string(),
+            TaskKey::Text(text) => text.clone(),
+        }
+    }
+
+    fn task(&self) -> Result<TaskRef, String> {
+        TaskRef::parse(&self.text())
+    }
+}
+
+const TASK_KEY: &str = "The task's number, such as 42 or #42, or its name";
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct UpdateTask {
-    pub id: i64,
+    #[schemars(description = TASK_KEY)]
+    pub task: TaskKey,
     pub title: Option<String>,
     pub detail: Option<String>,
     pub project: Option<String>,
@@ -100,7 +130,8 @@ pub struct UpdateTask {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct MoveTask {
-    pub id: i64,
+    #[schemars(description = TASK_KEY)]
+    pub task: TaskKey,
     pub row: Row,
 }
 
@@ -115,7 +146,8 @@ pub struct AnswerRequest {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct StartWorker {
-    pub id: i64,
+    #[schemars(description = TASK_KEY)]
+    pub task: TaskKey,
     #[schemars(
         description = "Folder the worker starts in, the working folder from Fathom's settings when left out"
     )]
@@ -186,6 +218,14 @@ pub struct SetAgentFilter {
 pub struct ShowProjects {
     #[schemars(description = "Project names to keep on the board; every other column is hidden")]
     pub projects: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FocusTasks {
+    #[schemars(
+        description = "Tasks to show, each by number (42 or #42) or name; every other card is hidden"
+    )]
+    pub tasks: Vec<TaskKey>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -260,9 +300,40 @@ struct SettingsView {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartedWorker {
-    pub task_id: i64,
+    pub number: i64,
     pub terminal: String,
     pub folder: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RequestView {
+    request_id: String,
+    number: Option<i64>,
+    title: String,
+    from_row: Row,
+    to_row: Row,
+    created_ms: i64,
+    status: MoveStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    answer: Option<String>,
+}
+
+fn request_view(db: &Db, request: MoveRequest) -> Result<RequestView, String> {
+    Ok(RequestView {
+        number: db.number_named(BACKLOG_HOME, &request.card_id)?,
+        request_id: request.request_id,
+        title: request.title,
+        from_row: request.from_row,
+        to_row: request.to_row,
+        created_ms: request.created_ms,
+        status: request.status,
+        answer: request.answer,
+    })
+}
+
+fn task_reply(task: Result<Task, String>) -> Result<String, String> {
+    reply(task.map(|task| control::backlog_view(&task)))
 }
 
 pub type FindProgram = Box<dyn Fn(&str) -> Option<PathBuf> + Send + Sync>;
@@ -351,6 +422,10 @@ fn replace(target: &mut String, value: Option<String>) {
 impl Fathom {
     fn source(&self) -> Result<Source, String> {
         Ok(Source::of(&settings::load(&self.db.lock().unwrap())?.home))
+    }
+
+    fn backlog_id(&self, task: &TaskKey) -> Result<i64, String> {
+        control::backlog_task_id(&self.db.lock().unwrap(), &task.task()?)
     }
 
     fn board(&self) -> Result<(Source, control::Agents), String> {
@@ -490,6 +565,20 @@ impl Fathom {
         reply(control::show_all_projects(&self.db.lock().unwrap()).map(settings_view))
     }
 
+    #[tool(
+        description = "Focus the board on the given tasks: the board shows only their cards until clear_focus. It also shows every project and sets the agent filter to all. Returns the focused tasks and, under unknown, the entries that match no task on the board."
+    )]
+    fn focus_tasks(&self, Parameters(p): Parameters<FocusTasks>) -> Result<String, String> {
+        let (source, agents) = self.board()?;
+        let wanted: Vec<String> = p.tasks.iter().map(TaskKey::text).collect();
+        reply(control::focus_tasks(&self.db, &source, &wanted, &agents))
+    }
+
+    #[tool(description = "Clear the task focus so the board shows every card again.")]
+    fn clear_focus(&self) -> Result<String, String> {
+        reply(control::clear_focus(&self.db.lock().unwrap()).map(settings_view))
+    }
+
     #[tool(description = "Switch between the light and dark theme.")]
     fn set_theme(&self, Parameters(p): Parameters<SetTheme>) -> Result<String, String> {
         let change = WindowChange {
@@ -546,7 +635,7 @@ impl Fathom {
 #[tool_router(router = task_tools)]
 impl Fathom {
     #[tool(
-        description = "List the tasks the board shows, optionally only one project or one row. Each task has its column and its agent state: none, inactive (has an agent that is not active) or active (has an active agent)."
+        description = "List the tasks the board shows, optionally only one project or one row. Each task has its number, its name when it comes from Firstmate, its column and its agent state: none, inactive (has an agent that is not active) or active (has an active agent)."
     )]
     fn list_tasks(&self, Parameters(p): Parameters<ListTasks>) -> Result<String, String> {
         let (source, agents) = self.board()?;
@@ -567,31 +656,39 @@ impl Fathom {
             project: p.project,
             row: p.row,
         };
-        reply(self.db.lock().unwrap().add_task(&task, now_ms()))
+        task_reply(self.db.lock().unwrap().add_task(&task, now_ms()))
     }
 
     #[tool(
         description = "Change a task's title, detail or project. Leave out what stays the same."
     )]
     fn update_task(&self, Parameters(p): Parameters<UpdateTask>) -> Result<String, String> {
+        let id = self.backlog_id(&p.task)?;
         let change = TaskChange {
             title: p.title,
             detail: p.detail,
             project: p.project,
         };
-        reply(self.db.lock().unwrap().update_task(p.id, &change, now_ms()))
+        task_reply(self.db.lock().unwrap().update_task(id, &change, now_ms()))
     }
 
     #[tool(
         description = "Move a task to a row. This also answers any board request asking for that row."
     )]
     fn move_task(&self, Parameters(p): Parameters<MoveTask>) -> Result<String, String> {
-        reply(self.db.lock().unwrap().move_task(p.id, p.row, now_ms()))
+        let id = self.backlog_id(&p.task)?;
+        task_reply(self.db.lock().unwrap().move_task(id, p.row, now_ms()))
     }
 
     #[tool(description = "List board requests the user made by dragging cards, oldest first.")]
     fn list_requests(&self) -> Result<String, String> {
-        reply(self.db.lock().unwrap().task_requests())
+        let db = self.db.lock().unwrap();
+        reply(
+            db.task_requests()?
+                .into_iter()
+                .map(|request| request_view(&db, request))
+                .collect::<Result<Vec<_>, _>>(),
+        )
     }
 
     #[tool(
@@ -600,9 +697,11 @@ impl Fathom {
     fn answer_request(&self, Parameters(p): Parameters<AnswerRequest>) -> Result<String, String> {
         let mut db = self.db.lock().unwrap();
         if p.accept {
-            return reply(db.accept_request(&p.request_id, now_ms()));
+            return task_reply(db.accept_request(&p.request_id, now_ms()));
         }
-        reply(db.decline_request(&p.request_id, p.reason.as_deref().unwrap_or_default()))
+        let declined =
+            db.decline_request(&p.request_id, p.reason.as_deref().unwrap_or_default())?;
+        reply(request_view(&db, declined))
     }
 }
 
@@ -612,7 +711,8 @@ impl Fathom {
         description = "Start a Claude Code worker on a task in its own terminal. The worker reads the task, does the work and reports by updating the task. Use this instead of your own subagents for work the user should see on the board."
     )]
     fn start_worker(&self, Parameters(p): Parameters<StartWorker>) -> Result<String, String> {
-        reply(self.start(p.id, p.folder))
+        let id = self.backlog_id(&p.task)?;
+        reply(self.start(id, p.folder))
     }
 }
 
@@ -622,8 +722,11 @@ impl Fathom {
             let db = self.db.lock().unwrap();
             (db.task(id)?, settings::load(&db)?, db.path().to_path_buf())
         };
+        let number = task
+            .number
+            .ok_or_else(|| format!("task {id} has no number"))?;
         if task.row == Row::Landed {
-            return Err(format!("task {id} is already done"));
+            return Err(format!("task #{number} is already done"));
         }
         let herdr = Herdr::new(connection_of(&settings), Arc::new(|_| {}));
         if let Some(live) = herdr
@@ -632,7 +735,7 @@ impl Fathom {
             .find(|t| t.state == LIVE)
         {
             return Err(format!(
-                "task {id} already has a live worker in terminal {}",
+                "task #{number} already has a live worker in terminal {}",
                 live.address
             ));
         }
@@ -644,7 +747,7 @@ impl Fathom {
             program: self.host.program.clone(),
             db: store,
         };
-        let prompt = worker_prompt(id);
+        let prompt = worker_prompt(number);
         let terminal = launch::open(
             &herdr,
             &Launch {
@@ -660,7 +763,7 @@ impl Fathom {
         )
         .map_err(|e| e.to_string())?;
         Ok(StartedWorker {
-            task_id: id,
+            number,
             terminal: terminal.address,
             folder,
         })
@@ -776,10 +879,26 @@ mod tests {
         }
     }
 
+    const EARLIER_HOME: &str = "/work/earlier-firstmate";
+    const EARLIER_TASKS: i64 = 10;
+
     fn backlog_db(store: &Path) -> Db {
         let db = Db::open_file(store).unwrap();
         db.set_setting("home", "").unwrap();
+        let mut earlier: Vec<crate::tasks::Card> = (1..=EARLIER_TASKS)
+            .map(|n| card(&format!("earlier-{n}"), "reef-map", Row::Seabed))
+            .collect();
+        db.number_cards(EARLIER_HOME, &mut earlier).unwrap();
         db
+    }
+
+    fn backlog_id(store: &Path, number: i64) -> i64 {
+        let db = Db::open_file(store).unwrap();
+        control::backlog_task_id(&db, &TaskRef::Number(number)).unwrap()
+    }
+
+    fn number_of(task: &Value) -> i64 {
+        task["number"].as_i64().unwrap()
     }
 
     fn server() -> (tempfile::TempDir, PathBuf, Fathom) {
@@ -802,7 +921,8 @@ mod tests {
         })))
     }
 
-    fn drag(store: &Path, id: i64, to_row: Row, now_ms: i64) {
+    fn drag(store: &Path, number: i64, to_row: Row, now_ms: i64) {
+        let id = backlog_id(store, number);
         let db = Mutex::new(Db::open_file(store).unwrap());
         let task: Task = db.lock().unwrap().task(id).unwrap();
         let placement = Placement {
@@ -901,11 +1021,10 @@ mod tests {
     #[test]
     fn updates_only_the_given_fields() {
         let (_dir, _store, server) = server();
-        let id = add(&server, "Chart the reef", "reef-map", None)["id"]
-            .as_i64()
-            .unwrap();
+        let number = number_of(&add(&server, "Chart the reef", "reef-map", None));
+        assert_eq!(number, EARLIER_TASKS + 1);
         let updated: Value = ok(server.update_task(Parameters(UpdateTask {
-            id,
+            task: TaskKey::Text(format!("#{number}")),
             title: None,
             detail: Some("Start at the north buoy".into()),
             project: None,
@@ -913,23 +1032,40 @@ mod tests {
         assert_eq!(updated["title"], "Chart the reef");
         assert_eq!(updated["detail"], "Start at the north buoy");
         assert_eq!(updated["project"], "reef-map");
-        let missing = server.update_task(Parameters(UpdateTask {
-            id: 99,
-            title: Some("Ghost".into()),
-            detail: None,
-            project: None,
-        }));
-        assert_eq!(missing, Err("no task 99".into()));
+        assert_eq!(updated["number"], number);
+        assert!(updated.get("id").is_none());
+        let ghost = |task: TaskKey| {
+            server.update_task(Parameters(UpdateTask {
+                task,
+                title: Some("Ghost".into()),
+                detail: None,
+                project: None,
+            }))
+        };
+        assert_eq!(ghost(TaskKey::Number(99)), Err("no task #99".into()));
+        assert_eq!(
+            ghost(TaskKey::Number(3)),
+            Err("#3 is the Firstmate task earlier-3, which Fathom cannot change".into())
+        );
+        assert_eq!(
+            ghost(TaskKey::Text("chart-reef".into())),
+            Err(
+                "Fathom's own tasks have no name; give the task's number instead of chart-reef"
+                    .into()
+            )
+        );
+        assert_eq!(
+            ghost(TaskKey::Text("#reef".into())),
+            Err("#reef is not a task number".into())
+        );
     }
 
     #[test]
     fn moves_a_task_between_rows() {
         let (_dir, _store, server) = server();
-        let id = add(&server, "Chart the reef", "reef-map", None)["id"]
-            .as_i64()
-            .unwrap();
+        let number = number_of(&add(&server, "Chart the reef", "reef-map", None));
         let moved: Value = ok(server.move_task(Parameters(MoveTask {
-            id,
+            task: TaskKey::Number(number),
             row: Row::Landed,
         })));
         assert_eq!(moved["row"], "landed");
@@ -939,19 +1075,18 @@ mod tests {
     #[test]
     fn a_board_request_is_listed_until_a_move_to_its_row_answers_it() {
         let (_dir, store, server) = server();
-        let id = add(&server, "Chart the reef", "reef-map", None)["id"]
-            .as_i64()
-            .unwrap();
-        drag(&store, id, Row::Surface, 10);
+        let number = number_of(&add(&server, "Chart the reef", "reef-map", None));
+        drag(&store, number, Row::Surface, 10);
 
         let waiting: Vec<Value> = ok(server.list_requests());
         assert_eq!(waiting.len(), 1);
-        assert_eq!(waiting[0]["cardId"], id.to_string());
+        assert_eq!(waiting[0]["number"], number);
+        assert!(waiting[0].get("cardId").is_none());
         assert_eq!(waiting[0]["toRow"], "surface");
         assert_eq!(list(&server, None, None)[0]["row"], "seabed");
 
         let _: Value = ok(server.move_task(Parameters(MoveTask {
-            id,
+            task: TaskKey::Text(number.to_string()),
             row: Row::Surface,
         })));
         assert!(ok::<Vec<Value>>(server.list_requests()).is_empty());
@@ -962,17 +1097,16 @@ mod tests {
     #[test]
     fn accepting_a_request_moves_the_task() {
         let (_dir, store, server) = server();
-        let id = add(&server, "Chart the reef", "reef-map", None)["id"]
-            .as_i64()
-            .unwrap();
-        drag(&store, id, Row::Shallows, 10);
-        let request_id = format!("fathom-move-{id}-10");
+        let number = number_of(&add(&server, "Chart the reef", "reef-map", None));
+        drag(&store, number, Row::Shallows, 10);
+        let request_id = format!("fathom-move-{}-10", backlog_id(&store, number));
         let accepted: Value = ok(server.answer_request(Parameters(AnswerRequest {
             request_id: request_id.clone(),
             accept: true,
             reason: None,
         })));
         assert_eq!(accepted["row"], "shallows");
+        assert_eq!(accepted["number"], number);
         assert!(ok::<Vec<Value>>(server.list_requests()).is_empty());
         let again = server.answer_request(Parameters(AnswerRequest {
             request_id: request_id.clone(),
@@ -985,11 +1119,9 @@ mod tests {
     #[test]
     fn declining_a_request_needs_a_reason_and_keeps_the_task_in_place() {
         let (_dir, store, server) = server();
-        let id = add(&server, "Chart the reef", "reef-map", None)["id"]
-            .as_i64()
-            .unwrap();
-        drag(&store, id, Row::Landed, 10);
-        let request_id = format!("fathom-move-{id}-10");
+        let number = number_of(&add(&server, "Chart the reef", "reef-map", None));
+        drag(&store, number, Row::Landed, 10);
+        let request_id = format!("fathom-move-{}-10", backlog_id(&store, number));
         let unexplained = server.answer_request(Parameters(AnswerRequest {
             request_id: request_id.clone(),
             accept: false,
@@ -1007,6 +1139,7 @@ mod tests {
         })));
         assert_eq!(declined["status"], "answered");
         assert_eq!(declined["answer"], "Still waiting on the soundings");
+        assert_eq!(declined["number"], number);
         assert_eq!(list(&server, None, None)[0]["row"], "seabed");
         assert!(ok::<Vec<Value>>(server.list_requests()).is_empty());
     }
@@ -1074,14 +1207,16 @@ esac
         }
 
         fn task(&self, title: &str, row: Option<Row>) -> i64 {
-            add(&self.server, title, "reef-map", row)["id"]
-                .as_i64()
-                .unwrap()
+            number_of(&add(&self.server, title, "reef-map", row))
         }
 
-        fn start(&self, id: i64, folder: Option<&Path>) -> Result<String, String> {
+        fn id(&self, number: i64) -> i64 {
+            backlog_id(&self.store, number)
+        }
+
+        fn start(&self, number: i64, folder: Option<&Path>) -> Result<String, String> {
             self.server.start_worker(Parameters(StartWorker {
-                id,
+                task: TaskKey::Number(number),
                 folder: folder.map(|f| f.display().to_string()),
             }))
         }
@@ -1111,16 +1246,18 @@ esac
     #[test]
     fn start_worker_runs_claude_code_in_a_terminal_labeled_with_the_task() {
         let lab = WorkerLab::new();
-        let id = lab.task("Chart the reef", None);
-        let started: Value = ok(lab.start(id, None));
+        let number = lab.task("Chart the reef", None);
+        let id = lab.id(number);
+        assert_ne!(id, number);
+        let started: Value = ok(lab.start(number, None));
         let folder = lab.folder.display().to_string();
         assert_eq!(
             started,
-            json!({"taskId": id, "terminal": "t9", "folder": folder})
+            json!({"number": number, "terminal": "t9", "folder": folder})
         );
 
         let config = lab.store.with_file_name("fathom-mcp.json");
-        let prompt = worker_prompt(id);
+        let prompt = worker_prompt(number);
         let mut run = strings(&[
             "run",
             "--bg",
@@ -1171,7 +1308,7 @@ esac
                 "args": ["--mcp", "--db", lab.store.display().to_string()],
             }}})
         );
-        assert!(prompt.contains(&format!("worker for task {id}")));
+        assert!(prompt.contains(&format!("worker for task #{number}")));
         assert!(prompt.contains("move it to shallows"));
         assert!(prompt.contains("move the task to landed"));
     }
@@ -1190,11 +1327,11 @@ esac
     #[test]
     fn start_worker_refuses_a_missing_or_finished_task_before_touching_herdr_core() {
         let lab = WorkerLab::new();
-        assert_eq!(lab.start(42, None), Err("no task 42".into()));
+        assert_eq!(lab.start(42, None), Err("no task #42".into()));
         let done = lab.task("Book the crane", Some(Row::Landed));
         assert_eq!(
             lab.start(done, None),
-            Err(format!("task {done} is already done"))
+            Err(format!("task #{done} is already done"))
         );
         assert!(lab.calls().is_empty());
     }
@@ -1202,15 +1339,16 @@ esac
     #[test]
     fn start_worker_refuses_a_task_that_already_has_a_live_worker() {
         let lab = WorkerLab::new();
-        let id = lab.task("Chart the reef", Some(Row::Shallows));
+        let number = lab.task("Chart the reef", Some(Row::Shallows));
+        let id = lab.id(number);
         lab.list(json!([
             {"address": "t2", "state": "finished", "labels": {"fathom.task": id.to_string()}},
             {"address": "t3", "state": "live", "labels": {"fathom.task": id.to_string()}},
         ]));
         assert_eq!(
-            lab.start(id, None),
+            lab.start(number, None),
             Err(format!(
-                "task {id} already has a live worker in terminal t3"
+                "task #{number} already has a live worker in terminal t3"
             ))
         );
         assert_eq!(lab.calls().len(), 1);
@@ -1218,7 +1356,7 @@ esac
         lab.list(json!([
             {"address": "t2", "state": "finished", "labels": {"fathom.task": id.to_string()}},
         ]));
-        let started: Value = ok(lab.start(id, None));
+        let started: Value = ok(lab.start(number, None));
         assert_eq!(started["terminal"], "t9");
     }
 
@@ -1247,9 +1385,11 @@ esac
         "move_task",
         "update_task",
     ];
-    const HELPER_TOOLS: [&str; 17] = [
+    const HELPER_TOOLS: [&str; 19] = [
         "add_column",
+        "clear_focus",
         "delete_column",
+        "focus_tasks",
         "get_board_layout",
         "get_settings",
         "list_fonts",
@@ -1705,6 +1845,7 @@ esac
             blocked_by: vec![],
             links: vec![],
             closed: String::new(),
+            number: None,
         }
     }
 
@@ -1748,12 +1889,110 @@ esac
     fn list_tasks_reads_the_tasks_a_firstmate_board_shows() {
         let board = firstmate_board(no_host());
         let all = list(&board.server, None, None);
-        let ids: Vec<&str> = all.iter().map(|t| t["id"].as_str().unwrap()).collect();
-        assert_eq!(ids, ["atl-1", "atl-2", "atl-3"]);
+        let names: Vec<&str> = all.iter().map(|t| t["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["atl-1", "atl-2", "atl-3"]);
+        let numbers: Vec<i64> = all.iter().map(number_of).collect();
+        assert_eq!(numbers, [1, 2, 3]);
+        assert!(all.iter().all(|t| t.get("id").is_none()));
         let reef = list(&board.server, Some("reef-map"), None);
         assert_eq!(reef.len(), 1);
         assert_eq!(reef[0]["title"], "Task atl-1");
         assert_eq!(list(&board.server, None, Some(Row::Seabed)).len(), 2);
+    }
+
+    fn focus(server: &Fathom, tasks: &[TaskKey]) -> Result<String, String> {
+        server.focus_tasks(Parameters(FocusTasks {
+            tasks: tasks.to_vec(),
+        }))
+    }
+
+    fn text(task: &str) -> TaskKey {
+        TaskKey::Text(task.into())
+    }
+
+    #[test]
+    fn focus_tasks_takes_numbers_and_names_and_returns_the_unknown_ones() {
+        let board = firstmate_board(no_host());
+        let server = &board.server;
+        let _: Value = ok(server.get_board_layout());
+        let _: Value = ok(server.show_projects(Parameters(ShowProjects {
+            projects: vec!["rigging".into()],
+        })));
+        let _: Value = ok(server.set_agent_filter(Parameters(SetAgentFilter {
+            filter: AgentFilter::WithAgent,
+        })));
+
+        let focused: Value = ok(focus(
+            server,
+            &[
+                text("#2"),
+                text("atl-3"),
+                text("ghost-task"),
+                TaskKey::Number(99),
+                text("#x"),
+                text("ATL-3"),
+                TaskKey::Number(2),
+            ],
+        ));
+        let shown: Vec<(i64, &str)> = focused["focus"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| (number_of(t), t["name"].as_str().unwrap()))
+            .collect();
+        assert_eq!(shown, [(2, "atl-2"), (3, "atl-3")]);
+        assert_eq!(focused["focus"][0]["columnName"], "dry-dock");
+        assert_eq!(focused["unknown"], json!(["ghost-task", "99", "#x"]));
+
+        let layout: Value = ok(server.get_board_layout());
+        assert_eq!(layout["focus"], json!([2, 3]));
+        assert_eq!(layout["projectFilter"], json!([]));
+        assert_eq!(layout["agentFilter"], "all");
+        let settings: Value = ok(server.get_settings());
+        assert_eq!(settings["focus"], json!([2, 3]));
+
+        let cleared: Value = ok(server.clear_focus());
+        assert_eq!(cleared["focus"], json!([]));
+        let layout: Value = ok(server.get_board_layout());
+        assert_eq!(layout["focus"], json!([]));
+    }
+
+    #[test]
+    fn focus_tasks_keeps_the_focus_when_nothing_matches() {
+        let board = firstmate_board(no_host());
+        let server = &board.server;
+        let _: Value = ok(focus(server, &[text("atl-1")]));
+        assert_eq!(
+            focus(server, &[text("ghost-task"), TaskKey::Number(42)]),
+            Err("none of these tasks is on the board: ghost-task, 42".into())
+        );
+        assert_eq!(
+            focus(server, &[text("  ")]),
+            Err("name at least one task to focus on".into())
+        );
+        assert_eq!(
+            focus(server, &[]),
+            Err("name at least one task to focus on".into())
+        );
+        let layout: Value = ok(server.get_board_layout());
+        assert_eq!(layout["focus"], json!([1]));
+    }
+
+    #[test]
+    fn focus_on_the_own_backlog_goes_by_number_only() {
+        let (_dir, store, server, _) = helper_board();
+        let tasks = list(&server, None, None);
+        let reef = number_of(&tasks[0]);
+        let hull = number_of(&tasks[1]);
+        assert!(tasks.iter().all(|t| t.get("name").is_none()));
+        let focused: Value = ok(focus(
+            &server,
+            &[TaskKey::Number(reef), text(&format!("#{hull}")), text("1")],
+        ));
+        assert_eq!(focused["focus"][0]["title"], "Chart the reef");
+        assert_eq!(focused["focus"][1]["title"], "Paint the hull");
+        assert_eq!(focused["unknown"], json!(["1"]));
+        assert_eq!(stored(&store).focus, [reef, hull]);
     }
 
     fn lab_terminal(address: &str, status: &str, labels: &[(&str, &str)]) -> Terminal {
@@ -1773,9 +2012,9 @@ esac
         list(server, None, None)
             .iter()
             .map(|t| {
-                let id = match &t["id"] {
-                    Value::String(id) => id.clone(),
-                    id => id.to_string(),
+                let id = match &t["name"] {
+                    Value::String(name) => name.clone(),
+                    _ => format!("#{}", number_of(t)),
                 };
                 let column = t["columnName"].as_str().unwrap().to_string();
                 (id, column, t["agent"].as_str().unwrap().to_string())
@@ -1883,22 +2122,19 @@ esac
     fn bosun_sees_the_same_agent_states_on_fathoms_own_backlog() {
         let lab = WorkerLab::new();
         let working = lab.task("Chart the reef", Some(Row::Shallows));
-        let blocked = add(&lab.server, "Paint the hull", "dry-dock", None)["id"]
-            .as_i64()
-            .unwrap();
-        let free = add(&lab.server, "Trim the sails", "rigging", None)["id"]
-            .as_i64()
-            .unwrap();
+        let blocked = number_of(&add(&lab.server, "Paint the hull", "dry-dock", None));
+        let free = number_of(&add(&lab.server, "Trim the sails", "rigging", None));
+        let label = |number: i64| lab.id(number).to_string();
         lab.list(json!([
-            {"address": "t1", "state": "live", "status": "working", "labels": {"fathom.task": working.to_string()}},
-            {"address": "t2", "state": "live", "status": "blocked", "labels": {"fathom.task": blocked.to_string()}},
-            {"address": "t3", "state": "finished", "status": "working", "labels": {"fathom.task": free.to_string()}},
+            {"address": "t1", "state": "live", "status": "working", "labels": {"fathom.task": label(working)}},
+            {"address": "t2", "state": "live", "status": "blocked", "labels": {"fathom.task": label(blocked)}},
+            {"address": "t3", "state": "finished", "status": "working", "labels": {"fathom.task": label(free)}},
         ]));
         assert_three_agent_states(
             &lab.server,
-            &working.to_string(),
-            &blocked.to_string(),
-            &free.to_string(),
+            &format!("#{working}"),
+            &format!("#{blocked}"),
+            &format!("#{free}"),
         );
         assert_eq!(list(&lab.server, None, None)[0]["detail"], "");
     }
@@ -1964,7 +2200,7 @@ esac
         assert!(instructions.contains("Keep your task list in Fathom"));
         assert!(
             instructions
-                .contains("call start_worker with its id instead of using your own subagents")
+                .contains("call start_worker with its number instead of using your own subagents")
         );
         assert!(instructions.contains("If you were started as the worker for a task"));
         call(
@@ -2010,19 +2246,37 @@ esac
         )
         .await;
         let text = added["result"]["content"][0]["text"].as_str().unwrap();
-        assert_eq!(serde_json::from_str::<Value>(text).unwrap()["id"], 1);
+        assert_eq!(
+            serde_json::from_str::<Value>(text).unwrap()["number"],
+            EARLIER_TASKS + 1
+        );
 
         let failed = call(
             &mut lines,
             &mut write,
             json!({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {
                 "name": "move_task",
-                "arguments": {"id": 7, "row": "landed"}
+                "arguments": {"task": 99, "row": "landed"}
             }}),
         )
         .await;
         assert_eq!(failed["result"]["isError"], true);
-        assert_eq!(failed["result"]["content"][0]["text"], "no task 7");
+        assert_eq!(failed["result"]["content"][0]["text"], "no task #99");
+
+        let moved = call(
+            &mut lines,
+            &mut write,
+            json!({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {
+                "name": "move_task",
+                "arguments": {"task": format!("#{}", EARLIER_TASKS + 1), "row": "landed"}
+            }}),
+        )
+        .await;
+        let text = moved["result"]["content"][0]["text"].as_str().unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(text).unwrap()["row"],
+            "landed"
+        );
 
         drop(write);
         drop(lines);
@@ -2061,6 +2315,8 @@ esac
         assert!(instructions.contains("collapse every other row and expand the asked ones"));
         assert!(instructions.contains("expand every row with set_row_view"));
         assert!(instructions.contains("use set_agent_filter"));
+        assert!(instructions.contains("focus_tasks shows only the given tasks"));
+        assert!(instructions.contains("call clear_focus"));
         assert!(!instructions.contains("Keep your task list in Fathom"));
         assert!(!instructions.contains("start_worker"));
         call(
@@ -2120,6 +2376,23 @@ esac
         .await;
         assert_eq!(filtered["result"]["isError"], false);
         assert_eq!(stored(&store).agent_filter, AgentFilter::WithAgent);
+        let first = EARLIER_TASKS + 1;
+        let focused = call(
+            &mut lines,
+            &mut write,
+            json!({"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {
+                "name": "focus_tasks",
+                "arguments": {"tasks": [first, format!("#{}", first + 2), "reef-chart"]}
+            }}),
+        )
+        .await;
+        let text = focused["result"]["content"][0]["text"].as_str().unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(text).unwrap()["unknown"],
+            json!(["reef-chart"])
+        );
+        assert_eq!(stored(&store).focus, [first, first + 2]);
+        assert_eq!(stored(&store).agent_filter, AgentFilter::All);
         drop(write);
         drop(lines);
         running.await.unwrap();

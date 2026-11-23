@@ -1,12 +1,16 @@
 use rusqlite::{OptionalExtension, params};
 use serde::Serialize;
 
+use super::numbers::BACKLOG_HOME;
 use super::{Db, MoveRequest, MoveStatus, err};
 use crate::tasks::{Card, Detail, Row};
 
 pub const DEFAULT_ROW: Row = Row::Seabed;
 const CARD_KIND: &str = "task";
-const TASK_FIELDS: &str = "id, title, detail, project, row_key, created_ms, updated_ms";
+const TASK_FIELDS: &str =
+    "t.id, t.title, t.detail, t.project, t.row_key, t.created_ms, t.updated_ms, n.number";
+const NUMBERED_TASKS: &str = "backlog_tasks t LEFT JOIN task_numbers n
+     ON n.home = '' AND n.card_id = CAST(t.id AS TEXT)";
 const MS_PER_DAY: i64 = 86_400_000;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -19,6 +23,7 @@ pub struct Task {
     pub row: Row,
     pub created_ms: i64,
     pub updated_ms: i64,
+    pub number: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -60,6 +65,7 @@ impl Task {
             } else {
                 String::new()
             },
+            number: self.number,
         }
     }
 
@@ -112,6 +118,7 @@ fn task_of(r: &rusqlite::Row) -> rusqlite::Result<(Task, String)> {
             row: DEFAULT_ROW,
             created_ms: r.get(5)?,
             updated_ms: r.get(6)?,
+            number: r.get(7)?,
         },
         r.get(4)?,
     ))
@@ -129,9 +136,9 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(&format!(
-                "SELECT {TASK_FIELDS} FROM backlog_tasks
-                 WHERE (?1 IS NULL OR project = ?1) AND (?2 IS NULL OR row_key = ?2)
-                 ORDER BY id"
+                "SELECT {TASK_FIELDS} FROM {NUMBERED_TASKS}
+                 WHERE (?1 IS NULL OR t.project = ?1) AND (?2 IS NULL OR t.row_key = ?2)
+                 ORDER BY t.id"
             ))
             .map_err(err)?;
         let rows = stmt
@@ -145,7 +152,7 @@ impl Db {
     pub fn task(&self, id: i64) -> Result<Task, String> {
         self.conn
             .query_row(
-                &format!("SELECT {TASK_FIELDS} FROM backlog_tasks WHERE id = ?1"),
+                &format!("SELECT {TASK_FIELDS} FROM {NUMBERED_TASKS} WHERE t.id = ?1"),
                 params![id],
                 task_of,
             )
@@ -158,20 +165,27 @@ impl Db {
     pub fn add_task(&self, new: &NewTask, now_ms: i64) -> Result<Task, String> {
         let title = required("title", &new.title)?;
         let project = required("project", &new.project)?;
-        self.conn
-            .execute(
-                "INSERT INTO backlog_tasks (title, detail, project, row_key, created_ms, updated_ms)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-                params![
-                    title,
-                    new.detail.trim(),
-                    project,
-                    new.row.unwrap_or(DEFAULT_ROW).key(),
-                    now_ms
-                ],
-            )
-            .map_err(err)?;
-        self.task(self.conn.last_insert_rowid())
+        let tx = self.conn.unchecked_transaction().map_err(err)?;
+        tx.execute(
+            "INSERT INTO backlog_tasks (title, detail, project, row_key, created_ms, updated_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+            params![
+                title,
+                new.detail.trim(),
+                project,
+                new.row.unwrap_or(DEFAULT_ROW).key(),
+                now_ms
+            ],
+        )
+        .map_err(err)?;
+        let id = tx.last_insert_rowid();
+        tx.execute(
+            "INSERT INTO task_numbers (home, card_id) VALUES (?1, ?2)",
+            params![BACKLOG_HOME, id.to_string()],
+        )
+        .map_err(err)?;
+        tx.commit().map_err(err)?;
+        self.task(id)
     }
 
     pub fn update_task(&self, id: i64, change: &TaskChange, now_ms: i64) -> Result<Task, String> {

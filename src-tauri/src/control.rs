@@ -1,9 +1,12 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::Mutex;
 
 use serde::Serialize;
+use serde_json::{Map, Value, json};
 
-use crate::db::backlog::Task;
+use crate::db::backlog::{self, Task};
+use crate::db::numbers::BACKLOG_HOME;
 use crate::db::{Column, Db, MoveTo, RowView};
 use crate::moves;
 use crate::settings::{self, AgentFilter, Settings};
@@ -21,6 +24,7 @@ pub struct BoardLayout {
     pub projects: Vec<String>,
     pub project_filter: Vec<String>,
     pub agent_filter: AgentFilter,
+    pub focus: Vec<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_error: Option<String>,
 }
@@ -37,31 +41,118 @@ pub struct ColumnView {
     pub tasks_with_active_agent: Option<usize>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(untagged)]
-pub enum TaskRecord {
-    Backlog(Task),
-    Firstmate(Card),
+pub type TaskView = Map<String, Value>;
+
+const INNER_FIELDS: [&str; 2] = ["id", "number"];
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TaskRef {
+    Number(i64),
+    Name(String),
 }
 
-impl TaskRecord {
-    fn card_id(&self) -> String {
+impl TaskRef {
+    pub fn parse(text: &str) -> Result<TaskRef, String> {
+        let text = text.trim();
+        if let Some(digits) = text.strip_prefix('#') {
+            return digits
+                .trim()
+                .parse()
+                .map(TaskRef::Number)
+                .map_err(|_| format!("{text} is not a task number"));
+        }
+        match text.parse() {
+            Ok(number) => Ok(TaskRef::Number(number)),
+            Err(_) if text.is_empty() => Err("name a task by its number or name".into()),
+            Err(_) => Ok(TaskRef::Name(text.to_string())),
+        }
+    }
+}
+
+impl fmt::Display for TaskRef {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TaskRecord::Backlog(task) => task.card_id(),
-            TaskRecord::Firstmate(card) => card.id.clone(),
+            TaskRef::Number(number) => write!(f, "#{number}"),
+            TaskRef::Name(name) => f.write_str(name),
+        }
+    }
+}
+
+pub fn backlog_task_id(db: &Db, task: &TaskRef) -> Result<i64, String> {
+    let number = match task {
+        TaskRef::Number(number) => *number,
+        TaskRef::Name(name) => {
+            return Err(format!(
+                "Fathom's own tasks have no name; give the task's number instead of {name}"
+            ));
+        }
+    };
+    match db.task_number(number)? {
+        Some(found) if found.home == BACKLOG_HOME => backlog::task_id(&found.card_id),
+        Some(found) => Err(format!(
+            "#{number} is the Firstmate task {}, which Fathom cannot change",
+            found.card_id
+        )),
+        None => Err(format!("no task #{number}")),
+    }
+}
+
+pub fn backlog_view(task: &Task) -> TaskView {
+    view_of(task, task.number, None)
+}
+
+fn firstmate_view(card: &Card) -> TaskView {
+    view_of(card, card.number, Some(&card.id))
+}
+
+fn view_of(fields: &impl Serialize, number: Option<i64>, name: Option<&str>) -> TaskView {
+    let mut view = TaskView::new();
+    view.insert("number".into(), json!(number));
+    if let Some(name) = name {
+        view.insert("name".into(), json!(name));
+    }
+    if let Ok(Value::Object(fields)) = serde_json::to_value(fields) {
+        view.extend(
+            fields
+                .into_iter()
+                .filter(|(key, _)| !INNER_FIELDS.contains(&key.as_str())),
+        );
+    }
+    view
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardTask {
+    #[serde(skip)]
+    pub number: Option<i64>,
+    #[serde(skip)]
+    pub name: Option<String>,
+    #[serde(flatten)]
+    pub task: TaskView,
+    pub column: Option<i64>,
+    pub column_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent: Option<AgentState>,
+}
+
+impl BoardTask {
+    fn is(&self, task: &TaskRef) -> bool {
+        match task {
+            TaskRef::Number(number) => self.number == Some(*number),
+            TaskRef::Name(name) => self
+                .name
+                .as_deref()
+                .is_some_and(|own| own.eq_ignore_ascii_case(name)),
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BoardTask {
-    #[serde(flatten)]
-    pub task: TaskRecord,
-    pub column: Option<i64>,
-    pub column_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub agent: Option<AgentState>,
+pub struct Focused {
+    pub focus: Vec<BoardTask>,
+    pub unknown: Vec<String>,
 }
 
 fn agent_of(states: &HashMap<String, AgentState>, card_id: &str) -> AgentState {
@@ -102,6 +193,7 @@ pub fn board_layout(
         rows: db.rows()?,
         project_filter: settings.project_filter,
         agent_filter: settings.agent_filter,
+        focus: settings.focus,
         columns: views,
         agent_error: agents.as_ref().err().cloned(),
     })
@@ -118,25 +210,29 @@ pub fn board_tasks(
     let mut db = db.lock().unwrap();
     let columns = db.ensure_columns(&cards)?;
     let placed = db.card_columns(&cards)?;
-    let records: Vec<TaskRecord> = match source {
+    let records: Vec<(String, Option<i64>, Option<String>, TaskView)> = match source {
         Source::Backlog => db
             .tasks(project, row)?
-            .into_iter()
-            .map(TaskRecord::Backlog)
+            .iter()
+            .map(|task| (task.card_id(), task.number, None, backlog_view(task)))
             .collect(),
         Source::Firstmate { .. } => cards
-            .into_iter()
+            .iter()
             .filter(|card| project.is_none_or(|p| card.project == p))
             .filter(|card| row.is_none_or(|r| card.row == r))
-            .map(TaskRecord::Firstmate)
+            .map(|card| {
+                let view = firstmate_view(card);
+                (card.id.clone(), card.number, Some(card.id.clone()), view)
+            })
             .collect(),
     };
     Ok(records
         .into_iter()
-        .map(|task| {
-            let id = task.card_id();
+        .map(|(id, number, name, task)| {
             let column = placed.get(&id).copied();
             BoardTask {
+                number,
+                name,
                 column_name: columns
                     .iter()
                     .find(|c| Some(c.id) == column)
@@ -147,6 +243,51 @@ pub fn board_tasks(
             }
         })
         .collect())
+}
+
+pub fn focus_tasks(
+    db: &Mutex<Db>,
+    source: &Source,
+    wanted: &[String],
+    agents: &Agents,
+) -> Result<Focused, String> {
+    if wanted.iter().all(|entry| entry.trim().is_empty()) {
+        return Err("name at least one task to focus on".into());
+    }
+    let tasks = board_tasks(db, source, None, None, agents)?;
+    let mut focus: Vec<BoardTask> = Vec::new();
+    let mut unknown = Vec::new();
+    for entry in wanted.iter().filter(|entry| !entry.trim().is_empty()) {
+        let found = TaskRef::parse(entry)
+            .ok()
+            .and_then(|task| tasks.iter().find(|t| t.is(&task)));
+        match found {
+            Some(task) if focus.iter().any(|f| f.number == task.number) => {}
+            Some(task) => focus.push(task.clone()),
+            None => unknown.push(entry.trim().to_string()),
+        }
+    }
+    if focus.is_empty() {
+        return Err(format!(
+            "none of these tasks is on the board: {}",
+            unknown.join(", ")
+        ));
+    }
+    let numbers = focus.iter().filter_map(|task| task.number).collect();
+    settings::update(&db.lock().unwrap(), |s| {
+        s.focus = numbers;
+        s.project_filter.clear();
+        s.agent_filter = AgentFilter::All;
+        Ok(())
+    })?;
+    Ok(Focused { focus, unknown })
+}
+
+pub fn clear_focus(db: &Db) -> Result<Settings, String> {
+    settings::update(db, |s| {
+        s.focus.clear();
+        Ok(())
+    })
 }
 
 fn projects(columns: &[Column]) -> Vec<String> {

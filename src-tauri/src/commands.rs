@@ -240,6 +240,11 @@ pub fn show_all_projects(state: AppStateRef) -> Result<Settings, String> {
 }
 
 #[tauri::command]
+pub fn clear_focus(state: AppStateRef) -> Result<Settings, String> {
+    state.clear_focus()
+}
+
+#[tauri::command]
 pub fn set_agent_filter(state: AppStateRef, filter: AgentFilter) -> Result<Settings, String> {
     state.set_agent_filter(filter)
 }
