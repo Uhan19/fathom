@@ -14,6 +14,7 @@ import {
 } from "../appearance";
 import { formatBytes } from "../board";
 import { FontPicker, useInstalledFonts } from "./FontPicker";
+import { AppVersion } from "./AppVersion";
 import { Close } from "./Icons";
 import { ShortcutsSection } from "./ShortcutsSection";
 import { withLatestWindow } from "../windowSettings";
@@ -42,6 +43,7 @@ export function SettingsDialog({ settings, mac, rowNames, onPreview, onSaved, on
   const [names, setNames] = useState(rowNames);
   const [prefixes, setPrefixes] = useState(settings.ticketPrefixes.join(", "));
   const [data, setData] = useState<DataInfo | null>(null);
+  const [version, setVersion] = useState<string | null>(null);
   const [note, setNote] = useState<{ text: string; error: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
   const [picking, setPicking] = useState<Surface | null>(null);
@@ -51,6 +53,7 @@ export function SettingsDialog({ settings, mac, rowNames, onPreview, onSaved, on
     dialogRef.current?.showModal();
     homeRef.current?.focus();
     api.dataInfo().then(setData).catch(() => setData(null));
+    api.appVersion().then(setVersion).catch(() => setVersion(null));
   }, []);
 
   const field = (key: "home" | "terminalLabel" | "hcSession" | "hcSocket" | "agentFolder" | "linearWorkspace") => ({
@@ -248,6 +251,7 @@ export function SettingsDialog({ settings, mac, rowNames, onPreview, onSaved, on
           {note && <p className={note.error ? "error-text" : "ok-text"}>{note.text}</p>}
         </div>
         <div className="settings-foot">
+          <AppVersion version={version} />
           <button type="button" className="btn" onClick={onClose}>
             Cancel
           </button>
