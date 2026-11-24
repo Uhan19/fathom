@@ -90,7 +90,7 @@ pub struct WorkerRoot {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalRoot {
-    pub terminal: String,
+    pub terminal: Option<String>,
     pub pid: u32,
 }
 
@@ -233,7 +233,7 @@ pub fn group(
                 id: "orchestrator".into(),
                 name: ORCHESTRATOR.into(),
                 task_id: None,
-                terminal: Some(orchestrator.terminal.clone()),
+                terminal: orchestrator.terminal.clone(),
                 bytes: 0,
                 parts: agent_parts(&members, args_of),
             });
@@ -572,7 +572,7 @@ mod tests {
         Roots {
             fathom: vec![10, 40],
             orchestrator: Some(TerminalRoot {
-                terminal: "t3".into(),
+                terminal: Some("t3".into()),
                 pid: 30,
             }),
             workers: vec![WorkerRoot {

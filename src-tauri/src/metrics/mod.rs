@@ -2,6 +2,7 @@ pub mod memory;
 mod procs;
 
 use std::collections::{BTreeMap, HashMap};
+use std::path::Path;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
@@ -10,12 +11,15 @@ use tauri::{AppHandle, Emitter};
 
 use crate::herdr::Terminal;
 use crate::launch;
+use crate::source::Source;
 use crate::state::{AppState, now_ms};
 use crate::workers::LIVE;
-use memory::{MemorySample, Roots, TerminalRoot, WorkerRoot};
+use memory::{Machine, MemorySample, Roots, TerminalRoot, WorkerRoot};
 
 pub const EVENT_MEMORY: &str = "metrics://memory";
 const MEMORY_EVERY: Duration = Duration::from_secs(3);
+const SESSION_LOCK: &str = "state/.lock";
+const MAX_ANCESTRY: usize = 64;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -75,14 +79,12 @@ impl Metrics {
 pub fn sample_memory(state: &AppState) -> Result<MemorySample, String> {
     let machine = procs::machine()?;
     let connected = state.herdr_status.lock().unwrap().connected;
-    let roots = if connected {
-        herdr_roots(state)
+    let terminals = if connected {
+        state.herdr.terminals()
     } else {
-        Roots {
-            fathom: vec![std::process::id()],
-            ..Roots::default()
-        }
+        BTreeMap::new()
     };
+    let roots = roots(state, &terminals, &machine);
     Ok(memory::group(
         &machine,
         &roots,
@@ -92,8 +94,7 @@ pub fn sample_memory(state: &AppState) -> Result<MemorySample, String> {
     ))
 }
 
-fn herdr_roots(state: &AppState) -> Roots {
-    let terminals = state.herdr.terminals();
+fn roots(state: &AppState, terminals: &BTreeMap<String, Terminal>, machine: &Machine) -> Roots {
     let chat_label = state.settings.lock().unwrap().terminal_label.clone();
     let titles = card_titles(state);
     let mut fathom = vec![std::process::id()];
@@ -103,41 +104,89 @@ fn herdr_roots(state: &AppState) -> Roots {
             .filter(|t| is_live(t) && has_label(t, &launch::helper_label()))
             .map(|t| t.pid),
     );
-    let workers = state
-        .workers()
-        .into_iter()
-        .filter_map(|worker| {
-            let terminal = terminals.get(&worker.terminal).filter(|t| is_live(t))?;
-            Some(WorkerRoot {
-                title: titles
-                    .get(&worker.task_id)
-                    .cloned()
-                    .unwrap_or_else(|| worker.task_id.clone()),
-                task_id: worker.task_id,
-                terminal: terminal.address.clone(),
-                pid: terminal.pid,
+    let workers = if terminals.is_empty() {
+        vec![]
+    } else {
+        state
+            .workers()
+            .into_iter()
+            .filter_map(|worker| {
+                let terminal = terminals.get(&worker.terminal).filter(|t| is_live(t))?;
+                Some(WorkerRoot {
+                    title: titles
+                        .get(&worker.task_id)
+                        .cloned()
+                        .unwrap_or_else(|| worker.task_id.clone()),
+                    task_id: worker.task_id,
+                    terminal: terminal.address.clone(),
+                    pid: terminal.pid,
+                })
             })
-        })
+            .collect()
+    };
+    let helm = match state.source() {
+        Source::Firstmate { home } => helm_pid(&home),
+        Source::Backlog => None,
+    };
+    let parents: HashMap<u32, u32> = machine
+        .processes
+        .iter()
+        .map(|p| (p.pid, p.parent))
         .collect();
     Roots {
         fathom,
-        orchestrator: orchestrator(&terminals, &chat_label),
+        orchestrator: orchestrator(helm, &parents, terminals, &chat_label),
         workers,
     }
 }
 
-fn orchestrator(terminals: &BTreeMap<String, Terminal>, chat_label: &str) -> Option<TerminalRoot> {
-    let find = |label: &str| {
-        terminals
-            .values()
-            .find(|t| is_live(t) && has_label(t, label))
-    };
+fn helm_pid(home: &Path) -> Option<u32> {
+    let lock = std::fs::read_to_string(home.join(SESSION_LOCK)).ok()?;
+    lock.lines()
+        .next()?
+        .trim()
+        .parse()
+        .ok()
+        .filter(|pid| *pid > 1)
+}
+
+fn orchestrator(
+    helm: Option<u32>,
+    parents: &HashMap<u32, u32>,
+    terminals: &BTreeMap<String, Terminal>,
+    chat_label: &str,
+) -> Option<TerminalRoot> {
+    let live: Vec<&Terminal> = terminals.values().filter(|t| is_live(t)).collect();
+    if let Some(helm) = helm.filter(|pid| parents.contains_key(pid)) {
+        let holding = ancestry(helm, parents).find_map(|pid| live.iter().find(|t| t.pid == pid));
+        return Some(match holding {
+            Some(t) => TerminalRoot {
+                terminal: Some(t.address.clone()),
+                pid: t.pid,
+            },
+            None => TerminalRoot {
+                terminal: None,
+                pid: helm,
+            },
+        });
+    }
+    let find = |label: &str| live.iter().find(|t| has_label(t, label));
     find(chat_label)
         .or_else(|| find(&launch::chat_label()))
         .map(|t| TerminalRoot {
-            terminal: t.address.clone(),
+            terminal: Some(t.address.clone()),
             pid: t.pid,
         })
+}
+
+fn ancestry(pid: u32, parents: &HashMap<u32, u32>) -> impl Iterator<Item = u32> + '_ {
+    std::iter::successors(Some(pid), |pid| {
+        parents
+            .get(pid)
+            .copied()
+            .filter(|parent| *parent > 1 && parent != pid)
+    })
+    .take(MAX_ANCESTRY)
 }
 
 fn is_live(terminal: &Terminal) -> bool {
@@ -177,19 +226,76 @@ mod tests {
         }
     }
 
-    #[test]
-    fn the_orchestrator_is_the_labelled_chat_terminal_or_fathoms_own_chat() {
-        let terminals: BTreeMap<String, Terminal> = [
+    fn terminals(list: Vec<Terminal>) -> BTreeMap<String, Terminal> {
+        list.into_iter().map(|t| (t.address.clone(), t)).collect()
+    }
+
+    fn labelled() -> BTreeMap<String, Terminal> {
+        terminals(vec![
             terminal("t1", 11, &[("firstmate.role", "primary")]),
             terminal("t2", 12, &[("fathom.role", "chat")]),
             terminal("t3", 0, &[("crew.role", "lead")]),
-        ]
-        .into_iter()
-        .map(|t| (t.address.clone(), t))
-        .collect();
-        let found = |label: &str| orchestrator(&terminals, label).map(|o| o.terminal);
+            terminal("t4", 40, &[]),
+        ])
+    }
+
+    fn parents() -> HashMap<u32, u32> {
+        HashMap::from([
+            (11, 5),
+            (12, 5),
+            (40, 5),
+            (41, 40),
+            (42, 41),
+            (77, 1),
+            (5, 1),
+        ])
+    }
+
+    #[test]
+    fn without_firstmates_record_the_orchestrator_is_the_labelled_chat_terminal() {
+        let found = |label: &str| {
+            orchestrator(None, &parents(), &labelled(), label).and_then(|o| o.terminal)
+        };
         assert_eq!(found("firstmate.role=primary").as_deref(), Some("t1"));
         assert_eq!(found("team.role=lead").as_deref(), Some("t2"));
         assert_eq!(found("crew.role=lead").as_deref(), Some("t2"));
+    }
+
+    #[test]
+    fn firstmates_session_lock_names_the_orchestrator_before_any_label() {
+        let found = |helm| {
+            orchestrator(
+                Some(helm),
+                &parents(),
+                &labelled(),
+                "firstmate.role=primary",
+            )
+        };
+        assert_eq!(
+            found(42),
+            Some(TerminalRoot {
+                terminal: Some("t4".into()),
+                pid: 40
+            })
+        );
+        assert_eq!(
+            found(77),
+            Some(TerminalRoot {
+                terminal: None,
+                pid: 77
+            })
+        );
+        assert_eq!(found(999).and_then(|o| o.terminal).as_deref(), Some("t1"));
+    }
+
+    #[test]
+    fn the_session_lock_pid_is_line_one_of_the_homes_lock_file() {
+        let home = tempfile::tempdir().unwrap();
+        assert_eq!(helm_pid(home.path()), None);
+        std::fs::create_dir(home.path().join("state")).unwrap();
+        std::fs::write(home.path().join(SESSION_LOCK), "4242\n").unwrap();
+        assert_eq!(helm_pid(home.path()), Some(4242));
+        std::fs::write(home.path().join(SESSION_LOCK), "win:4242\n").unwrap();
+        assert_eq!(helm_pid(home.path()), None);
     }
 }
