@@ -285,7 +285,7 @@ body[data-scheme="bp5"] .why{background-image:linear-gradient(90deg,#46afff,tran
 
 </section><div class="wrap"><section id="agent-setup" class="setup"><div class="setup-grid">
 <div class="sec-head"><p class="eyebrow">Set up with your agent</p><h2>Let your agent install Fathom</h2><p class="lede">Paste one line into Codex, Claude Code or another coding agent on the macOS or Linux computer where you want Fathom. It follows the setup sheet and tells you at the end what it did and what is left for you.</p>
-<ul class="setup-list"><li>Asks whether Fathom should use Codex or Claude Code.</li><li>Asks before every install, and skips what is already there.</li><li>Recommends herdr-core, which runs the agent terminals in the chat panel.</li><li>Installs Firstmate only if you ask for it.</li></ul></div>
+<ul class="setup-list"><li>Asks whether Fathom should use Codex or Claude Code.</li><li>Asks before every install, and skips what is already there.</li><li>Recommends herdr-core, which runs the agent terminals in the chat panel.</li><li>Recommends Firstmate, and asks before installing it.</li></ul></div>
 <article class="dl-card primary setup-card"><h3>Paste this into your agent</h3>
 <pre><code id="setup-prompt">Set up Fathom on this computer by following https://raw.githubusercontent.com/Uhan19/fathom/main/docs/<wbr>agent-setup.md</code></pre>
 <div class="setup-actions"><button class="btn btn-primary" type="button" data-copy="setup-prompt">Copy prompt</button><a class="btn" href="https://github.com/Uhan19/fathom/blob/main/docs/agent-setup.md">Read the full sheet ↗</a></div>
@@ -334,13 +334,14 @@ chmod +x Fathom_amd64.AppImage &amp;&amp; ./Fathom_amd64.AppImage</code></pre></
 <pre><code>curl -fsSL https://claude.ai/install.sh | bash</code></pre></div>
 <div class="req-item"><h4><a href="https://github.com/openai/codex">Codex</a> <span class="pill">Optional</span></h4>
 <p>Works as a chat agent instead of Claude Code. Follow the install steps in its README.</p></div>
-<div class="req-item"><h4><a href="https://github.com/kunchenguid/firstmate">Firstmate</a> <span class="pill">Optional</span></h4>
-<p>An agent setup that runs a crew of coding agents for you. Fathom shows its tasks. Without it, Fathom keeps its own backlog. Firstmate needs git and the GitHub CLI.</p>
+<div class="req-item"><h4><a href="https://github.com/kunchenguid/firstmate">Firstmate</a> <span class="pill">Recommended</span></h4>
+<p>An agent setup that runs a crew of coding agents for you, and the recommended way to use Fathom. Fathom shows its tasks. Without it, Fathom keeps its own backlog. Firstmate needs git and the GitHub CLI.</p>
 <pre><code>gh auth login
 git clone https://github.com/kunchenguid/firstmate ~/Documents/firstmate
 cd ~/Documents/firstmate &amp;&amp; claude</code></pre></div>
 </div></article>
 <article id="d-source"><h3>Where tasks come from</h3>
+<p>Fathom with Firstmate is the recommended way to use it.</p>
 <p><b>With Firstmate.</b> Fathom finds Firstmate in <code>~/Documents/firstmate</code>; if it lives elsewhere, set the Firstmate home folder in Settings. Fathom reads tasks through <code>bin/fm-tasks-axi.sh</code> in that folder and never changes the task list.</p>
 <p><b>Without Firstmate.</b> Leave the Firstmate home empty. Fathom keeps a local backlog that any agent fills through Fathom’s MCP server. Add it to your agent:</p>
 <pre><code># macOS
