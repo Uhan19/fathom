@@ -524,6 +524,8 @@ Fathom asks your login shell for its PATH once at startup and uses it to find he
   An added font joins that menu and is selected; the same list removes it again.
   Changes show at once while the dialog is open; Save keeps them across launches and Cancel puts them back.
 
+The foot of the Settings dialog names the installed release, such as "Fathom 0.3.0".
+
 The "Dark mode" switch in the header turns the panels, cards and terminals dark, and switching it off turns them light again.
 The board rows keep their light bands in both themes.
 Fathom remembers the theme, whether the chat panel is open, the chat and card panel widths, which rows are collapsed, the agent filter and the task focus across launches.
