@@ -189,12 +189,30 @@ export const FIXTURE_REQUESTS: MoveRequest[] = [
   }),
 ];
 
+export const FIXTURE_STRESS_REQUESTS = (requests: MoveRequest[]): MoveRequest[] => [
+  ...requests,
+  fixtureRequest({ cardId: "hrb-14", fromRow: "deep", toRow: "shallows", status: "failed", noteId: null, error: "fm-inbox: no inbox at /home/demo/firstmate/state/inbox" }),
+];
+
 const columnsFor = (cards: Card[]): Column[] =>
   [...new Set(cards.map((c) => c.project))]
     .sort()
     .map((project, position) => ({ id: position + 1, project, name: project, position, width: 240, collapsed: false }));
 
 export const FIXTURE_COLUMNS: Column[] = columnsFor(FIXTURE_CARDS);
+
+const STRESS_SEEDS: Seed[] = [
+  ["atl-20", "atlas-api", "shallows", "Untangle the retry, timeout and circuit breaker settings that three services copied from each other over two years and now disagree about", { state: "in_flight" }],
+  ["bea-03", "beacon-ops", "surface", "Choose an on-call rotation", { holdKind: "captain", holdReason: "Weekly or fortnightly?" }],
+  ["cor-07", "coral-db", "deep", "Shard the events table", { holdKind: "parked" }],
+  ["dri-02", "drift-sdk", "shallows", "Publish the beta", { state: "in_flight" }],
+  ["est-11", "estuary-ml", "seabed", "Retrain the ranking model", { blockedBy: ["cor-07"] }],
+  ["fjo-05", "fjord-auth", "landed", "Rotate the signing keys", { state: "done", closed: "2026-11-18" }],
+];
+
+export const FIXTURE_STRESS_CARDS: Card[] = [...FIXTURE_CARDS, ...STRESS_SEEDS.map((seed, i) => seeded(seed, nextNumber + 10 + i))];
+
+export const FIXTURE_STRESS_COLUMNS: Column[] = columnsFor(FIXTURE_STRESS_CARDS);
 
 export const FIXTURE_UNFILED_CARDS: Card[] = [
   ...FIXTURE_CARDS,

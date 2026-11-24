@@ -17,11 +17,11 @@ mod snapshot;
 mod source;
 mod state;
 mod tasks;
+#[cfg(test)]
+mod test_support;
 mod theme_check;
 mod theme_watch;
 mod themes;
-#[cfg(test)]
-mod test_support;
 mod toon;
 mod updates;
 mod waits;
@@ -73,29 +73,27 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .register_asynchronous_uri_scheme_protocol(themes::scheme::SCHEME, |ctx, request, responder| {
-            let app = ctx.app_handle().clone();
-            let path = request.uri().path().to_string();
-            std::thread::spawn(move || {
-                let state = app.try_state::<std::sync::Arc<state::AppState>>();
-                let asset = themes::scheme::serve(&path, |id| {
-                    let state = state.as_ref()?;
-                    state.themes.active(id)?;
-                    Some(state.themes.good_copy(id))
+        .register_asynchronous_uri_scheme_protocol(
+            themes::scheme::SCHEME,
+            |ctx, request, responder| {
+                let app = ctx.app_handle().clone();
+                let path = request.uri().path().to_string();
+                std::thread::spawn(move || {
+                    let state = app.try_state::<std::sync::Arc<state::AppState>>();
+                    let asset = themes::scheme::serve(&path, |id| {
+                        let state = state.as_ref()?;
+                        state.themes.active(id)?;
+                        Some(state.themes.good_copy(id))
+                    });
+                    responder.respond(asset.into_response());
                 });
-                responder.respond(asset.into_response());
-            });
-        })
+            },
+        )
         .setup(move |app| {
             let data_dir = app.path().app_data_dir()?;
             let log_dir = app.path().app_log_dir()?;
             let db = db::Db::open(&data_dir)?;
-            if wants_default_theme(&std::env::args().collect::<Vec<_>>()) {
-                settings::update(&db, |s| {
-                    s.theme_id = themes::NAUTICAL.to_string();
-                    Ok(())
-                })?;
-            }
+            apply_launch_flags(&db, &std::env::args().collect::<Vec<_>>())?;
             let state = state::AppState::start(app.handle(), db, log_dir, started)?;
             app.manage(state);
             app.manage(std::sync::Arc::new(pulls::PrCache::default()));
@@ -177,6 +175,17 @@ pub fn run() {
 
 fn wants_default_theme(args: &[String]) -> bool {
     args.iter().any(|a| a == DEFAULT_THEME_FLAG)
+}
+
+fn apply_launch_flags(db: &db::Db, args: &[String]) -> Result<(), String> {
+    if !wants_default_theme(args) {
+        return Ok(());
+    }
+    settings::update(db, |s| {
+        s.theme_id = themes::NAUTICAL.to_string();
+        Ok(())
+    })
+    .map(|_| ())
 }
 
 fn default_data_dir(identifier: &str) -> Result<PathBuf, String> {
@@ -297,10 +306,35 @@ mod tests {
     }
 
     #[test]
-    fn the_default_theme_flag_is_read_from_the_arguments() {
+    fn the_default_theme_flag_starts_with_nautical_even_under_a_hostile_theme() {
         let args = |words: &[&str]| words.iter().map(|w| w.to_string()).collect::<Vec<_>>();
-        assert!(wants_default_theme(&args(&["fathom", "--default-theme"])));
-        assert!(!wants_default_theme(&args(&["fathom"])));
+        let dir = tempfile::tempdir().unwrap();
+        let db = db::Db::open(&dir.path().join("data")).unwrap();
+        let themes = themes::Themes::new(dir.path().join("themes"), &dir.path().join("data"));
+        let folder = themes.root.join("hostile-hidden");
+        std::fs::create_dir_all(&folder).unwrap();
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../fixtures/themes/hostile-hidden");
+        for file in [themes::MANIFEST_FILE, themes::STYLE_FILE] {
+            std::fs::copy(fixture.join(file), folder.join(file)).unwrap();
+        }
+        let hash = themes::folder_hash(&folder).unwrap();
+        themes
+            .store_result("hostile-hidden", &folder, &hash, vec![], 1)
+            .unwrap();
+        settings::update(&db, |s| {
+            s.theme_id = "hostile-hidden".into();
+            Ok(())
+        })
+        .unwrap();
+        assert!(themes.active("hostile-hidden").is_some());
+
+        apply_launch_flags(&db, &args(&["fathom"])).unwrap();
+        assert_eq!(settings::load(&db).unwrap().theme_id, "hostile-hidden");
+        apply_launch_flags(&db, &args(&["fathom", "--default-theme"])).unwrap();
+        let theme_id = settings::load(&db).unwrap().theme_id;
+        assert_eq!(theme_id, themes::NAUTICAL);
+        assert!(themes.active(&theme_id).is_none());
     }
 
     #[test]

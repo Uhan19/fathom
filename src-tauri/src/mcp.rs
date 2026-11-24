@@ -7,6 +7,7 @@ use rmcp::model::{Implementation, ServerCapabilities, ServerConfig};
 use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 use crate::control::{self, TaskRef};
 use crate::db::backlog::{NewTask, Task, TaskChange};
@@ -20,6 +21,8 @@ use crate::shell_path;
 use crate::source::Source;
 use crate::state::{connection_of, now_ms};
 use crate::tasks::Row;
+use crate::theme_check::{self, Size};
+use crate::themes::{self, Mode, NAUTICAL, Themes};
 use crate::workers::{self, LIVE};
 
 pub const MCP_FLAG: &str = "--mcp";
@@ -234,6 +237,65 @@ pub struct SetTheme {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct ThemeId {
+    #[schemars(
+        description = "The theme's id: its folder name in the themes folder, or nautical for the built-in theme"
+    )]
+    pub id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SaveTheme {
+    #[schemars(
+        description = "The theme's id, a folder name of lowercase letters, digits and dashes. A new id creates the theme."
+    )]
+    pub id: String,
+    #[schemars(
+        description = "Text files to write, by path inside the theme folder: theme.json, theme.css, SVG art such as art/mark.svg, and notes such as RECIPE.md"
+    )]
+    pub files: std::collections::BTreeMap<String, String>,
+    #[schemars(description = "Paths inside the theme folder to delete")]
+    #[serde(default)]
+    pub remove: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ShotTheme {
+    pub id: String,
+    #[schemars(description = "light or dark; the theme's first mode when left out")]
+    pub mode: Option<Mode>,
+    #[schemars(
+        description = "desktop (1600 by 1000) or min (960 by 600, the smallest window); desktop when left out"
+    )]
+    pub size: Option<Size>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ThemeFiles {
+    id: String,
+    folder: Option<String>,
+    status: themes::Status,
+    selected: bool,
+    files: std::collections::BTreeMap<String, String>,
+    binary_files: Vec<String>,
+    problems: Vec<String>,
+    note: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CheckReply {
+    id: String,
+    passed: bool,
+    problems: Vec<String>,
+    screenshots: Vec<String>,
+    next: String,
+}
+
+const TEXT_EXTENSIONS: [&str; 5] = ["json", "css", "svg", "md", "txt"];
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct SetFonts {
     #[schemars(
         description = "Terminal font: a preset key or name from list_fonts, or an installed font family"
@@ -344,6 +406,7 @@ pub struct Host {
     pub shell: Option<PathBuf>,
     pub find: FindProgram,
     pub terminals: ListTerminals,
+    pub themes_root: PathBuf,
 }
 
 impl Host {
@@ -356,6 +419,7 @@ impl Host {
             terminals: Box::new(|connection| {
                 Herdr::new(connection.clone(), Arc::new(|_| {})).list()
             }),
+            themes_root: themes::default_root()?,
         })
     }
 }
@@ -382,7 +446,7 @@ impl Fathom {
             db: Mutex::new(db),
             host,
             helper: true,
-            router: Fathom::task_tools() + Fathom::helper_tools(),
+            router: Fathom::task_tools() + Fathom::helper_tools() + Fathom::theme_tools(),
         }
     }
 
@@ -581,7 +645,9 @@ impl Fathom {
         reply(control::clear_focus(&self.db.lock().unwrap()).map(settings_view))
     }
 
-    #[tool(description = "Switch between the light and dark theme.")]
+    #[tool(
+        description = "Switch between light and dark mode. A theme with only one mode keeps its mode."
+    )]
     fn set_theme(&self, Parameters(p): Parameters<SetTheme>) -> Result<String, String> {
         let change = WindowChange {
             theme: Some(p.theme),
@@ -631,6 +697,203 @@ impl Fathom {
             replace(&mut s.agent_folder, p.agent_folder);
             Ok(())
         })
+    }
+}
+
+impl Fathom {
+    fn themes(&self) -> Result<Themes, String> {
+        let db = self.db.lock().unwrap();
+        let data_dir = db.path().parent().ok_or("the database has no folder")?;
+        Ok(Themes::new(self.host.themes_root.clone(), data_dir))
+    }
+
+    fn db_file(&self) -> PathBuf {
+        self.db.lock().unwrap().path().to_path_buf()
+    }
+
+    fn check_reply(&self, id: &str, outcome: theme_check::Outcome) -> CheckReply {
+        let shots = outcome
+            .findings
+            .iter()
+            .filter_map(|f| f.screenshot.clone())
+            .collect::<std::collections::BTreeSet<_>>();
+        let folder = self.themes().map(|t| t.root.join(id)).unwrap_or_default();
+        CheckReply {
+            id: id.to_string(),
+            passed: outcome.passed,
+            problems: outcome.findings.iter().map(theme_check::describe).collect(),
+            screenshots: shots
+                .into_iter()
+                .map(|s| folder.join(s).display().to_string())
+                .collect(),
+            next: if outcome.passed {
+                format!(
+                    "The theme passed its check. Call use_theme with {id} to switch to it, or shot_theme to look at it."
+                )
+            } else {
+                "The theme failed its check, so Fathom keeps showing its last good version. Fix every problem and save again.".into()
+            },
+        }
+    }
+}
+
+#[tool_router(router = theme_tools)]
+impl Fathom {
+    #[tool(
+        description = "Read the guide to Fathom themes: the folder format, theme.json, named parts, control ids, tokens, layout options, the check and the rules. Read it before any theme work."
+    )]
+    fn get_theme_guide(&self) -> Result<String, String> {
+        Ok(themes::GUIDE.to_string())
+    }
+
+    #[tool(
+        description = "List the themes: Nautical (built in) and each folder in the themes folder, with its status (ready, failed, unchecked) and which one is selected."
+    )]
+    fn list_themes(&self) -> Result<String, String> {
+        let themes = self.themes()?;
+        let selected = settings::load(&self.db.lock().unwrap())?.theme_id;
+        reply(Ok(
+            json!({ "folder": themes.root.display().to_string(), "selected": selected, "themes": themes.list() }),
+        ))
+    }
+
+    #[tool(
+        description = "Read a theme's files and its last check result. For nautical it returns the files Duplicate would write, as a starting point for a new theme."
+    )]
+    fn get_theme(&self, Parameters(p): Parameters<ThemeId>) -> Result<String, String> {
+        let themes = self.themes()?;
+        let selected = settings::load(&self.db.lock().unwrap())?.theme_id == p.id;
+        if p.id == NAUTICAL {
+            let manifest = serde_json::to_string_pretty(&themes::nautical_manifest("My theme"))
+                .map_err(|e| e.to_string())?;
+            let files = std::collections::BTreeMap::from([
+                (themes::MANIFEST_FILE.to_string(), manifest),
+                (themes::STYLE_FILE.to_string(), themes::nautical_tokens()),
+            ]);
+            return reply(Ok(ThemeFiles {
+                id: NAUTICAL.into(),
+                folder: None,
+                status: themes::Status::BuiltIn,
+                selected,
+                files,
+                binary_files: Vec::new(),
+                problems: Vec::new(),
+                note: Some("Nautical is built in and read-only. Save these files under a new id to start a theme from it.".into()),
+            }));
+        }
+        let folder = themes.folder(&p.id)?;
+        if !folder.join(themes::MANIFEST_FILE).is_file() {
+            return Err(format!("there is no theme called {}", p.id));
+        }
+        let mut files = std::collections::BTreeMap::new();
+        let mut binary_files = Vec::new();
+        for (name, path) in themes::theme_files(&folder) {
+            let text = Path::new(&name)
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| TEXT_EXTENSIONS.contains(&e));
+            match std::fs::read_to_string(&path) {
+                Ok(content) if text => {
+                    files.insert(name, content);
+                }
+                _ => binary_files.push(name),
+            }
+        }
+        let summary = themes.summary(&p.id);
+        let problems = themes
+            .record(&p.id)
+            .map(|r| r.findings.iter().map(theme_check::describe).collect())
+            .unwrap_or_default();
+        reply(Ok(ThemeFiles {
+            id: p.id,
+            folder: summary.folder.clone(),
+            status: summary.status,
+            selected,
+            files,
+            binary_files,
+            problems,
+            note: None,
+        }))
+    }
+
+    #[tool(
+        description = "Switch Fathom to a theme. Only a theme that passed its check can be used; nautical always works and is the way back."
+    )]
+    fn use_theme(&self, Parameters(p): Parameters<ThemeId>) -> Result<String, String> {
+        self.themes()?.can_use(&p.id)?;
+        self.change_settings(|s| {
+            s.theme_id = p.id.clone();
+            Ok(())
+        })
+    }
+
+    #[tool(
+        description = "Write files into a theme's folder, creating the theme if it is new, then run Fathom's check on it and return the problems it finds. Fathom uses a theme only after its check passes; on a failure it keeps the last good version. Nautical is read-only."
+    )]
+    fn save_theme(&self, Parameters(p): Parameters<SaveTheme>) -> Result<String, String> {
+        let themes = self.themes()?;
+        if p.id == NAUTICAL {
+            return Err("Nautical is built in and read-only; save under a new id".into());
+        }
+        let folder = themes.folder(&p.id)?;
+        if p.files.is_empty() && p.remove.is_empty() {
+            return Err("give at least one file to write or remove".into());
+        }
+        if !folder.join(themes::MANIFEST_FILE).is_file()
+            && !p.files.contains_key(themes::MANIFEST_FILE)
+        {
+            return Err(format!("a new theme needs a {}", themes::MANIFEST_FILE));
+        }
+        for name in &p.remove {
+            themes::check_asset_path(name, &themes::ASSET_EXTENSIONS)
+                .or_else(|_| themes::check_asset_path(name, &["md", "txt"]))?;
+            let _ = std::fs::remove_file(folder.join(name));
+        }
+        themes::write_files(&folder, &p.files)?;
+        if !folder.join(themes::STYLE_FILE).exists() {
+            std::fs::write(folder.join(themes::STYLE_FILE), "").map_err(|e| e.to_string())?;
+        }
+        let outcome = theme_check::run_subprocess(
+            &self.host.program,
+            &theme_check::check_args(&folder, Some(&self.db_file()), false),
+        )?;
+        reply(Ok(self.check_reply(&p.id, outcome)))
+    }
+
+    #[tool(
+        description = "Delete a theme's folder for good. If it is the selected theme, Fathom goes back to Nautical."
+    )]
+    fn delete_theme(&self, Parameters(p): Parameters<ThemeId>) -> Result<String, String> {
+        self.themes()?.delete(&p.id)?;
+        self.change_settings(|s| {
+            if s.theme_id == p.id {
+                s.theme_id = NAUTICAL.into();
+            }
+            Ok(())
+        })
+    }
+
+    #[tool(
+        description = "Render a theme over Fathom's invented sample board and write PNG screenshots of the board, a card's detail, Settings and the chat with the helper drawer. Returns the paths; open them with Read to look. It never shows the user's real board."
+    )]
+    fn shot_theme(&self, Parameters(p): Parameters<ShotTheme>) -> Result<String, String> {
+        let folder = self.themes()?.folder(&p.id)?;
+        if !folder.join(themes::MANIFEST_FILE).is_file() {
+            return Err(format!("there is no theme called {}", p.id));
+        }
+        let outcome = theme_check::run_subprocess(
+            &self.host.program,
+            &theme_check::shot_args(&folder, p.mode, p.size.unwrap_or(Size::Desktop)),
+        )?;
+        if !outcome.passed {
+            return reply(Ok(self.check_reply(&p.id, outcome)));
+        }
+        let paths: Vec<String> = outcome
+            .shots
+            .iter()
+            .map(|s| folder.join(s).display().to_string())
+            .collect();
+        reply(Ok(json!({ "id": p.id, "screenshots": paths })))
     }
 }
 
@@ -878,6 +1141,7 @@ mod tests {
             shell: None,
             find: Box::new(|_| None),
             terminals: Box::new(move |_| listed.clone()),
+            themes_root: PathBuf::from("/nonexistent/fathom-themes"),
         }
     }
 
@@ -1198,6 +1462,7 @@ esac
                 terminals: Box::new(|connection| {
                     Herdr::new(connection.clone(), Arc::new(|_| {})).list()
                 }),
+                themes_root: PathBuf::from("/nonexistent/fathom-themes"),
             };
             WorkerLab {
                 _dir: dir,
@@ -1409,6 +1674,16 @@ esac
         "show_projects",
     ];
 
+    const THEME_TOOLS: [&str; 7] = [
+        "delete_theme",
+        "get_theme",
+        "get_theme_guide",
+        "list_themes",
+        "save_theme",
+        "shot_theme",
+        "use_theme",
+    ];
+
     fn helper_board() -> (tempfile::TempDir, PathBuf, Fathom, Vec<Column>) {
         let dir = tempfile::tempdir().unwrap();
         let store = dir.path().join("board.sqlite");
@@ -1452,9 +1727,108 @@ esac
         assert!(!chat.helper);
 
         let (_dir, _store, helper, _) = helper_board();
-        let mut helper_tools: Vec<&str> = [TASK_TOOLS.as_slice(), HELPER_TOOLS.as_slice()].concat();
+        let mut helper_tools: Vec<&str> = [
+            TASK_TOOLS.as_slice(),
+            HELPER_TOOLS.as_slice(),
+            THEME_TOOLS.as_slice(),
+        ]
+        .concat();
         helper_tools.sort();
         assert_eq!(tool_names(&helper), helper_tools);
+    }
+
+    fn theme_server() -> (tempfile::TempDir, PathBuf, Fathom) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join("data/board.sqlite");
+        let mut host = no_host();
+        host.themes_root = dir.path().join("themes");
+        let server = Fathom::helper(backlog_db(&store), host);
+        (dir, store, server)
+    }
+
+    fn passed_theme(server: &Fathom, id: &str) {
+        let themes = server.themes().unwrap();
+        let folder = themes.root.join(id);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(
+            folder.join(themes::MANIFEST_FILE),
+            r#"{"fathomTheme": 1, "name": "Kelp", "text": {"helper": "Purser"}}"#,
+        )
+        .unwrap();
+        std::fs::write(folder.join(themes::STYLE_FILE), "").unwrap();
+        let hash = themes::folder_hash(&folder).unwrap();
+        themes.store_result(id, &folder, &hash, vec![], 1).unwrap();
+    }
+
+    fn theme_id(id: &str) -> Parameters<ThemeId> {
+        Parameters(ThemeId { id: id.into() })
+    }
+
+    #[test]
+    fn bosun_reads_lists_uses_and_deletes_themes() {
+        let (_dir, store, server) = theme_server();
+        assert!(server.get_theme_guide().unwrap().contains("theme.json"));
+        let nautical: Value = ok(server.get_theme(theme_id(NAUTICAL)));
+        assert!(
+            nautical["files"]["theme.css"]
+                .as_str()
+                .unwrap()
+                .contains("--page:")
+        );
+        assert!(server.use_theme(theme_id("kelp")).is_err());
+
+        passed_theme(&server, "kelp");
+        let listed: Value = ok(server.list_themes());
+        let ids: Vec<&str> = listed["themes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, vec![NAUTICAL, "kelp"]);
+        assert_eq!(listed["selected"], NAUTICAL);
+        let kelp: Value = ok(server.get_theme(theme_id("kelp")));
+        assert_eq!(kelp["status"], "ready");
+        assert!(
+            kelp["files"]["theme.json"]
+                .as_str()
+                .unwrap()
+                .contains("Purser")
+        );
+
+        server.use_theme(theme_id("kelp")).unwrap();
+        assert_eq!(stored(&store).theme_id, "kelp");
+        server.delete_theme(theme_id("kelp")).unwrap();
+        assert_eq!(stored(&store).theme_id, NAUTICAL);
+        assert!(server.get_theme(theme_id("kelp")).is_err());
+        assert!(server.delete_theme(theme_id(NAUTICAL)).is_err());
+    }
+
+    #[test]
+    fn save_theme_refuses_nautical_code_and_a_new_theme_without_a_manifest() {
+        let (_dir, _store, server) = theme_server();
+        let save = |id: &str, files: &[(&str, &str)]| {
+            server.save_theme(Parameters(SaveTheme {
+                id: id.into(),
+                files: files
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+                remove: vec![],
+            }))
+        };
+        assert!(
+            save(NAUTICAL, &[("theme.css", "")])
+                .unwrap_err()
+                .contains("read-only")
+        );
+        assert!(
+            save("kelp", &[("theme.css", "")])
+                .unwrap_err()
+                .contains("theme.json")
+        );
+        assert!(save("kelp", &[("theme.json", "{}"), ("run.js", "x")]).is_err());
+        assert!(save("../kelp", &[("theme.json", "{}")]).is_err());
     }
 
     #[test]
@@ -2416,7 +2790,7 @@ esac
         .await;
         assert_eq!(
             tools["result"]["tools"].as_array().unwrap().len(),
-            TASK_TOOLS.len() + HELPER_TOOLS.len()
+            TASK_TOOLS.len() + HELPER_TOOLS.len() + THEME_TOOLS.len()
         );
         let themed = call(
             &mut lines,

@@ -9,7 +9,7 @@ use std::path::{Component, Path, PathBuf};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-pub use nautical::duplicate_nautical;
+pub use nautical::{duplicate_nautical, nautical_manifest, nautical_tokens};
 
 pub const NAUTICAL: &str = "nautical";
 pub const NAUTICAL_NAME: &str = "Nautical";
@@ -38,7 +38,9 @@ const NOTE_EXTENSIONS: [&str; 2] = ["md", "txt"];
 const FORBIDDEN_IN_TEXT: [char; 4] = ['<', '>', '\n', '\r'];
 const FORBIDDEN_IN_FONT: [&str; 7] = [";", "{", "}", "<", ">", "url(", "\\"];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
     Light,
@@ -328,13 +330,6 @@ impl Themes {
         }
     }
 
-    pub fn for_store_file(db_file: &Path) -> Result<Themes, String> {
-        let data_dir = db_file
-            .parent()
-            .ok_or_else(|| format!("{} has no folder", db_file.display()))?;
-        Ok(Themes::new(default_root()?, data_dir))
-    }
-
     pub fn folder(&self, id: &str) -> Result<PathBuf, String> {
         check_id(id)?;
         Ok(self.root.join(id))
@@ -389,7 +384,9 @@ impl Themes {
         let record = self.record(id);
         let current = folder_hash(&folder).ok();
         let good = record.as_ref().and_then(|r| r.good_hash.clone());
-        let checked = record.as_ref().filter(|r| Some(&r.hash) == current.as_ref());
+        let checked = record
+            .as_ref()
+            .filter(|r| Some(&r.hash) == current.as_ref());
         let status = match (checked, &good) {
             (Some(r), _) if r.passed => Status::Ready,
             (Some(_), _) => Status::Failed,
@@ -591,6 +588,17 @@ pub fn parse_manifest(text: &str) -> Result<Manifest, String> {
 
 pub fn check_folder(folder: &Path) -> (Option<Manifest>, Vec<Finding>) {
     let mut findings = check_files(folder);
+    for (name, path) in theme_files(folder) {
+        if extension(Path::new(&name)).as_deref() == Some("css")
+            && let Ok(css) = fs::read_to_string(&path)
+        {
+            findings.extend(
+                lint_css(&css).into_iter().map(|(line, problem)| {
+                    Finding::in_file(&name, format!("line {line}: {problem}"))
+                }),
+            );
+        }
+    }
     let manifest = match read_manifest(folder) {
         Ok(manifest) => {
             findings.extend(check_manifest(&manifest, folder));
@@ -661,7 +669,9 @@ pub fn check_manifest(manifest: &Manifest, folder: &Path) -> Vec<Finding> {
             if let Err(why) = check_asset_path(file, &ART_EXTENSIONS) {
                 problem(format!("art.{key}: {why}"));
             } else if !folder.join(file).is_file() {
-                problem(format!("art.{key}: {file} does not exist in the theme folder"));
+                problem(format!(
+                    "art.{key}: {file} does not exist in the theme folder"
+                ));
             }
         }
     }
@@ -721,10 +731,8 @@ fn art_slots(art: &Art) -> [(&'static str, &Option<String>); 3] {
 
 pub fn check_asset_path(file: &str, extensions: &[&str]) -> Result<(), String> {
     let path = Path::new(file);
-    let relative = path
-        .components()
-        .all(|c| matches!(c, Component::Normal(_)))
-        && !file.contains('\\');
+    let relative =
+        path.components().all(|c| matches!(c, Component::Normal(_))) && !file.contains('\\');
     if !relative || file.is_empty() {
         return Err(format!(
             "{file} must be a path inside the theme folder, such as art/mark.svg"
@@ -821,6 +829,157 @@ fn check_files(folder: &Path) -> Vec<Finding> {
             MAX_THEME_BYTES / 1024 / 1024
         )));
     }
+    out
+}
+
+const SCRIPT_MARKERS: [&str; 4] = ["expression(", "javascript:", "behavior:", "-moz-binding"];
+
+fn blank(text: &str, open: &str, close: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find(open) {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + open.len()..];
+        let end = after
+            .find(close)
+            .map(|e| e + close.len())
+            .unwrap_or(after.len());
+        let skipped = &rest[start..start + open.len() + end];
+        out.extend(skipped.chars().map(|c| if c == '\n' { '\n' } else { ' ' }));
+        rest = &after[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+fn blank_strings(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for c in text.chars() {
+        match quote {
+            Some(q) => {
+                out.push(if c == '\n' { '\n' } else { ' ' });
+                if escaped {
+                    escaped = false;
+                } else if c == '\\' {
+                    escaped = true;
+                } else if c == q {
+                    quote = None;
+                }
+            }
+            None if c == '"' || c == '\'' => {
+                quote = Some(c);
+                out.push(' ');
+            }
+            None => out.push(c),
+        }
+    }
+    out
+}
+
+fn line_at(text: &str, index: usize) -> usize {
+    text[..index].matches('\n').count() + 1
+}
+
+fn private_selectors(selector: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let chars: Vec<char> = selector.chars().collect();
+    let mut depth = 0;
+    let mut i = 0;
+    while i < chars.len() {
+        match chars[i] {
+            '[' => depth += 1,
+            ']' => depth -= 1,
+            '.' | '#' if depth == 0 => {
+                let name: String = chars[i + 1..]
+                    .iter()
+                    .take_while(|c| c.is_alphanumeric() || **c == '-' || **c == '_')
+                    .collect();
+                let starts_name = name.chars().next().is_some_and(|c| !c.is_ascii_digit());
+                if starts_name {
+                    found.push(format!("{}{name}", chars[i]));
+                }
+                i += name.chars().count();
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    found
+}
+
+fn remote(target: &str) -> bool {
+    let target = target.trim().trim_matches(|c| c == '"' || c == '\'').trim();
+    let lower = target.to_ascii_lowercase();
+    let scheme = lower.split_once(':').map(|(s, _)| s).filter(|s| {
+        s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.')
+    });
+    lower.starts_with("//") || scheme.is_some_and(|s| s != "data")
+}
+
+pub fn lint_css(css: &str) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    let lower = css.to_ascii_lowercase();
+    for marker in SCRIPT_MARKERS {
+        if let Some(at) = lower.find(marker) {
+            out.push((
+                line_at(css, at),
+                format!("{marker} is a script hook; themes hold data, never code"),
+            ));
+        }
+    }
+    let without_comments = blank(css, "/*", "*/");
+    let mut search = 0;
+    while let Some(found) = without_comments[search..].find("url(") {
+        let start = search + found + 4;
+        let end = without_comments[start..]
+            .find(')')
+            .map(|e| start + e)
+            .unwrap_or(without_comments.len());
+        let target = &without_comments[start..end];
+        if remote(target) {
+            out.push((line_at(css, start), format!("url({}) loads from outside the theme; use a file inside the theme folder or a data: URL", target.trim())));
+        }
+        search = end;
+    }
+    for (at, _) in without_comments.match_indices("@import") {
+        let rest = &without_comments[at + 7..];
+        let target = rest.split(';').next().unwrap_or_default().trim();
+        let target = target
+            .strip_prefix("url(")
+            .map(|t| t.trim_end_matches(')'))
+            .unwrap_or(target);
+        if remote(target.split_whitespace().next().unwrap_or_default()) {
+            out.push((
+                line_at(css, at),
+                "@import loads a stylesheet from outside the theme".to_string(),
+            ));
+        }
+    }
+    let code = blank_strings(&without_comments);
+    let mut start = 0;
+    for (at, c) in code.char_indices() {
+        match c {
+            '{' => {
+                let selector = code[start..at].trim();
+                if !selector.starts_with('@') {
+                    for name in private_selectors(selector) {
+                        let line = line_at(
+                            css,
+                            start + code[start..at].find(name.as_str()).unwrap_or(0),
+                        );
+                        out.push((line, format!("{name} selects a private class or id; select a named part such as [data-part=\"card\"] instead")));
+                    }
+                }
+                start = at + 1;
+            }
+            '}' | ';' => start = at + 1,
+            _ => {}
+        }
+    }
+    out.sort();
     out
 }
 
@@ -948,8 +1107,10 @@ mod tests {
 
     #[test]
     fn a_misspelled_key_is_an_error_not_a_silent_default() {
-        let error = parse_manifest(r#"{"fathomTheme": 1, "name": "Reef", "layout": {"chatSides": "left"}}"#)
-            .unwrap_err();
+        let error = parse_manifest(
+            r#"{"fathomTheme": 1, "name": "Reef", "layout": {"chatSides": "left"}}"#,
+        )
+        .unwrap_err();
         assert!(error.contains("chatSides"), "{error}");
         let error =
             parse_manifest(r#"{"fathomTheme": 1, "name": "Reef", "layout": {"board": "grid"}}"#)
@@ -985,10 +1146,22 @@ mod tests {
         assert!(has("fonts.body"), "{problems:?}");
         assert!(has("text.brand"), "{problems:?}");
         assert!(has("text.helper cannot be empty"), "{problems:?}");
-        assert!(has("art.brandMark: ../mark.svg must be a path inside"), "{problems:?}");
-        assert!(has("art.sailor: art/missing.svg does not exist"), "{problems:?}");
-        assert!(has("art.sailorActive: art/eyes.exe must be one of"), "{problems:?}");
-        assert!(has("layout.rowLabelWidth must be between 40 and 320"), "{problems:?}");
+        assert!(
+            has("art.brandMark: ../mark.svg must be a path inside"),
+            "{problems:?}"
+        );
+        assert!(
+            has("art.sailor: art/missing.svg does not exist"),
+            "{problems:?}"
+        );
+        assert!(
+            has("art.sailorActive: art/eyes.exe must be one of"),
+            "{problems:?}"
+        );
+        assert!(
+            has("layout.rowLabelWidth must be between 40 and 320"),
+            "{problems:?}"
+        );
         assert!(has("layout.laneWidth only applies"), "{problems:?}");
     }
 
@@ -1029,6 +1202,39 @@ mod tests {
     }
 
     #[test]
+    fn css_selects_named_parts_and_loads_nothing_from_outside() {
+        let css = r#"/* .old-class is fine in a comment */
+@import url("parts.css");
+@import "https://evil.example/x.css";
+@font-face { font-family: Stamp; src: url("fonts/stamp.woff2"); }
+:root[data-mode="dark"] { --page: #000; }
+[data-part="card"][data-state~="selected"]:hover > svg { color: red; }
+[data-part="a.b"] { content: ".not-a-class"; }
+body { background: url(data:image/svg+xml,%3Csvg%23x) , url('https://cdn.example/t.png'); }
+.card, #root::after { width: expression(alert(1)); }
+@media (max-width: 1.5em) { [data-part="row"] { flex: 1.5; } }
+"#;
+        let problems = lint_css(css);
+        let lines: Vec<usize> = problems.iter().map(|(line, _)| *line).collect();
+        assert_eq!(lines, vec![3, 8, 9, 9, 9], "{problems:?}");
+        assert!(problems[0].1.contains("@import"));
+        assert!(problems[1].1.contains("https://cdn.example/t.png"));
+        let text: Vec<&str> = problems.iter().map(|(_, p)| p.as_str()).collect();
+        assert!(
+            text.iter().any(|p| p.starts_with(".card selects")),
+            "{text:?}"
+        );
+        assert!(
+            text.iter().any(|p| p.starts_with("#root selects")),
+            "{text:?}"
+        );
+        assert!(
+            text.iter().any(|p| p.starts_with("expression(")),
+            "{text:?}"
+        );
+    }
+
+    #[test]
     fn the_hash_follows_content_and_ignores_shots() {
         let (_dir, themes) = themes();
         let folder = theme(&themes, "reef", MANIFEST);
@@ -1047,7 +1253,9 @@ mod tests {
         assert!(themes.can_use("reef").is_err());
 
         let good = folder_hash(&folder).unwrap();
-        themes.store_result("reef", &folder, &good, vec![], 1).unwrap();
+        themes
+            .store_result("reef", &folder, &good, vec![], 1)
+            .unwrap();
         assert_eq!(themes.summary("reef").status, Status::Ready);
         assert_eq!(themes.active("reef").unwrap().version, good);
         assert!(themes.can_use("reef").is_ok());
@@ -1056,7 +1264,9 @@ mod tests {
         assert_eq!(themes.summary("reef").status, Status::ReadyWithChanges);
         let bad = folder_hash(&folder).unwrap();
         let findings = vec![Finding::general("everything is hidden")];
-        themes.store_result("reef", &folder, &bad, findings, 2).unwrap();
+        themes
+            .store_result("reef", &folder, &bad, findings, 2)
+            .unwrap();
         let summary = themes.summary("reef");
         assert_eq!((summary.status, summary.problems), (Status::Failed, 1));
         assert_eq!(themes.active("reef").unwrap().version, good);
@@ -1067,7 +1277,11 @@ mod tests {
     #[test]
     fn lists_nautical_first_then_folders_with_a_manifest() {
         let (_dir, themes) = themes();
-        theme(&themes, "riso", r#"{"fathomTheme": 1, "name": "Riso", "modes": ["light"]}"#);
+        theme(
+            &themes,
+            "riso",
+            r#"{"fathomTheme": 1, "name": "Riso", "modes": ["light"]}"#,
+        );
         fs::create_dir_all(themes.root.join("empty")).unwrap();
         let list = themes.list();
         let ids: Vec<&str> = list.iter().map(|s| s.id.as_str()).collect();
@@ -1082,7 +1296,9 @@ mod tests {
         let (_dir, themes) = themes();
         let folder = theme(&themes, "reef", MANIFEST);
         let hash = folder_hash(&folder).unwrap();
-        themes.store_result("reef", &folder, &hash, vec![], 1).unwrap();
+        themes
+            .store_result("reef", &folder, &hash, vec![], 1)
+            .unwrap();
         themes.delete("reef").unwrap();
         assert!(!folder.exists());
         assert!(!themes.good_copy("reef").exists());

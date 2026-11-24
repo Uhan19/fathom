@@ -48,8 +48,8 @@ fn platform_capture(
                 let tiff = image
                     .TIFFRepresentation()
                     .ok_or("the screenshot has no pixels")?;
-                let bitmap =
-                    NSBitmapImageRep::imageRepWithData(&tiff).ok_or("cannot read the screenshot")?;
+                let bitmap = NSBitmapImageRep::imageRepWithData(&tiff)
+                    .ok_or("cannot read the screenshot")?;
                 let png = unsafe {
                     bitmap.representationUsingType_properties(
                         NSBitmapImageFileType::PNG,

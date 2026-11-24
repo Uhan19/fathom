@@ -23,6 +23,9 @@ import {
   FIXTURE_UNFILED_COLUMNS,
   FIXTURE_WAITS,
   NO_FIXTURE_WAITS,
+  FIXTURE_STRESS_CARDS,
+  FIXTURE_STRESS_COLUMNS,
+  FIXTURE_STRESS_REQUESTS,
   FIXTURE_COLUMNS, FIXTURE_HELPER, FIXTURE_LATE_CARD, FIXTURE_REQUESTS, FIXTURE_SCREEN, FIXTURE_TERMINALS, FIXTURE_WORKERS,
   agentScreen,
   agentTerminal,
@@ -50,7 +53,8 @@ const fixtureTheme = async (id: string | null): Promise<ActiveTheme | null> => {
   return { id, version: "preview", base, manifest };
 };
 const noLabel = params.has("nolabel");
-const failing = params.has("error");
+const stress = params.has("stress");
+const failing = params.has("error") || stress;
 const empty = params.has("empty");
 const backlog = params.has("backlog");
 const unfiled = params.has("unfiled");
@@ -58,7 +62,7 @@ const otherClient = params.get("other")?.match(/^(\d+)x(\d+)$/);
 const sendFails = params.has("sendfail");
 const lateCard = params.has("late");
 const deleteFails = params.has("deletefail");
-const unseenUpdates = params.has("unseen");
+const unseenUpdates = params.has("unseen") || stress;
 const foldedColumns = params.get("folded")?.split(",").filter(Boolean) ?? [];
 const narrowColumns = params.get("narrow")?.split(",").filter(Boolean) ?? [];
 const waits = backlog || params.has("nowaits") ? NO_FIXTURE_WAITS : FIXTURE_WAITS;
@@ -113,7 +117,7 @@ let settings: Settings = {
   agentFolder: "/home/demo",
   chatAgent: rememberedAgent,
   theme: params.get("theme") === "dark" ? "dark" : "light",
-  themeId: checkedTheme?.id ?? params.get("look") ?? NAUTICAL_ID,
+  themeId: params.get("look") ?? checkedTheme?.id ?? NAUTICAL_ID,
   chatOpen: !params.has("nochat"),
   chatWidth: Number(params.get("chatwidth")) || 600,
   detailWidth: Number(params.get("detailwidth")) || 460,
@@ -136,7 +140,7 @@ const openChatTerminal = (agent: AgentKey) => {
 
 const chatScreen = (terminal: string) => (terminal === FIXTURE_AGENT_ADDRESS && openedAgent ? agentScreen(openedAgent) : KITTY_PUSH + FIXTURE_SCREEN);
 const INSTALLED_FONTS = ["American Typewriter", "Andale Mono", "Avenir Next", "Courier New", "Georgia", "Helvetica Neue", "Menlo", "PT Mono", "Times New Roman", "Trebuchet MS"];
-let columns: Column[] = (backlog ? FIXTURE_BACKLOG_COLUMNS : unfiled ? FIXTURE_UNFILED_COLUMNS : FIXTURE_COLUMNS).map((c) => ({
+let columns: Column[] = (backlog ? FIXTURE_BACKLOG_COLUMNS : unfiled ? FIXTURE_UNFILED_COLUMNS : stress ? FIXTURE_STRESS_COLUMNS : FIXTURE_COLUMNS).map((c) => ({
   ...c,
   width: narrowColumns.includes(c.name) ? MIN_COLUMN_WIDTH : c.width,
   collapsed: foldedColumns.includes(c.name),
@@ -144,10 +148,10 @@ let columns: Column[] = (backlog ? FIXTURE_BACKLOG_COLUMNS : unfiled ? FIXTURE_U
 let updates = empty ? { marks: {}, seen: {} } : (backlog ? fixtureBacklogUpdates : fixtureUpdates)(unseenUpdates);
 let nextColumnId = columns.length + 1;
 const rowNames = new Map<string, string>();
-const collapsedRows = new Set(params.get("rows")?.split(",").filter(Boolean) ?? []);
-let cards: Card[] = empty ? [] : backlog ? FIXTURE_BACKLOG_CARDS : unfiled ? FIXTURE_UNFILED_CARDS : FIXTURE_CARDS;
+const collapsedRows = new Set([...(params.get("rows")?.split(",").filter(Boolean) ?? []), ...(stress ? ["landed"] : [])]);
+let cards: Card[] = empty ? [] : backlog ? FIXTURE_BACKLOG_CARDS : unfiled ? FIXTURE_UNFILED_CARDS : stress ? FIXTURE_STRESS_CARDS : FIXTURE_CARDS;
 let places: CardPlace[] = [];
-let requests: MoveRequest[] = empty ? [] : (backlog ? FIXTURE_BACKLOG_REQUESTS : FIXTURE_REQUESTS).map((r) => ({ ...r }));
+let requests: MoveRequest[] = empty ? [] : (backlog ? FIXTURE_BACKLOG_REQUESTS : stress ? FIXTURE_STRESS_REQUESTS(FIXTURE_REQUESTS) : FIXTURE_REQUESTS).map((r) => ({ ...r }));
 const OPEN = ["sending", "asked", "failed", "answered"];
 const overlay = (): Overlay => ({ places, requests: requests.filter((r) => OPEN.includes(r.status)) });
 

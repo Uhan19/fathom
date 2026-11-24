@@ -63,6 +63,7 @@ Add `?focus=48,57` to start with the board focused on those task numbers.
 Add `?unseen` to light the cards that have an update you have not read, and `?folded=pilot-infra,keel-cli` to start with those columns collapsed; `?unseen&folded=pilot-infra&rows=deep` shows a lit card, a lit column header and a lit row band at once.
 Add `?narrow=pilot-infra` to start those columns at the minimum width, and `?nowaits` to leave out the invented waits so an external hold shows its own box.
 Add `?bosun=` with `notstarted`, `dormant`, `starting`, `ready`, `working`, `asking`, `signedout`, `missing`, `failed` or `stopped` to see that Bosun state; open the drawer with the Bosun rail under the board.
+Add `?look=` with `phosphor`, `switchboard` or `riso` to see one of the fixture [themes](#themes) from `fixtures/themes`, and `?stress` for the sample board the theme check uses.
 
 ## Run the checks
 
@@ -72,6 +73,11 @@ pnpm check
 
 This runs the TypeScript compiler, the vitest suite, `cargo fmt --check`, `cargo clippy -D warnings`, and `cargo test`.
 GitHub Actions runs the same checks on Ubuntu 24.04 for every pull request and every push to `main`.
+
+`scripts/check-fixture-themes.sh` runs the [theme check](#the-theme-check) on the fixture themes in `fixtures/themes`.
+Phosphor, Switchboard, Riso and Plain must pass; the hostile themes, one that hides everything and one that is white on white, must fail without blocking the reset shortcut.
+It builds the debug binary and starts the dev server on port 1420 when none is running.
+It opens windows, so on Linux run it under `xvfb-run -a`, as CI does.
 
 Four Rust tests are ignored by default because they need outside state:
 
@@ -205,7 +211,7 @@ The database holds Fathom's own backlog and what Fathom adds on top of either ta
 - columns (generated id, project or none for an added column, name, order, width, collapsed, deleted),
 - row names and which rows are collapsed,
 - task numbers: each task's number, its task source and its Firstmate name or backlog id, as described in [Task numbers](#task-numbers),
-- settings, including the theme, whether the chat panel is open, the panel widths, the project filter, the agent filter and the task focus,
+- settings, including the selected theme, light or dark mode, whether the chat panel is open, the panel widths, the project filter, the agent filter and the task focus,
 - card places: a card's order within its cell and the column the user put it in (by column id),
 - move requests (board requests) and what became of them,
 - the latest agent update you have read on each card, kept per task source, as described in [Unread updates](#unread-updates),
@@ -224,6 +230,7 @@ release/<version>/Fathom.app/Contents/MacOS/fathom --export <directory>
 On Linux, run `fathom --export <directory>` after installing the Debian package, or pass `--export` to the AppImage.
 
 [Bosun](#bosun) keeps its own folder, `bosun`, beside the database.
+The last version of each [theme](#themes) that passed its check is kept in a `themes` folder beside the database, with its check result; Fathom shows themes from there.
 
 Deleting the database resets Fathom; nothing in Firstmate's home is affected.
 
@@ -360,10 +367,17 @@ The tools write through the same code as the window's own controls and never cha
 | `set_agent_filter` | Shows every card (`all`), only cards with an agent (`withAgent`), or only cards with an active agent (`withActiveAgent`). |
 | `focus_tasks` | Shows only the given tasks, each named by number (`42` or `"#42"`) or Firstmate name, and returns them with their `number` and `name`; entries that match no task come back under `unknown`. |
 | `clear_focus` | Ends the focus and puts back the project and agent filters from before it. |
-| `set_theme` | Switches between the light and dark theme. |
+| `set_theme` | Switches between light and dark mode. |
 | `set_fonts` | Changes the chat and board fonts and sizes. |
 | `set_panels` | Opens or closes the chat panel and changes the chat and card detail widths. |
 | `set_connection` | Changes the Firstmate home, the chat terminal label, the herdr-core session and socket, and the agent folder. |
+| `get_theme_guide` | Reads the [theme guide](docs/themes.md). |
+| `list_themes` | Lists Nautical and the themes in the themes folder, with their check status and the selected one. |
+| `get_theme` | Reads a theme's files and its last check result; for `nautical`, the files Duplicate would write. |
+| `use_theme` | Switches to a theme that passed its check; `use_theme nautical` always goes back. |
+| `save_theme` | Writes a theme's text files, creating it if new, runs the check and returns its problems. |
+| `delete_theme` | Deletes a theme's folder, after asking; Fathom goes back to Nautical if it was selected. |
+| `shot_theme` | Renders the theme over the invented sample board and returns the paths of the screenshots. |
 
 ### Board requests and the nudge
 
@@ -519,7 +533,8 @@ Fathom asks your login shell for its PATH once at startup and uses it to find he
 - Agent folder, default your home directory: the folder Claude Code and Codex start in when the chat panel opens them.
 - herdr-core session and socket; empty means herdr-core's defaults.
 - Row names.
-- Appearance: a font and a size for the chat, and a font and a size for the board.
+- Appearance: the [theme](#themes), a font and a size for the chat, and a font and a size for the board.
+  A theme that sets fonts wins over these menus, which then show "Set by the theme".
   The font menus offer fonts that come with each system: SF Mono, Menlo, Monaco and Courier New for the chat on macOS, and JetBrains Mono (bundled with Fathom), DejaVu Sans Mono, Liberation Mono and Noto Sans Mono on Linux.
   The chat font defaults to SF Mono on macOS and to JetBrains Mono on Linux.
   "Add an installed font…" in either font menu lists every font family installed on the computer (through fontconfig on Linux), each shown in its own face.
@@ -532,6 +547,46 @@ The "Dark mode" switch in the header turns the panels, cards and terminals dark,
 The board rows keep their light bands in both themes.
 Fathom remembers the theme, whether the chat panel is open, the chat and card panel widths, which rows are collapsed, the agent filter and the task focus across launches.
 The selected card and the crewmate view you are watching are not remembered.
+
+## Themes
+
+A theme restyles the whole window: colors, fonts, art, textures, decorative text and layout, while every control keeps working.
+Nautical is the built-in theme.
+Other themes are folders in `~/.config/fathom/themes`, or `$XDG_CONFIG_HOME/fathom/themes` on Linux when that is set; to share a theme, send its folder.
+The [theme guide](docs/themes.md) describes the folder, `theme.json`, the named parts, the layout options and the check; Fathom rewrites it as `GUIDE.md` in the themes folder on every start, for agents that edit themes directly.
+
+- Pick a theme in Settings under Appearance.
+  Changes show at once while the dialog is open; Save keeps them and Cancel puts them back.
+- "Duplicate Nautical" copies the built-in theme's tokens into a new folder as a starting point, and "Open themes folder" opens the folder.
+- [Bosun](#bosun) makes and changes themes when asked, and any agent can edit the theme files directly.
+- Shift+Command+0 on macOS or Ctrl+Shift+0 on Linux always goes back to Nautical, and so do `fathom --default-theme` and asking Bosun to use the Nautical theme.
+  No theme can block these, and no other shortcut can take those keys.
+
+Themes are data, never code: `theme.json`, `theme.css` loaded after Fathom's own styles, and art, texture and font files, served to the window through the `fathom-theme` scheme.
+`theme.css` selects named parts such as `[data-part="card"]` and control ids such as `[data-control="open-settings"]`, never Fathom's class names.
+Layout that moves where things are clicked, dragged or resized goes through declared options that Fathom implements: the chat on the left or right, the board as rows or lanes, the header at the top, at the bottom or as a rail, the card detail as a side panel or an overlay, and a few structural sizes.
+
+### The theme check
+
+```sh
+fathom theme check <folder> [--json]
+```
+
+The check renders an invented sample board with the theme, offscreen, in each mode the theme has, at 1600 by 1000 and at the smallest window.
+It compares every control with Nautical's: each must be present, visible, reachable by a click and labelled, and text must keep a contrast of at least 3:1; only a declared layout option may remove a control.
+Then it drags cards, reorders projects, resizes the panels, switches light and dark, and presses the reset shortcut.
+It prints each problem with the control or part, what failed and a screenshot in the theme's `.shots/check/`, and exits 1 when there is any.
+Fathom runs it whenever a theme in the themes folder changes and uses a theme only once it passes; after a failed change it keeps showing the last version that passed.
+On macOS the program is `Fathom.app/Contents/MacOS/fathom`.
+
+### Theme screenshots
+
+```sh
+fathom theme shot <folder> [--mode light|dark] [--size desktop|min]
+```
+
+This renders the same invented sample board with the theme and writes PNG screenshots of the board, a card's detail, Settings and the chat with the helper drawer into the theme's `.shots/`.
+Agents look at a theme only this way: neither the check nor the screenshots ever show the real board, so no real task, terminal or name reaches a model.
 
 ## Showing only some projects
 
@@ -593,8 +648,10 @@ The dot beside Bosun's name is green when it is ready, blue while it works, and 
 - Bosun keeps running when Fathom quits, and Fathom finds it again by its label next time.
 
 Fathom starts Bosun through herdr-core the same way as the [chat terminal](#opening-a-terminal), labeled `fathom.role=helper`, in a `bosun` folder beside the database.
-Claude Code starts with `--model haiku`, `--mcp-config` and `--strict-mcp-config` for `fathom --mcp --helper` alone, `--allowedTools mcp__fathom`, a `--settings` file and a short system prompt.
-The settings file asks before `delete_column` and `set_connection`, and its hooks tell Fathom when Claude Code is asking for permission.
+Claude Code starts with `--model haiku`, `--mcp-config` and `--strict-mcp-config` for `fathom --mcp --helper` alone, `--allowedTools` for the fathom tools, delegation and reading the themes folder, an `--agents` definition, a `--settings` file and a short system prompt.
+The settings file asks before `delete_column`, `delete_theme` and `set_connection`, and its hooks tell Fathom when Claude Code is asking for permission.
+Theme work runs on a stronger model: the system prompt hands every request about how Fathom looks to a `theme-designer` subagent defined with `--agents`, which runs on Sonnet with the theme tools and `Read` for the theme screenshots, while everything else stays on Haiku.
+The system prompt names the helper after the selected theme's `text.helper`, from Bosun's next start.
 Fathom writes both files on every start and never changes Claude Code's own configuration.
 
 ## Chat panel and herdr-core

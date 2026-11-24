@@ -34,8 +34,8 @@ pub fn nautical_tokens() -> String {
 
 pub fn duplicate_nautical(themes: &Themes, name: &str) -> Result<String, String> {
     let id = themes.free_id(name);
-    let manifest = serde_json::to_string_pretty(&nautical_manifest(name.trim()))
-        .map_err(|e| e.to_string())?;
+    let manifest =
+        serde_json::to_string_pretty(&nautical_manifest(name.trim())).map_err(|e| e.to_string())?;
     let files = BTreeMap::from([
         (MANIFEST_FILE.to_string(), format!("{manifest}\n")),
         (STYLE_FILE.to_string(), nautical_tokens()),
@@ -69,9 +69,7 @@ fn token_blocks(css: &str) -> String {
         let declarations: Vec<&str> = body
             .split(';')
             .map(str::trim)
-            .filter(|d| {
-                d.starts_with("--") || KEPT_PROPERTIES.iter().any(|p| d.starts_with(p))
-            })
+            .filter(|d| d.starts_with("--") || KEPT_PROPERTIES.iter().any(|p| d.starts_with(p)))
             .collect();
         if declarations.is_empty() {
             continue;
@@ -129,6 +127,9 @@ mod tests {
         assert_eq!(manifest.text.helper.as_deref(), Some("Bosun"));
         let (_, findings) = check_folder(&folder);
         assert!(findings.is_empty(), "{findings:?}");
-        assert_eq!(duplicate_nautical(&themes, "Nautical").unwrap(), "nautical-3");
+        assert_eq!(
+            duplicate_nautical(&themes, "Nautical").unwrap(),
+            "nautical-3"
+        );
     }
 }

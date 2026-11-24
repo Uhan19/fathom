@@ -1,0 +1,3 @@
+[data-part="app"] * {
+  visibility: hidden !important;
+}

@@ -65,8 +65,8 @@
   --info-line: var(--sb-red);
   --mark-shallows: var(--sb-red);
   --status-busy: var(--sb-red);
-  --accent-ink: var(--sb-ink);
-  --signal-ink: var(--sb-ink);
+  --accent-ink: var(--sb-red-ink);
+  --signal-ink: var(--sb-red-ink);
   --pill-ink: var(--sb-ink);
   --header-bg: var(--sb-paper);
   --header-ink: var(--sb-ink);
@@ -336,6 +336,7 @@ dialog {
 
 /* Board: stages are lanes (layout.board), projects run top to bottom */
 [data-part="board-scroll"] {
+  scroll-padding: 64px 0 0 var(--row-label-width);
   color-scheme: inherit;
   background-image: radial-gradient(var(--sb-dot) 1px, transparent 1.4px);
   background-size: 14px 14px;

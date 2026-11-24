@@ -29,7 +29,7 @@ const REPORT_FILE: &str = "check.json";
 const LOCK_EXTENSION: &str = "lock";
 const USAGE: &str = "usage: fathom theme check <folder> [--json] [--force]\n       fathom theme shot <folder> [--mode light|dark] [--size desktop|min] [--json]";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Size {
     Desktop,
@@ -151,6 +151,7 @@ struct Run {
 struct PlanTheme {
     id: String,
     version: String,
+    base: String,
     manifest: Manifest,
 }
 
@@ -305,7 +306,13 @@ fn execute(context: tauri::Context, request: &Request, data_dir: &Path) -> Resul
                 shots = report.shots;
             }
             if kept {
-                themes.store_result(&id, &folder, &hash, findings.clone(), crate::state::now_ms())?;
+                themes.store_result(
+                    &id,
+                    &folder,
+                    &hash,
+                    findings.clone(),
+                    crate::state::now_ms(),
+                )?;
             }
             let outcome = Outcome {
                 theme: id,
@@ -370,6 +377,7 @@ fn render(
             theme: PlanTheme {
                 id: id.to_string(),
                 version: version.to_string(),
+                base: crate::commands::theme_base(id),
                 manifest,
             },
             runs,
@@ -397,21 +405,20 @@ fn render(
         .setup(move |app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-            let window = WebviewWindowBuilder::new(
-                app,
-                WINDOW_LABEL,
-                WebviewUrl::App(HARNESS_PAGE.into()),
-            )
-            .title("Fathom theme check")
-            .inner_size(f64::from(width), f64::from(height))
-            .position(0.0, 0.0)
-            .resizable(true)
-            .decorations(false)
-            .skip_taskbar(true)
-            .focused(false)
-            .visible(false)
-            .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
-            .build()?;
+            let window =
+                WebviewWindowBuilder::new(app, WINDOW_LABEL, WebviewUrl::App(HARNESS_PAGE.into()))
+                    .title("Fathom theme check")
+                    .inner_size(f64::from(width), f64::from(height))
+                    .position(0.0, 0.0)
+                    .resizable(true)
+                    .decorations(false)
+                    .skip_taskbar(true)
+                    .focused(false)
+                    .visible(false)
+                    .background_throttling(
+                        tauri::utils::config::BackgroundThrottlingPolicy::Disabled,
+                    )
+                    .build()?;
             snapshot::hide_offscreen(&window);
             window.show()?;
             let handle = app.handle().clone();
@@ -469,7 +476,8 @@ async fn check_snapshot(
     let relative = shot_path(&name)?;
     let target = session.folder.join(&relative);
     if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
     }
     tauri::async_runtime::spawn_blocking(move || snapshot::capture(&window, target))
         .await
@@ -619,7 +627,9 @@ mod tests {
             }))
         );
         assert_eq!(
-            parse(&args(&["theme", "shot", "riso", "--mode", "dark", "--size", "min"])),
+            parse(&args(&[
+                "theme", "shot", "riso", "--mode", "dark", "--size", "min"
+            ])),
             Some(Ok(Request {
                 folder: PathBuf::from("riso"),
                 job: Job::Shot {
@@ -691,7 +701,10 @@ mod tests {
 
     #[test]
     fn screenshot_names_stay_inside_the_shots_folder() {
-        assert_eq!(shot_path("check/light-desktop-board").unwrap(), ".shots/check/light-desktop-board.png");
+        assert_eq!(
+            shot_path("check/light-desktop-board").unwrap(),
+            ".shots/check/light-desktop-board.png"
+        );
         for bad in ["", "../x", "a//b", "A", "a.png", "/abs"] {
             assert!(shot_path(bad).is_err(), "{bad}");
         }

@@ -11,7 +11,12 @@ use crate::themes::{SHOTS_DIR, Themes, folder_hash};
 pub const EVENT_THEMES: &str = "themes://updated";
 const SETTLE: Duration = Duration::from_millis(800);
 
-pub fn start(app: AppHandle, themes: Themes, program: PathBuf, db_file: PathBuf) -> Result<RecommendedWatcher, String> {
+pub fn start(
+    app: AppHandle,
+    themes: Themes,
+    program: PathBuf,
+    db_file: PathBuf,
+) -> Result<RecommendedWatcher, String> {
     let (changed, changes) = mpsc::channel::<()>();
     let root = themes.root.clone();
     std::thread::spawn(move || check_changes(&app, &themes, &program, &db_file, &changes));
@@ -36,7 +41,13 @@ fn counts(path: &Path) -> bool {
         .any(|c| matches!(c, Component::Normal(name) if name == SHOTS_DIR))
 }
 
-fn check_changes(app: &AppHandle, themes: &Themes, program: &Path, db_file: &Path, changes: &mpsc::Receiver<()>) {
+fn check_changes(
+    app: &AppHandle,
+    themes: &Themes,
+    program: &Path,
+    db_file: &Path,
+    changes: &mpsc::Receiver<()>,
+) {
     while changes.recv().is_ok() {
         loop {
             match changes.recv_timeout(SETTLE) {
@@ -48,7 +59,8 @@ fn check_changes(app: &AppHandle, themes: &Themes, program: &Path, db_file: &Pat
         let _ = app.emit(EVENT_THEMES, ());
         for id in stale(themes) {
             let folder = themes.root.join(&id);
-            if let Err(error) = run_subprocess(program, &check_args(&folder, Some(db_file), false)) {
+            if let Err(error) = run_subprocess(program, &check_args(&folder, Some(db_file), false))
+            {
                 eprintln!("fathom: checking the theme {id} failed: {error}");
             }
             let _ = app.emit(EVENT_THEMES, ());
@@ -79,13 +91,19 @@ mod tests {
         for id in ["riso", "kelp"] {
             let folder = themes.root.join(id);
             std::fs::create_dir_all(&folder).unwrap();
-            std::fs::write(folder.join(MANIFEST_FILE), r#"{"fathomTheme":1,"name":"T"}"#).unwrap();
+            std::fs::write(
+                folder.join(MANIFEST_FILE),
+                r#"{"fathomTheme":1,"name":"T"}"#,
+            )
+            .unwrap();
             std::fs::write(folder.join("theme.css"), "").unwrap();
         }
         assert_eq!(stale(&themes), vec!["kelp", "riso"]);
         let riso = themes.root.join("riso");
         let hash = folder_hash(&riso).unwrap();
-        themes.store_result("riso", &riso, &hash, vec![], 1).unwrap();
+        themes
+            .store_result("riso", &riso, &hash, vec![], 1)
+            .unwrap();
         assert_eq!(stale(&themes), vec!["kelp"]);
         std::fs::write(riso.join("theme.css"), "body {}").unwrap();
         assert_eq!(stale(&themes), vec!["kelp", "riso"]);

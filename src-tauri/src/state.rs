@@ -415,7 +415,16 @@ impl AppState {
             })?;
         let server = self.fathom_server()?;
         let shell = shell_path::login_shell().map(PathBuf::from);
-        let terminal = launch::open_helper(&self.herdr, &server, shell.as_deref(), &claude)?;
+        let theme_id = self.settings.lock().unwrap().theme_id.clone();
+        let look = launch::HelperLook {
+            name: self
+                .themes
+                .active(&theme_id)
+                .and_then(|active| active.manifest.text.helper)
+                .unwrap_or_else(|| launch::DEFAULT_HELPER_NAME.to_string()),
+            themes_root: self.themes.root.clone(),
+        };
+        let terminal = launch::open_helper(&self.herdr, &server, shell.as_deref(), &claude, &look)?;
         let db = self.db.lock().unwrap();
         let remembered = settings::remember_helper_started(&db)
             .and_then(|()| settings::set_helper_asking(&db, false));
