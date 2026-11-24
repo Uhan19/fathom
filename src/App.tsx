@@ -48,6 +48,7 @@ import { waitsOf } from "./waits";
 import { applyLook, themedTokens } from "./themes/apply";
 import { LookContext } from "./themes/context";
 import { isSingleMode, lookOf, NAUTICAL_LOOK, shownMode, type Look } from "./themes/look";
+import { previewRequests } from "./themes/previews";
 import { RESET_EVENT } from "./themes/reset";
 import { useOverlayDetail } from "./overlayDetail";
 import { states } from "./parts";
@@ -149,11 +150,9 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   const shownLook = lookPreview ?? look;
   const themeId = settings?.themeId;
 
-  const previewingRef = useRef(false);
-  previewingRef.current = lookPreview !== null;
-  const previewRequest = useRef(0);
+  const [previews] = useState(previewRequests);
   const endPreview = () => {
-    previewRequest.current += 1;
+    previews.end();
     setLookPreview(null);
   };
 
@@ -166,7 +165,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
       .catch(() => NAUTICAL_LOOK)
       .then(async (next) => {
         if (!alive) return;
-        if (!previewingRef.current) await applyLook(next);
+        if (!previews.open) await applyLook(next);
         if (alive) setLook(next);
       });
     return () => {
@@ -193,8 +192,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
       void applyLook(look);
       return;
     }
-    const request = ++previewRequest.current;
-    const current = () => request === previewRequest.current;
+    const current = previews.start();
     void api
       .activeTheme(id)
       .then(lookOf)
@@ -712,8 +710,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
           onSaved={onSettingsSaved}
           onClose={() => {
             setPreview(null);
-            if (lookPreview) previewLook(null);
-            else endPreview();
+            previewLook(null);
             setSettingsOpen(false);
           }}
         />

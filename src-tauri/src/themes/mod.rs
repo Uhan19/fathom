@@ -135,8 +135,6 @@ pub struct Layout {
     pub collapsed_width: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lane_width: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rail_width: Option<u32>,
 }
 
 pub struct SizeRange {
@@ -145,7 +143,7 @@ pub struct SizeRange {
     pub max: u32,
 }
 
-pub const SIZE_RANGES: [SizeRange; 4] = [
+pub const SIZE_RANGES: [SizeRange; 3] = [
     SizeRange {
         key: "rowLabelWidth",
         min: 40,
@@ -161,21 +159,11 @@ pub const SIZE_RANGES: [SizeRange; 4] = [
         min: 180,
         max: 480,
     },
-    SizeRange {
-        key: "railWidth",
-        min: 160,
-        max: 360,
-    },
 ];
 
 impl Layout {
-    fn sizes(&self) -> [Option<u32>; 4] {
-        [
-            self.row_label_width,
-            self.collapsed_width,
-            self.lane_width,
-            self.rail_width,
-        ]
+    fn sizes(&self) -> [Option<u32>; 3] {
+        [self.row_label_width, self.collapsed_width, self.lane_width]
     }
 }
 
@@ -709,9 +697,6 @@ pub fn check_manifest(manifest: &Manifest, folder: &Path) -> Vec<Finding> {
     }
     if manifest.layout.lane_width.is_some() && manifest.layout.board != BoardShape::Lanes {
         problem("layout.laneWidth only applies with layout.board set to lanes".into());
-    }
-    if manifest.layout.rail_width.is_some() && manifest.layout.header != HeaderPlace::Rail {
-        problem("layout.railWidth only applies with layout.header set to rail".into());
     }
     if let Some(source) = &manifest.cloned_from
         && check_id(source).is_err()

@@ -7,7 +7,6 @@ const SIZE_TOKENS = {
   rowLabelWidth: "--row-label-width",
   collapsedWidth: "--collapsed-width",
   laneWidth: "--lane-width",
-  railWidth: "--rail-width",
 } as const;
 
 export function themedTokens(look: Look): string[] {

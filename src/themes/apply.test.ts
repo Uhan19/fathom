@@ -20,7 +20,6 @@ describe("applying a look", () => {
       "--row-label-width": "58px",
       "--collapsed-width": "44px",
       "--lane-width": "260px",
-      "--rail-width": "236px",
       "--body-font": "Georgia, serif",
     });
     expect(themedTokens(riso)).toEqual(["--body-font"]);

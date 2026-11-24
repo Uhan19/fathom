@@ -11,9 +11,9 @@ export function blockedBehind(app: HTMLElement): HTMLElement[] {
   return around.filter((el) => el !== main && !el.matches(OVERLAY_PARTS));
 }
 
-export function closesOnEscape(event: Pick<KeyboardEvent, "key" | "defaultPrevented" | "target">): boolean {
-  const target = event.target instanceof Element ? event.target : null;
-  return event.key === "Escape" && !event.defaultPrevented && !target?.closest(TERMINAL) && !target?.closest(OPEN_DIALOG);
+export function closesOnEscape(event: Pick<KeyboardEvent, "key" | "defaultPrevented" | "target">, page: Pick<Document, "querySelector">): boolean {
+  const target = event.target as Partial<Element> | null;
+  return event.key === "Escape" && !event.defaultPrevented && !target?.closest?.(TERMINAL) && !page.querySelector(OPEN_DIALOG);
 }
 
 export function useOverlayDetail(appRef: RefObject<HTMLElement | null>, open: boolean, close: () => void) {
@@ -28,7 +28,7 @@ export function useOverlayDetail(appRef: RefObject<HTMLElement | null>, open: bo
     blocked.forEach((el) => (el.inert = true));
     app.querySelector<HTMLElement>(CLOSE)?.focus();
     const escape = (e: KeyboardEvent) => {
-      if (!closesOnEscape(e)) return;
+      if (!closesOnEscape(e, document)) return;
       e.preventDefault();
       closeRef.current();
     };

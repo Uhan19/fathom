@@ -10,5 +10,5 @@
   },
   "text": { "brand": "switchboard", "helper": "Operator", "projects": "Projects ↓", "surfaceLead": "", "shallowsLead": "" },
   "art": { "brandMark": "art/mark.svg", "sailor": "art/operator.svg", "sailorActive": "art/operator-live.svg" },
-  "layout": { "chatSide": "left", "board": "lanes", "header": "rail", "rowLabelWidth": 160, "laneWidth": 210, "railWidth": 236 }
+  "layout": { "chatSide": "left", "board": "lanes", "header": "rail", "rowLabelWidth": 160, "laneWidth": 210 }
 }

@@ -80,14 +80,13 @@ Fathom implements each one, including dragging, resizing and keyboard behaviour.
 | --- | --- | --- |
 | `chatSide` | `right` (default), `left` | The chat panel sits on that side and its handle resizes outward. |
 | `board` | `rows` (default), `lanes` | `lanes` turns the stages into columns and the projects into rows. Card drops, project reordering and the collapse arrows follow; projects have no width handle in lanes. |
-| `header` | `top` (default), `rail` | `rail` puts the header in a column on the left from 1280 pixels wide, and back on top below that. A header at the bottom is plain CSS: `[data-part="app"] { flex-direction: column-reverse; }`. |
+| `header` | `top` (default), `rail` | `rail` puts the header in a column on the left from 1280 pixels wide, and back on top below that; the column is `--rail-width` wide, 236 pixels unless `theme.css` sets it. A header at the bottom is plain CSS: `[data-part="app"] { flex-direction: column-reverse; }`. |
 | `detail` | `side` (default), `overlay` | `overlay` opens a card's detail as a dialog over the board with a scrim: Escape or a click on the scrim closes it, and the board behind cannot be reached. It has no width handle. |
 | `rowLabelWidth` | 40 to 320 pixels | The first track, which holds the row names (rows) or the project names (lanes). Nautical: 150. |
 | `collapsedWidth` | 32 to 96 pixels | A folded column or lane. Nautical: 44. |
 | `laneWidth` | 180 to 480 pixels | Each stage in lanes; only with `board: lanes`. Default 260. |
-| `railWidth` | 160 to 360 pixels | The header rail; only with `header: rail`. Default 236. |
 
-The options and the sizes are also set as attributes and custom properties on the root element, for the CSS to follow: `data-chat-side`, `data-board`, `data-header`, `data-detail`, `--row-label-width`, `--collapsed-width`, `--lane-width` and `--rail-width`.
+The options and the sizes are also set as attributes and custom properties on the root element, for the CSS to follow: `data-chat-side`, `data-board`, `data-header`, `data-detail`, `--row-label-width`, `--collapsed-width` and `--lane-width`.
 Set the sizes in `theme.json`, not in `theme.css`: Fathom sets these properties itself, so a value in `theme.css` has no effect.
 
 Fathom also sets these custom properties, which a theme may read but never needs to set:
@@ -158,7 +157,8 @@ Add `--json` for a JSON result.
 A check takes about a minute.
 
 Fathom runs the check whenever a theme in the themes folder changes, and uses a theme only after it passes.
-When a change fails, Fathom keeps showing the theme's last good version, and Settings shows the problems.
+When a change fails, Fathom keeps showing the theme's last good version, and Settings shows how many problems the check found.
+The problems themselves come from `fathom theme check <folder>` or the theme's `.shots/check.json`.
 
 ## Shots
 

@@ -36,7 +36,6 @@ export interface ThemeLayout {
   rowLabelWidth?: number;
   collapsedWidth?: number;
   laneWidth?: number;
-  railWidth?: number;
 }
 
 export interface ThemeManifest {

@@ -17,7 +17,6 @@ export interface LookLayout {
   rowLabelWidth: number;
   collapsedWidth: number;
   laneWidth: number;
-  railWidth: number;
 }
 
 export interface Look {
@@ -48,7 +47,6 @@ export const DEFAULT_LAYOUT: LookLayout = {
   rowLabelWidth: 150,
   collapsedWidth: 44,
   laneWidth: 260,
-  railWidth: 236,
 };
 
 export const BOTH_MODES: Mode[] = ["light", "dark"];
@@ -92,8 +90,4 @@ export function isSingleMode(look: Look): boolean {
 
 export function shownMode(look: Look, chosen: Mode): Mode {
   return look.modes.includes(chosen) ? chosen : look.modes[0];
-}
-
-export function setsFonts(look: Look): boolean {
-  return Object.keys(look.fonts).length > 0;
 }

@@ -8,14 +8,13 @@ use super::{
 const APP_STYLES: &str = include_str!("../../../src/styles.css");
 const TOKEN_SELECTOR: &str = ":root";
 const KEPT_PROPERTIES: [&str; 1] = ["color-scheme"];
-const APP_OWNED_TOKENS: [&str; 7] = [
+const APP_OWNED_TOKENS: [&str; 6] = [
     "--body-font",
     "--heading",
     "--board-scale",
     "--row-label-width",
     "--collapsed-width",
     "--lane-width",
-    "--rail-width",
 ];
 
 pub fn nautical_manifest(name: &str) -> Manifest {
