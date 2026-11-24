@@ -730,8 +730,10 @@ impl Fathom {
                 format!(
                     "The theme passed its check. Call use_theme with {id} to switch to it, or shot_theme to look at it."
                 )
-            } else {
+            } else if self.themes().is_ok_and(|t| t.active(id).is_some()) {
                 "The theme failed its check, so Fathom keeps showing its last good version. Fix every problem and save again.".into()
+            } else {
+                "The theme failed its check, so Fathom cannot use it yet. Fix every problem and save again.".into()
             },
         }
     }

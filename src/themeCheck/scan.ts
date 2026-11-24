@@ -60,8 +60,8 @@ function accessibleName(el: Element): string {
     clean(el.getAttribute("aria-label")) ||
     byId ||
     label ||
-    clean(el.getAttribute("title")) ||
     clean(el.textContent) ||
+    clean(el.getAttribute("title")) ||
     clean(el.getAttribute("placeholder")) ||
     clean(el.getAttribute("alt"))
   );
