@@ -100,6 +100,7 @@ pub fn run() {
             app.manage(metrics::Metrics::start(
                 app.handle().clone(),
                 Arc::clone(&state),
+                data_dir.clone(),
             ));
             app.manage(state);
             app.manage(std::sync::Arc::new(pulls::PrCache::default()));
@@ -167,6 +168,7 @@ pub fn run() {
             commands::reveal_themes_folder,
             commands::set_metrics_demand,
             commands::memory_sample,
+            commands::token_report,
         ])
         .build(context)
         .expect("error while building Fathom");

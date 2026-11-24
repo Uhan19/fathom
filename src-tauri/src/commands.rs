@@ -14,6 +14,7 @@ use crate::fonts;
 use crate::herdr::{Terminal, View};
 use crate::launch::{Agent, LaunchError};
 use crate::metrics::memory::MemorySample;
+use crate::metrics::tokens::TokenReport;
 use crate::metrics::{Demand, Metrics};
 use crate::moves::Placement;
 use crate::pulls::{PrCache, PrStatus};
@@ -505,4 +506,9 @@ pub async fn memory_sample(
     let state = Arc::clone(&state);
     let metrics = Arc::clone(&metrics);
     blocking(move || metrics.memory(&state)).await
+}
+
+#[tauri::command]
+pub fn token_report(metrics: State<'_, Arc<Metrics>>) -> Option<TokenReport> {
+    metrics.tokens()
 }

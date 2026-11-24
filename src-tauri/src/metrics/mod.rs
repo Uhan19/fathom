@@ -1,10 +1,11 @@
 pub mod memory;
 mod procs;
+pub mod tokens;
 
 use std::collections::{BTreeMap, HashMap};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 use tauri::{AppHandle, Emitter};
@@ -15,9 +16,15 @@ use crate::source::Source;
 use crate::state::{AppState, now_ms};
 use crate::workers::LIVE;
 use memory::{Machine, MemorySample, Roots, TerminalRoot, WorkerRoot};
+use tokens::{Roles, Store, TokenReport};
 
 pub const EVENT_MEMORY: &str = "metrics://memory";
+pub const EVENT_TOKENS: &str = "metrics://tokens";
 const MEMORY_EVERY: Duration = Duration::from_secs(3);
+const TOKENS_EVERY: Duration = Duration::from_secs(60);
+const CLAUDE_CONFIG_ENV: &str = "CLAUDE_CONFIG_DIR";
+const CLAUDE_DIR: &str = ".claude";
+const TRANSCRIPTS_DIR: &str = "projects";
 const SESSION_LOCK: &str = "state/.lock";
 const MAX_ANCESTRY: usize = 64;
 
@@ -33,14 +40,23 @@ pub struct Metrics {
     demand: Mutex<Demand>,
     wake: Condvar,
     latest: Mutex<Option<MemorySample>>,
+    latest_tokens: Mutex<Option<TokenReport>>,
 }
 
 impl Metrics {
-    pub fn start(app: AppHandle, state: Arc<AppState>) -> Arc<Metrics> {
+    pub fn start(app: AppHandle, state: Arc<AppState>, data_dir: PathBuf) -> Arc<Metrics> {
         let metrics = Arc::new(Metrics::default());
         let sampler = Arc::clone(&metrics);
-        std::thread::spawn(move || sampler.run_memory(&app, &state));
+        let memory_app = app.clone();
+        let memory_state = Arc::clone(&state);
+        std::thread::spawn(move || sampler.run_memory(&memory_app, &memory_state));
+        let reader = Arc::clone(&metrics);
+        std::thread::spawn(move || reader.run_tokens(&app, &state, &data_dir));
         metrics
+    }
+
+    pub fn tokens(&self) -> Option<TokenReport> {
+        self.latest_tokens.lock().unwrap().clone()
     }
 
     pub fn set_demand(&self, demand: Demand) {
@@ -69,10 +85,82 @@ impl Metrics {
             } else {
                 *self.latest.lock().unwrap() = None;
             }
-            let guard = self.demand.lock().unwrap();
-            let (guard, _) = self.wake.wait_timeout(guard, MEMORY_EVERY).unwrap();
-            demand = *guard;
+            demand = self.wait(MEMORY_EVERY);
         }
+    }
+
+    fn run_tokens(&self, app: &AppHandle, state: &AppState, data_dir: &Path) {
+        let mut store: Option<Store> = None;
+        let mut last_read: Option<Instant> = None;
+        let mut demand = *self.demand.lock().unwrap();
+        loop {
+            let due = last_read.is_none_or(|at| at.elapsed() >= TOKENS_EVERY);
+            if demand.dashboard && due {
+                match read_tokens(&mut store, state, data_dir) {
+                    Ok(report) => {
+                        let _ = app.emit(EVENT_TOKENS, &report);
+                        *self.latest_tokens.lock().unwrap() = Some(report);
+                    }
+                    Err(error) => eprintln!("fathom: cannot read token usage: {error}"),
+                }
+                last_read = Some(Instant::now());
+            }
+            let left =
+                last_read.map_or(TOKENS_EVERY, |at| TOKENS_EVERY.saturating_sub(at.elapsed()));
+            demand = self.wait(left.max(Duration::from_millis(1)));
+        }
+    }
+
+    fn wait(&self, timeout: Duration) -> Demand {
+        let guard = self.demand.lock().unwrap();
+        let (guard, _) = self.wake.wait_timeout(guard, timeout).unwrap();
+        *guard
+    }
+}
+
+fn read_tokens(
+    store: &mut Option<Store>,
+    state: &AppState,
+    data_dir: &Path,
+) -> Result<TokenReport, String> {
+    if store.is_none() {
+        *store = Some(Store::open(&data_dir.join(tokens::STORE_FILE))?);
+    }
+    let store = store.as_mut().ok_or("the token store is not open")?;
+    let now = now_ms();
+    if let Some(root) = transcripts_root() {
+        store.scan(&root, now)?;
+    }
+    let (prices, prices_error) = tokens::load_prices(&data_dir.join(tokens::PRICES_FILE));
+    let days = tokens::local_days(now, tokens::DAYS);
+    let mut report = tokens::report(store, &token_roles(state, data_dir), &prices, &days, now)?;
+    report.prices_error = prices_error;
+    Ok(report)
+}
+
+fn transcripts_root() -> Option<PathBuf> {
+    let config = std::env::var_os(CLAUDE_CONFIG_ENV)
+        .map(PathBuf::from)
+        .or_else(|| std::env::home_dir().map(|home| home.join(CLAUDE_DIR)))?;
+    Some(config.join(TRANSCRIPTS_DIR))
+}
+
+fn token_roles(state: &AppState, data_dir: &Path) -> Roles {
+    let (home, chat_folder) = match state.source() {
+        Source::Firstmate { home } => (Some(home), None),
+        Source::Backlog => {
+            let folder = state.settings.lock().unwrap().agent_folder.clone();
+            (
+                None,
+                Some(PathBuf::from(folder)).filter(|f| !f.as_os_str().is_empty()),
+            )
+        }
+    };
+    Roles {
+        home,
+        chat_folder,
+        assistant_folder: data_dir.join(launch::HELPER_DIR),
+        titles: card_titles(state),
     }
 }
 
