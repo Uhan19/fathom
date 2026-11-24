@@ -169,11 +169,12 @@ Clone it to `~/Documents/firstmate` so Fathom finds it without any setting.
    git clone https://github.com/kunchenguid/firstmate ~/Documents/firstmate
    ```
 
-2. Set the runtime backend to hc, so crewmates run in herdr-core terminals Fathom can show.
+2. Set the runtime backend to hc, so crewmates run in herdr-core terminals Fathom can show, and create the `data` folder for the task list.
    `config/backend` is a local, gitignored file whose first line selects the backend (Firstmate `docs/configuration.md`, "Backend selection order").
+   `data/` is gitignored too, so a fresh clone has none, and until it exists `bin/fm-tasks-axi.sh` refuses to list tasks.
 
    ```sh
-   mkdir -p ~/Documents/firstmate/config
+   mkdir -p ~/Documents/firstmate/config ~/Documents/firstmate/data
    echo hc > ~/Documents/firstmate/config/backend
    ```
 

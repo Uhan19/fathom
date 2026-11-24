@@ -2,7 +2,7 @@
 
 Instead of running each install step from the [README](../README.md#requirements) yourself, you can hand the whole setup to a coding agent such as Codex or Claude Code.
 Copy the block below in one go and paste it into the agent, running on the macOS or Linux computer where you want Fathom.
-The agent asks you which coding agent Fathom should use, asks before every install, skips what is already there, and tells you at the end what it did and what is left for you.
+The agent asks you which coding agent Fathom should use, asks before every install, skips what is already there (if you choose Firstmate, it also upgrades Firstmate's tools to their latest versions), and tells you at the end what it did and what is left for you.
 
 ````text
 Set up Fathom on this computer, end to end, by following this sheet.
@@ -15,6 +15,7 @@ It needs herdr-core to open agent terminals in its chat panel, and a coding agen
   Show the exact command when you ask, and wait for a yes.
 - Before installing anything, check whether it is already there.
   If it is, report the version you found and skip it.
+  Step 8 is the exception for the tools Firstmate needs: compare the installed version with the latest one and, after asking, upgrade an older copy.
 - Install Firstmate only after the user says yes to it in step 8.
 - Commands that need an interactive sign-in or a password prompt you cannot answer are for the user: tell them the command and continue.
 - If a step fails twice, stop that step, note why, and move on to the next one if it does not depend on it.
@@ -199,16 +200,80 @@ Replace FATHOM_BIN with the full path from step 3.
 
 Ask the user, in one line: "Fathom works best with Firstmate (https://github.com/kunchenguid/firstmate), which runs a crew of coding agents for you; Fathom then shows its tasks instead of its own backlog. Set it up? (recommended)"
 If the answer is anything but a clear yes, skip it.
-If yes: it needs git, the GitHub CLI signed in with `gh auth login`, and Claude Code (install Claude Code as in step 5 if it is missing, after asking).
-Then, after asking:
+If yes: Firstmate runs on Claude Code (install it as in step 5 if it is missing, after asking) and needs the tools below, each at its latest version.
+
+### Firstmate's tools
+
+For each tool, read the installed version, find the latest one, and then:
+
+- Missing: ask, then run its install command.
+- Older than the latest: ask, then run its upgrade command.
+- Already the latest: report the version and skip it.
+
+Homebrew formulas (macOS): git, gh, jq, node.
+
+- Installed version: `brew list --versions <name>`. Latest: run `brew update` once, then `brew outdated <name>` prints the formula only when it is older.
+- Install: `brew install <name>`. Upgrade: `brew upgrade <name>`.
+- If `brew` is missing, put "install Homebrew from https://brew.sh" on the left-for-the-user list and continue with the tools that do not need it.
+- A copy that Homebrew did not install, such as Apple's git in `/usr/bin`, stays as it is: report its version and where it lives.
+- On Linux use the distribution's package manager instead (`sudo apt-get install <name>`, and `sudo apt-get install --only-upgrade <name>` to upgrade).
+  The GitHub CLI comes from its own package repository: https://github.com/cli/cli/blob/trunk/docs/install_linux.md.
+  If the distribution's Node is older than the current release at https://nodejs.org, install Node from there instead.
+
+npm packages: tasks-axi, quota-axi, gh-axi, chrome-devtools-axi, lavish-axi.
+
+- Installed version: `<name> --version`. Latest: `npm view <name> version`.
+- Install: `npm install -g <name>@latest`.
+  Then, only on a first install of gh-axi, chrome-devtools-axi or lavish-axi, run `<name> setup hooks`, which adds that tool's hooks to the coding agent's settings.
+- Upgrade: `npm install -g <name>@latest`. Do not run `setup hooks` again.
+
+Tools with their own installer:
+
+- no-mistakes: installed version `no-mistakes --version`.
+  Latest: `curl -fsSLI -o /dev/null -w '%{url_effective}\n' https://github.com/kunchenguid/no-mistakes/releases/latest`, the end of the printed URL after `/tag/v`.
+  Install: `curl -fsSL https://raw.githubusercontent.com/kunchenguid/no-mistakes/main/docs/install.sh | sh`.
+  Upgrade: `no-mistakes update`, which also restarts its background daemon.
+- treehouse: installed version `treehouse --version`.
+  Latest: `curl -fsSLI -o /dev/null -w '%{url_effective}\n' https://github.com/kunchenguid/treehouse/releases/latest`, the end of the printed URL after `/tag/v`.
+  Install: `curl -fsSL https://kunchenguid.github.io/treehouse/install.sh | sh`.
+  Upgrade: `treehouse update`.
+- herdr-core: installed version `herdr-core --version`, which prints `hc <version>`.
+  Latest: the `version` in `curl -fsSL https://releases.herdr.dev/core/latest.json`.
+  Install as in step 4. Upgrade: `herdr-core update`.
+- Claude Code: install as in step 5.
+  Upgrade: `claude update`, which installs the latest version when the installed one is older.
+
+The GitHub CLI must also be signed in: check with `gh auth status`; exit code 0 means signed in.
+Otherwise put "run `gh auth login`" on the left-for-the-user list.
+
+This list follows Firstmate's own toolchain check, `bin/fm-bootstrap.sh`, for the herdr-core (`hc`) backend that Fathom uses.
+
+### Clone and configure Firstmate
+
+Already cloned when `~/Documents/firstmate/bin/fm-tasks-axi.sh` exists; then skip the clone but still run the other lines.
+Otherwise, after asking:
 
 ```sh
 git clone https://github.com/kunchenguid/firstmate ~/Documents/firstmate
-mkdir -p ~/Documents/firstmate/config
+mkdir -p ~/Documents/firstmate/config ~/Documents/firstmate/data
 echo hc > ~/Documents/firstmate/config/backend
 ```
 
-Put "run `claude` in `~/Documents/firstmate` once and approve the tools it offers to install, including tasks-axi" on the left-for-the-user list.
+The `data` folder holds Firstmate's task list.
+Git does not track it, so a fresh clone has none, and until it exists the Firstmate wrapper that Fathom reads tasks through refuses to list any.
+
+Then set Claude Code workers to auto permission mode.
+Without the setting, Firstmate starts each Claude Code worker with `--dangerously-skip-permissions`, and the worker stops on Claude Code's Bypass Permissions confirmation.
+With `auto`, Firstmate starts workers with `--permission-mode auto` instead (https://github.com/kunchenguid/firstmate/blob/main/docs/configuration.md#claude-permission-mode-configclaude-permission-mode).
+If `~/Documents/firstmate/config/claude-permission-mode` already exists, report its content and ask before replacing it.
+Otherwise ask: "Should Firstmate start its Claude Code workers in Claude's auto permission mode, so they never stop on the Bypass Permissions confirmation? (recommended)"
+If yes:
+
+```sh
+echo auto > ~/Documents/firstmate/config/claude-permission-mode
+```
+
+Put "run `claude` in `~/Documents/firstmate` once to start the first mate, and approve anything its toolchain check still offers to install" on the left-for-the-user list.
 Fathom reads Firstmate's tasks from `~/Documents/firstmate` by itself the next time it starts.
 
 ## Step 9: Check that Fathom launches and sees the agent
