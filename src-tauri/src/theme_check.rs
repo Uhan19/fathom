@@ -17,7 +17,6 @@ pub const THEME_COMMAND: &str = "theme";
 const CHECK: &str = "check";
 const SHOT: &str = "shot";
 const JSON_FLAG: &str = "--json";
-const FORCE_FLAG: &str = "--force";
 const MODE_FLAG: &str = "--mode";
 const SIZE_FLAG: &str = "--size";
 pub const CHECK_TIMEOUT: Duration = Duration::from_secs(300);
@@ -27,7 +26,7 @@ const HARNESS_PAGE: &str = "themecheck.html";
 const CHECK_SHOTS: &str = "check";
 const REPORT_FILE: &str = "check.json";
 const LOCK_EXTENSION: &str = "lock";
-const USAGE: &str = "usage: fathom theme check <folder> [--json] [--force]\n       fathom theme shot <folder> [--mode light|dark] [--size desktop|min] [--json]";
+const USAGE: &str = "usage: fathom theme check <folder> [--json]\n       fathom theme shot <folder> [--mode light|dark] [--size desktop|min] [--json]";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
@@ -77,7 +76,7 @@ fn mode_name(mode: Mode) -> &'static str {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Job {
-    Check { force: bool },
+    Check,
     Shot { mode: Option<Mode>, size: Size },
 }
 
@@ -100,14 +99,12 @@ fn parse_request(args: &[String]) -> Result<Request, String> {
     let (verb, rest) = args.split_first().ok_or_else(usage)?;
     let mut folder = None;
     let mut json = false;
-    let mut force = false;
     let mut mode = None;
     let mut size = Size::Desktop;
     let mut words = rest.iter();
     while let Some(word) = words.next() {
         match word.as_str() {
             JSON_FLAG => json = true,
-            FORCE_FLAG if verb == CHECK => force = true,
             MODE_FLAG if verb == SHOT => mode = Some(parse_mode(words.next().ok_or_else(usage)?)?),
             SIZE_FLAG if verb == SHOT => size = Size::parse(words.next().ok_or_else(usage)?)?,
             crate::mcp::DB_FLAG => {
@@ -120,7 +117,7 @@ fn parse_request(args: &[String]) -> Result<Request, String> {
     }
     let folder = folder.ok_or_else(usage)?;
     let job = match verb.as_str() {
-        CHECK => Job::Check { force },
+        CHECK => Job::Check,
         SHOT => Job::Shot { mode, size },
         _ => return Err(usage()),
     };
@@ -211,7 +208,7 @@ fn runs_for(manifest: &Manifest, job: &Job) -> Vec<Run> {
         }
     };
     match job {
-        Job::Check { .. } => manifest
+        Job::Check => manifest
             .modes
             .iter()
             .flat_map(|&mode| [Size::Desktop, Size::Min].map(|size| run(mode, size)))
@@ -300,91 +297,104 @@ fn execute(context: tauri::Context, request: &Request, data_dir: &Path) -> Resul
     let kept = fs::canonicalize(&themes.root)
         .ok()
         .is_some_and(|root| folder.parent() == Some(root.as_path()));
-    match &request.job {
-        Job::Check { force } => {
-            let _lock = if kept {
-                Some(Lock::acquire(&themes.store, &id)?)
-            } else {
-                None
-            };
-            let hash = folder_hash(&folder)?;
-            if kept
-                && !force
-                && let Some(record) = themes.record(&id).filter(|r| r.hash == hash)
-            {
-                return Ok(Outcome {
-                    theme: id,
-                    passed: record.passed,
-                    cached: true,
-                    findings: record.findings,
-                    shots: Vec::new(),
-                });
-            }
-            let (manifest, mut findings) = check_folder(&folder);
-            let mut shots = Vec::new();
-            if let Some(manifest) = manifest.filter(|_| findings.is_empty()) {
-                let _ = fs::remove_dir_all(folder.join(SHOTS_DIR).join(CHECK_SHOTS));
-                let report = render(
-                    context,
-                    &folder,
-                    &id,
-                    &hash,
-                    manifest,
-                    &request.job,
-                    &themes.store,
-                )?;
-                findings.extend(report.findings);
-                shots = report.shots;
-            }
-            if kept {
-                themes.store_result(
-                    &id,
-                    &folder,
-                    &hash,
-                    findings.clone(),
-                    crate::state::now_ms(),
-                )?;
-            }
-            let outcome = Outcome {
-                theme: id,
-                passed: findings.is_empty(),
-                cached: false,
-                findings,
-                shots,
-            };
-            write_report(&folder, &outcome);
-            Ok(outcome)
-        }
-        Job::Shot { .. } => {
-            let (manifest, findings) = check_folder(&folder);
-            let Some(manifest) = manifest.filter(|_| findings.is_empty()) else {
-                return Ok(Outcome {
-                    theme: id,
-                    passed: false,
-                    cached: false,
-                    findings,
-                    shots: Vec::new(),
-                });
-            };
-            let hash = folder_hash(&folder)?;
-            let report = render(
-                context,
-                &folder,
-                &id,
-                &hash,
-                manifest,
-                &request.job,
-                &themes.store,
-            )?;
-            Ok(Outcome {
-                theme: id,
-                passed: report.findings.is_empty(),
-                cached: false,
-                findings: report.findings,
-                shots: report.shots,
-            })
-        }
+    let _lock = if kept {
+        Some(Lock::acquire(&themes.store, &id)?)
+    } else {
+        None
+    };
+    let snapshot = themes.snapshot(&id, &folder)?;
+    let hash = folder_hash(&snapshot.dir)?;
+    if kept
+        && request.job == Job::Check
+        && let Some(record) = themes.record(&id).filter(|r| r.hash == hash)
+    {
+        return Ok(Outcome {
+            theme: id,
+            passed: record.passed,
+            cached: true,
+            findings: record.findings,
+            shots: Vec::new(),
+        });
     }
+    let (manifest, mut findings) = check_folder(&snapshot.dir);
+    let Some(manifest) = manifest.filter(|_| findings.is_empty()) else {
+        return finish(
+            &themes,
+            kept,
+            &id,
+            &snapshot.dir,
+            &folder,
+            &hash,
+            request,
+            findings,
+            Vec::new(),
+        );
+    };
+    if request.job == Job::Check {
+        let _ = fs::remove_dir_all(folder.join(SHOTS_DIR).join(CHECK_SHOTS));
+    }
+    let rendering = Rendering {
+        shots: &folder,
+        served: &snapshot.dir,
+        id: &id,
+        version: &hash,
+        store: &themes.store,
+    };
+    let report = render(context, &rendering, manifest, &request.job)?;
+    findings.extend(report.findings);
+    finish(
+        &themes,
+        kept,
+        &id,
+        &snapshot.dir,
+        &folder,
+        &hash,
+        request,
+        findings,
+        report.shots,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish(
+    themes: &Themes,
+    kept: bool,
+    id: &str,
+    checked: &Path,
+    folder: &Path,
+    hash: &str,
+    request: &Request,
+    findings: Vec<Finding>,
+    shots: Vec<String>,
+) -> Result<Outcome, String> {
+    let outcome = Outcome {
+        theme: id.to_string(),
+        passed: findings.is_empty(),
+        cached: false,
+        findings,
+        shots,
+    };
+    if request.job == Job::Check {
+        if kept {
+            themes.store_result(
+                id,
+                checked,
+                hash,
+                outcome.findings.clone(),
+                crate::state::now_ms(),
+            )?;
+        }
+        write_report(folder, &outcome);
+    }
+    Ok(outcome)
+}
+
+struct Rendering<'a> {
+    shots: &'a Path,
+    served: &'a Path,
+    id: &'a str,
+    version: &'a str,
+    store: &'a Path,
 }
 
 fn write_report(folder: &Path, outcome: &Outcome) {
@@ -398,20 +408,24 @@ fn write_report(folder: &Path, outcome: &Outcome) {
 
 fn render(
     mut context: tauri::Context,
-    folder: &Path,
-    id: &str,
-    version: &str,
+    rendering: &Rendering,
     manifest: Manifest,
     job: &Job,
-    store: &Path,
 ) -> Result<HarnessReport, String> {
+    let Rendering {
+        shots: folder,
+        served,
+        id,
+        version,
+        store,
+    } = *rendering;
     context.config_mut().app.windows.clear();
     let runs = runs_for(&manifest, job);
     let (width, height) = runs[0].size.pixels();
     let session = Arc::new(Session {
         plan: Plan {
             job: match job {
-                Job::Check { .. } => CHECK,
+                Job::Check => CHECK,
                 Job::Shot { .. } => SHOT,
             },
             theme: PlanTheme {
@@ -427,7 +441,7 @@ fn render(
         report: Mutex::new(None),
     });
     let served_id = id.to_string();
-    let served_folder = folder.to_path_buf();
+    let served_folder = served.to_path_buf();
     let app = tauri::Builder::default()
         .register_uri_scheme_protocol(themes::scheme::SCHEME, move |_ctx, request| {
             themes::scheme::serve(request.uri().path(), |asked| {
@@ -440,6 +454,7 @@ fn render(
             check_plan,
             check_resize,
             check_snapshot,
+            check_pixels,
             check_log,
             check_baseline,
             check_keep_baseline,
@@ -507,6 +522,9 @@ fn check_resize(window: tauri::WebviewWindow, width: u32, height: u32) -> Result
 
 #[tauri::command]
 fn check_baseline(session: SessionRef, mode: Mode, size: Size) -> Option<serde_json::Value> {
+    if cfg!(debug_assertions) {
+        return None;
+    }
     let text = fs::read_to_string(baseline_file(&session.baselines, mode, size)).ok()?;
     serde_json::from_str(&text).ok()
 }
@@ -554,6 +572,20 @@ async fn check_snapshot(
         .await
         .map_err(|e| e.to_string())??;
     Ok(relative)
+}
+
+#[tauri::command]
+async fn check_pixels(window: tauri::WebviewWindow) -> Result<String, String> {
+    use base64::Engine as _;
+    let target =
+        std::env::temp_dir().join(format!("fathom-theme-check-{}.png", std::process::id()));
+    let captured = target.clone();
+    tauri::async_runtime::spawn_blocking(move || snapshot::capture(&window, captured))
+        .await
+        .map_err(|e| e.to_string())??;
+    let bytes = fs::read(&target).map_err(|e| format!("cannot read the screenshot: {e}"))?;
+    let _ = fs::remove_file(&target);
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
 }
 
 #[tauri::command]
@@ -644,16 +676,13 @@ pub fn run_subprocess(program: &Path, args: &[String]) -> Result<Outcome, String
     })
 }
 
-pub fn check_args(folder: &Path, db_file: Option<&Path>, force: bool) -> Vec<String> {
+pub fn check_args(folder: &Path, db_file: Option<&Path>) -> Vec<String> {
     let mut args = vec![
         THEME_COMMAND.to_string(),
         CHECK.to_string(),
         folder.display().to_string(),
         JSON_FLAG.to_string(),
     ];
-    if force {
-        args.push(FORCE_FLAG.to_string());
-    }
     if let Some(db) = db_file {
         args.extend([crate::mcp::DB_FLAG.to_string(), db.display().to_string()]);
     }
@@ -693,7 +722,7 @@ mod tests {
             parse(&args(&["theme", "check", "/t/riso", "--json"])),
             Some(Ok(Request {
                 folder: PathBuf::from("/t/riso"),
-                job: Job::Check { force: false },
+                job: Job::Check,
                 json: true,
             }))
         );
@@ -715,6 +744,7 @@ mod tests {
             vec!["theme", "check"],
             vec!["theme", "paint", "riso"],
             vec!["theme", "check", "riso", "--mode", "dark"],
+            vec!["theme", "check", "riso", "--force"],
             vec!["theme", "shot", "riso", "--mode", "dusk"],
             vec!["theme", "shot", "riso", "--size"],
             vec!["theme", "check", "a", "b"],
@@ -725,11 +755,11 @@ mod tests {
 
     #[test]
     fn the_subprocess_arguments_read_back() {
-        let check = check_args(Path::new("/t/riso"), Some(Path::new("/d/f.sqlite")), true);
+        let check = check_args(Path::new("/t/riso"), Some(Path::new("/d/f.sqlite")));
         let request = parse(&args(&check.iter().map(String::as_str).collect::<Vec<_>>()))
             .unwrap()
             .unwrap();
-        assert_eq!(request.job, Job::Check { force: true });
+        assert_eq!(request.job, Job::Check);
         assert!(request.json);
         let shot = shot_args(Path::new("/t/riso"), Some(Mode::Light), Size::Min);
         let request = parse(&args(&shot.iter().map(String::as_str).collect::<Vec<_>>()))
@@ -747,7 +777,7 @@ mod tests {
     #[test]
     fn a_check_renders_every_declared_mode_at_both_sizes_and_a_shot_one_view() {
         let mut manifest = themes::parse_manifest(r#"{"fathomTheme":1,"name":"Riso"}"#).unwrap();
-        let check = runs_for(&manifest, &Job::Check { force: false });
+        let check = runs_for(&manifest, &Job::Check);
         let pairs: Vec<_> = check.iter().map(|r| (r.mode, r.size)).collect();
         assert_eq!(
             pairs,

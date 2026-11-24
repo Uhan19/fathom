@@ -3,7 +3,7 @@ import { compareView, expectedLabel, type Allowances } from "./compare";
 import type { ControlScan, ViewScan } from "./scan";
 
 const control = (key: string, over: Partial<ControlScan> = {}): ControlScan => ({ key, control: key.split("@")[0], state: "ok", name: key, text: "", ...over });
-const view = (controls: ControlScan[], lowContrast: ViewScan["lowContrast"] = []): ViewScan => ({ view: "board", controls, lowContrast, missingIds: [] });
+const view = (controls: ControlScan[], texts: ViewScan["texts"] = []): ViewScan => ({ view: "board", controls, texts, missingIds: [] });
 const NONE: Allowances = { singleMode: false, lanes: false, overlay: false, helper: "Bosun" };
 const WHERE = { mode: "light" as const, size: "desktop" };
 
@@ -46,14 +46,27 @@ describe("compareView", () => {
     expect(compareView(baseline, themed, { ...NONE, helper: "Sysop" }, WHERE)).toEqual([]);
   });
 
-  it("reports text that drops below 3:1 only where the built-in theme was readable", () => {
-    const baseline = view([], [{ key: "card-note|Until 2026", part: "card-note", ratio: 2.5 }]);
+  it("never lets text get less readable than in Nautical, and holds readable text to 3:1", () => {
+    const baseline = view([], [
+      { key: "card-note|Until 2026", part: "card-note", ratio: 2.5 },
+      { key: "phrase|Ship dark mode", part: "phrase", ratio: 12 },
+      { key: "row-count|10", part: "row-count", ratio: 2.5 },
+    ]);
     const themed = view([], [
       { key: "card-note|Until 2026", part: "card-note", ratio: 1.1 },
-      { key: "phrase|Ship dark mode", part: "phrase", ratio: 1 },
+      { key: "phrase|Ship dark mode", part: "phrase", ratio: 2.9 },
+      { key: "row-count|10", part: "row-count", ratio: 2.6 },
+      { key: "brand-name|KELP", part: "brand-name", ratio: 4.5 },
     ]);
     expect(compareView(baseline, themed, NONE, WHERE)).toEqual([
-      { view: "board", mode: "light", size: "desktop", part: "phrase", problem: 'the text "Ship dark mode" has a contrast of 1:1, below 3:1' },
+      { view: "board", mode: "light", size: "desktop", part: "card-note", problem: 'the text "Until 2026" has a contrast of 1.1:1, below 2.5:1' },
+      { view: "board", mode: "light", size: "desktop", part: "phrase", problem: 'the text "Ship dark mode" has a contrast of 2.9:1, below 3:1' },
     ]);
+  });
+
+  it("reports a control whose box no longer shows anything, as under an opaque layer that lets clicks through", () => {
+    const baseline = view([control("open-settings", { ink: 9 }), control("column-resize@column=1", { ink: 1 })]);
+    const themed = view([control("open-settings", { ink: 1.02 }), control("column-resize@column=1", { ink: 1 })]);
+    expect(compareView(baseline, themed, NONE, WHERE).map((f) => f.control)).toEqual(["open-settings"]);
   });
 });

@@ -1,4 +1,5 @@
-import { contrast, MIN_CONTRAST, over, parseColor, type Rgba } from "./contrast";
+import { contrast, over, parseColor, type Rgba } from "./contrast";
+import { ground, luminances, ratioOf, spread, type Pixels } from "./pixels";
 
 type FrameWindow = Window & typeof globalThis;
 
@@ -12,6 +13,7 @@ export interface ControlScan {
   name: string;
   text: string;
   cover?: string;
+  ink?: number;
 }
 
 export interface TextScan {
@@ -23,8 +25,20 @@ export interface TextScan {
 export interface ViewScan {
   view: ViewName;
   controls: ControlScan[];
-  lowContrast: TextScan[];
+  texts: TextScan[];
   missingIds: string[];
+}
+
+export interface Probe {
+  controls: Map<string, Element>;
+  texts: Map<string, PaintedText>;
+}
+
+export interface PaintedText {
+  el: Element;
+  text: number;
+  background: number;
+  underlaid: boolean;
 }
 
 export const CONTROLS =
@@ -33,7 +47,10 @@ const INSTANCE_ATTRIBUTES = ["data-key", "data-id", "data-column", "data-row"];
 const SKIPPED = '[data-part="terminal-host"], [aria-hidden="true"], [data-check-outline]';
 const MIN_SIZE = 4;
 const MIN_OPACITY = 0.3;
+const MIN_FONT_PX = 4;
+const OVERLAY_SHIFT = 1.25;
 const WHITE: Rgba = { r: 255, g: 255, b: 255, a: 1 };
+const FIELDS = "select, input, textarea";
 
 const clean = (text: string | null | undefined) => (text ?? "").replace(/\s+/g, " ").trim();
 
@@ -67,18 +84,40 @@ function accessibleName(el: Element): string {
   );
 }
 
+const readable = (style: CSSStyleDeclaration) => parseFloat(style.fontSize) >= MIN_FONT_PX && style.visibility === "visible";
+
 function pseudoText(el: Element, win: FrameWindow, pseudo: "::before" | "::after"): string {
-  const content = win.getComputedStyle(el, pseudo).content;
-  const quoted = content.match(/^"(.*)"$/);
-  return quoted ? quoted[1] : "";
+  const style = win.getComputedStyle(el, pseudo);
+  const quoted = style.content.match(/^"(.*)"$/);
+  return quoted && readable(style) ? quoted[1] : "";
 }
 
-const FIELDS = "select, input, textarea";
+const overlaps = (a: DOMRect, b: DOMRect) => a.width > 0 && a.height > 0 && a.right > b.left && a.left < b.right && a.bottom > b.top && a.top < b.bottom;
+
+function shownText(node: Text, bounds: DOMRect, win: FrameWindow): boolean {
+  const parent = node.parentElement;
+  if (!parent || !readable(win.getComputedStyle(parent))) return false;
+  const range = win.document.createRange();
+  range.selectNodeContents(node);
+  return [...range.getClientRects()].some((rect) => overlaps(rect, bounds));
+}
 
 export function renderedText(el: Element, win: FrameWindow): string {
   if (el.matches(FIELDS)) return "";
-  const inner = el instanceof win.HTMLElement ? el.innerText : (el.textContent ?? "");
-  return clean(`${pseudoText(el, win, "::before")} ${inner} ${pseudoText(el, win, "::after")}`);
+  const bounds = el.getBoundingClientRect();
+  const parts: string[] = [];
+  const walk = (node: Node) => {
+    if (node.nodeType === 3) {
+      if (shownText(node as Text, bounds, win)) parts.push(node.textContent ?? "");
+      return;
+    }
+    if (!(node instanceof win.Element)) return;
+    parts.push(pseudoText(node, win, "::before"));
+    node.childNodes.forEach(walk);
+    parts.push(pseudoText(node, win, "::after"));
+  };
+  walk(el);
+  return clean(parts.join(" "));
 }
 
 function effectiveOpacity(el: Element, win: FrameWindow): number {
@@ -122,7 +161,7 @@ function scrollPositions(doc: Document): [Element, number, number][] {
   return [...doc.querySelectorAll("*")].filter((n) => n.scrollTop || n.scrollLeft).map((n) => [n, n.scrollTop, n.scrollLeft]);
 }
 
-export function scanControls(scope: Element, win: FrameWindow): { controls: ControlScan[]; missingIds: string[] } {
+export function scanControls(scope: Element, win: FrameWindow, probe?: Probe): { controls: ControlScan[]; missingIds: string[] } {
   const doc = win.document;
   const scrolled = scrollPositions(doc);
   const seen = new Map<string, number>();
@@ -143,6 +182,7 @@ export function scanControls(scope: Element, win: FrameWindow): { controls: Cont
     const state = stateOf(el, win, name);
     const cover = state === "covered" ? describeElement(topAt(el, el.getBoundingClientRect(), win)) : undefined;
     controls.push({ key, control, state, name, text: renderedText(el, win), ...(cover ? { cover } : {}) });
+    probe?.controls.set(key, el);
   }
   for (const [node, top, left] of scrolled) {
     node.scrollTop = top;
@@ -165,29 +205,39 @@ function paintedBelow(el: Element, win: FrameWindow): Element[] | null {
   return at < 0 ? null : stack.slice(at);
 }
 
-function backgroundOf(el: Element, win: FrameWindow): Rgba {
+function backgroundOf(el: Element, win: FrameWindow): { color: Rgba; underlaid: boolean } {
   const layers: Rgba[] = [];
+  let underlaid = false;
   const below = paintedBelow(el, win);
   const chain: Element[] = below ?? [];
   if (!below) for (let node: Element | null = el; node; node = node.parentElement) chain.push(node);
   for (const node of chain) {
-    const color = parseColor(win.getComputedStyle(node).backgroundColor);
+    const style = win.getComputedStyle(node);
+    if (style.backgroundImage !== "none") underlaid = true;
+    const color = parseColor(style.backgroundColor);
     if (color && color.a > 0) {
       layers.push(color);
       if (color.a >= 1) break;
     }
   }
-  return layers.reduceRight((below, layer) => over(layer, below), WHITE);
+  return { color: layers.reduceRight((below, layer) => over(layer, below), WHITE), underlaid };
+}
+
+function luminanceOf({ r, g, b }: Rgba): number {
+  const channel = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
 }
 
 function ownText(el: Element): string {
   return clean([...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(" "));
 }
 
-export function scanContrast(scope: Element, win: FrameWindow): TextScan[] {
-  const out: TextScan[] = [];
-  const candidates = [scope, ...scope.querySelectorAll("*")];
-  for (const el of candidates) {
+export function scanTexts(scope: Element, win: FrameWindow, probe?: Probe): TextScan[] {
+  const lowest = new Map<string, TextScan>();
+  for (const el of [scope, ...scope.querySelectorAll("*")]) {
     const text = ownText(el);
     if (!text || el.closest(SKIPPED) || el.closest("option, select, script, style, title")) continue;
     const style = win.getComputedStyle(el);
@@ -195,16 +245,74 @@ export function scanContrast(scope: Element, win: FrameWindow): TextScan[] {
     if (el.closest(":disabled, [aria-disabled='true']")) continue;
     const color = parseColor(style.color);
     if (!color) continue;
+    const { color: background, underlaid } = backgroundOf(el, win);
     const faded = { ...color, a: color.a * effectiveOpacity(el, win) };
-    const ratio = contrast(faded, backgroundOf(el, win));
-    if (ratio >= MIN_CONTRAST) continue;
+    const ratio = Math.round(contrast(faded, background) * 100) / 100;
+    const solid = over(background, WHITE);
     const part = el.closest("[data-part]")?.getAttribute("data-part") ?? el.tagName.toLowerCase();
-    out.push({ key: `${part}|${text.slice(0, 40)}`, part, ratio: Math.round(ratio * 100) / 100 });
+    const key = `${part}|${text.slice(0, 40)}`;
+    const known = lowest.get(key);
+    if (!known || ratio < known.ratio) {
+      lowest.set(key, { key, part, ratio });
+      probe?.texts.set(key, { el, text: luminanceOf(over(faded, solid)), background: luminanceOf(solid), underlaid });
+    }
   }
-  return out;
+  return [...lowest.values()];
 }
 
-export function scanView(view: ViewName, scope: Element, win: FrameWindow): ViewScan {
-  const { controls, missingIds } = scanControls(scope, win);
-  return { view, controls, lowContrast: scanContrast(scope, win), missingIds };
+export function scanView(view: ViewName, scope: Element, win: FrameWindow, probe?: Probe): ViewScan {
+  const { controls, missingIds } = scanControls(scope, win, probe);
+  return { view, controls, texts: scanTexts(scope, win, probe), missingIds };
+}
+
+const within = (box: DOMRect, win: FrameWindow) => box.width >= MIN_SIZE && box.height >= MIN_SIZE && box.left >= 0 && box.top >= 0 && box.right <= win.innerWidth && box.bottom <= win.innerHeight;
+
+function onTop(el: Element, box: DOMRect, win: FrameWindow): boolean {
+  const corners = [
+    [box.left + 1, box.top + 1],
+    [box.right - 1, box.bottom - 1],
+    [box.left + box.width / 2, box.top + box.height / 2],
+  ];
+  return corners.every(([x, y]) => {
+    const top = win.document.elementFromPoint(x, y);
+    return !!top && (top === el || el.contains(top) || top.contains(el));
+  });
+}
+
+const transparent = (color: string) => parseColor(color)?.a === 0;
+
+function showsSomething(el: Element, win: FrameWindow): boolean {
+  if (clean(el.textContent) || el.querySelector("svg, img")) return true;
+  const style = win.getComputedStyle(el);
+  const bordered = ["Top", "Right", "Bottom", "Left"].some(
+    (side) => parseFloat(style.getPropertyValue(`border-${side.toLowerCase()}-width`)) > 0 && !transparent(style.getPropertyValue(`border-${side.toLowerCase()}-color`)),
+  );
+  return bordered || !transparent(style.backgroundColor) || style.backgroundImage !== "none";
+}
+
+export function paintedContrast(found: Pick<PaintedText, "text" | "background" | "underlaid">, painted: number): number {
+  if (found.underlaid) return ratioOf(found.text, painted);
+  const { text, background } = found;
+  const darker = painted < background;
+  const cover = darker ? 1 - painted / Math.max(background, 1e-6) : (painted - background) / Math.max(1 - background, 1e-6);
+  const seen = darker ? text * (1 - cover) : text + cover * (1 - text);
+  return ratioOf(seen, painted);
+}
+
+export function measurePaint(scan: ViewScan, probe: Probe, pixels: Pixels, win: FrameWindow): ViewScan {
+  const controls = scan.controls.map((c) => {
+    const el = probe.controls.get(c.key);
+    const box = el?.getBoundingClientRect();
+    const measurable = el && box && c.state === "ok" && within(box, win) && onTop(el, box, win) && showsSomething(el, win);
+    return measurable ? { ...c, ink: Math.round(spread(luminances(pixels, box)) * 100) / 100 } : c;
+  });
+  const texts = scan.texts.map((t) => {
+    const found = probe.texts.get(t.key);
+    const box = found?.el.getBoundingClientRect();
+    if (!found || !box || !within(box, win) || !onTop(found.el, box, win)) return t;
+    const painted = ground(luminances(pixels, box));
+    if (ratioOf(painted, found.background) < OVERLAY_SHIFT) return t;
+    return { ...t, ratio: Math.round(paintedContrast(found, painted) * 100) / 100 };
+  });
+  return { ...scan, controls, texts };
 }

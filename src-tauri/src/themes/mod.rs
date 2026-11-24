@@ -68,7 +68,6 @@ pub enum BoardShape {
 pub enum HeaderPlace {
     #[default]
     Top,
-    Bottom,
     Rail,
 }
 
@@ -295,6 +294,17 @@ pub struct Active {
     pub manifest: Manifest,
 }
 
+pub struct Snapshot {
+    pub dir: PathBuf,
+    root: PathBuf,
+}
+
+impl Drop for Snapshot {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.root);
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Themes {
     pub root: PathBuf,
@@ -412,7 +422,10 @@ impl Themes {
     }
 
     pub fn active(&self, id: &str) -> Option<Active> {
-        if id == NAUTICAL || check_id(id).is_err() {
+        if id == NAUTICAL
+            || check_id(id).is_err()
+            || !self.root.join(id).join(MANIFEST_FILE).is_file()
+        {
             return None;
         }
         let record = self.record(id)?;
@@ -441,10 +454,21 @@ impl Themes {
         Ok(())
     }
 
+    pub fn snapshot(&self, id: &str, folder: &Path) -> Result<Snapshot, String> {
+        let root = self
+            .store
+            .join(format!(".checking-{}-{id}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let dir = root.join(id);
+        fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+        copy_theme(folder, &dir)?;
+        Ok(Snapshot { dir, root })
+    }
+
     pub fn store_result(
         &self,
         id: &str,
-        folder: &Path,
+        checked: &Path,
         hash: &str,
         findings: Vec<Finding>,
         now_ms: i64,
@@ -454,7 +478,7 @@ impl Themes {
         let passed = findings.is_empty();
         let previous_good = self.record(id).and_then(|r| r.good_hash);
         let good_hash = if passed {
-            self.promote(id, folder)?;
+            self.promote(id, checked)?;
             Some(hash.to_string())
         } else {
             previous_good
@@ -472,15 +496,10 @@ impl Themes {
         Ok(record)
     }
 
-    fn promote(&self, id: &str, folder: &Path) -> Result<(), String> {
-        let staging = self
-            .store
-            .join(format!(".{id}.staging-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&staging);
-        copy_theme(folder, &staging)?;
+    fn promote(&self, id: &str, checked: &Path) -> Result<(), String> {
         let target = self.good_copy(id);
         let _ = fs::remove_dir_all(&target);
-        fs::rename(&staging, &target)
+        fs::rename(checked, &target)
             .map_err(|e| format!("cannot keep the checked copy of {id}: {e}"))
     }
 
@@ -945,18 +964,10 @@ pub fn lint_css(css: &str) -> Vec<(usize, String)> {
         search = end;
     }
     for (at, _) in without_comments.match_indices("@import") {
-        let rest = &without_comments[at + 7..];
-        let target = rest.split(';').next().unwrap_or_default().trim();
-        let target = target
-            .strip_prefix("url(")
-            .map(|t| t.trim_end_matches(')'))
-            .unwrap_or(target);
-        if remote(target.split_whitespace().next().unwrap_or_default()) {
-            out.push((
-                line_at(css, at),
-                "@import loads a stylesheet from outside the theme".to_string(),
-            ));
-        }
+        out.push((
+            line_at(css, at),
+            "@import is not allowed; put every rule in theme.css".to_string(),
+        ));
     }
     let code = blank_strings(&without_comments);
     let mut start = 0;
@@ -1216,9 +1227,10 @@ body { background: url(data:image/svg+xml,%3Csvg%23x) , url('https://cdn.example
 "#;
         let problems = lint_css(css);
         let lines: Vec<usize> = problems.iter().map(|(line, _)| *line).collect();
-        assert_eq!(lines, vec![3, 8, 9, 9, 9], "{problems:?}");
+        assert_eq!(lines, vec![2, 3, 8, 9, 9, 9], "{problems:?}");
         assert!(problems[0].1.contains("@import"));
-        assert!(problems[1].1.contains("https://cdn.example/t.png"));
+        assert!(problems[1].1.contains("@import"));
+        assert!(problems[2].1.contains("https://cdn.example/t.png"));
         let text: Vec<&str> = problems.iter().map(|(_, p)| p.as_str()).collect();
         assert!(
             text.iter().any(|p| p.starts_with(".card selects")),
@@ -1254,7 +1266,13 @@ body { background: url(data:image/svg+xml,%3Csvg%23x) , url('https://cdn.example
 
         let good = folder_hash(&folder).unwrap();
         themes
-            .store_result("reef", &folder, &good, vec![], 1)
+            .store_result(
+                "reef",
+                &themes.snapshot("reef", &folder).unwrap().dir,
+                &good,
+                vec![],
+                1,
+            )
             .unwrap();
         assert_eq!(themes.summary("reef").status, Status::Ready);
         assert_eq!(themes.active("reef").unwrap().version, good);
@@ -1265,13 +1283,60 @@ body { background: url(data:image/svg+xml,%3Csvg%23x) , url('https://cdn.example
         let bad = folder_hash(&folder).unwrap();
         let findings = vec![Finding::general("everything is hidden")];
         themes
-            .store_result("reef", &folder, &bad, findings, 2)
+            .store_result(
+                "reef",
+                &themes.snapshot("reef", &folder).unwrap().dir,
+                &bad,
+                findings,
+                2,
+            )
             .unwrap();
         let summary = themes.summary("reef");
         assert_eq!((summary.status, summary.problems), (Status::Failed, 1));
         assert_eq!(themes.active("reef").unwrap().version, good);
         let kept = fs::read_to_string(themes.good_copy("reef").join(STYLE_FILE)).unwrap();
         assert_eq!(kept, "");
+    }
+
+    #[test]
+    fn the_good_copy_is_what_was_checked_not_a_later_edit() {
+        let (_dir, themes) = themes();
+        let folder = theme(&themes, "reef", MANIFEST);
+        write(&folder, STYLE_FILE, "/* v1 */");
+        let checked = themes.snapshot("reef", &folder).unwrap();
+        let hash = folder_hash(&checked.dir).unwrap();
+        write(
+            &folder,
+            STYLE_FILE,
+            "[data-part=\"app\"] { display: none; }",
+        );
+        themes
+            .store_result("reef", &checked.dir, &hash, vec![], 1)
+            .unwrap();
+        let kept = fs::read_to_string(themes.good_copy("reef").join(STYLE_FILE)).unwrap();
+        assert_eq!(kept, "/* v1 */");
+        assert_eq!(themes.active("reef").unwrap().version, hash);
+        assert_eq!(themes.summary("reef").status, Status::ReadyWithChanges);
+    }
+
+    #[test]
+    fn a_theme_whose_folder_is_gone_is_not_live() {
+        let (_dir, themes) = themes();
+        let folder = theme(&themes, "reef", MANIFEST);
+        let hash = folder_hash(&folder).unwrap();
+        themes
+            .store_result(
+                "reef",
+                &themes.snapshot("reef", &folder).unwrap().dir,
+                &hash,
+                vec![],
+                1,
+            )
+            .unwrap();
+        assert!(themes.active("reef").is_some());
+        fs::remove_dir_all(&folder).unwrap();
+        assert!(themes.active("reef").is_none());
+        assert!(themes.can_use("reef").is_err());
     }
 
     #[test]
@@ -1297,7 +1362,13 @@ body { background: url(data:image/svg+xml,%3Csvg%23x) , url('https://cdn.example
         let folder = theme(&themes, "reef", MANIFEST);
         let hash = folder_hash(&folder).unwrap();
         themes
-            .store_result("reef", &folder, &hash, vec![], 1)
+            .store_result(
+                "reef",
+                &themes.snapshot("reef", &folder).unwrap().dir,
+                &hash,
+                vec![],
+                1,
+            )
             .unwrap();
         themes.delete("reef").unwrap();
         assert!(!folder.exists());

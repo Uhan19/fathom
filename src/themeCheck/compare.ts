@@ -24,6 +24,10 @@ export interface Where {
 }
 
 export const BUILT_IN_HELPER = "Bosun";
+export const MIN_CONTRAST = 3;
+const INK_SEEN = 1.5;
+const INK_GONE = 1.15;
+const ROUNDING = 0.01;
 
 const DECLARED_ABSENCES: [keyof Pick<Allowances, "singleMode" | "lanes" | "overlay">, string][] = [
   ["singleMode", "toggle-dark-mode"],
@@ -52,6 +56,8 @@ function declaredAbsent(control: string, allow: Allowances): boolean {
 
 function controlFinding(base: ControlScan, themed: ControlScan | undefined, allow: Allowances): string | null {
   if (!themed) return declaredAbsent(base.control, allow) ? null : "is missing";
+  if (themed.state === "ok" && base.ink !== undefined && themed.ink !== undefined && base.ink >= INK_SEEN && themed.ink < INK_GONE)
+    return "is painted over: nothing in its box shows, so something covers it";
   if (themed.state === "covered" && themed.cover) return `is covered by ${themed.cover}, so a click does not reach it`;
   if (themed.state !== "ok") return PROBLEMS[themed.state];
   const wanted = normal(expectedLabel(base.text, allow.helper));
@@ -68,11 +74,12 @@ export function compareView(baseline: ViewScan, themed: ViewScan, allow: Allowan
     const problem = controlFinding(base, found.get(base.key), allow);
     if (problem) findings.push({ ...place, control: base.control, problem: `${base.name || base.control} ${problem}` });
   }
-  const knownLow = new Set(baseline.lowContrast.map((t) => t.key));
-  for (const low of themed.lowContrast) {
-    if (knownLow.has(low.key)) continue;
-    const text = low.key.slice(low.part.length + 1);
-    findings.push({ ...place, part: low.part, problem: `the text "${text}" has a contrast of ${low.ratio}:1, below 3:1` });
+  const nautical = new Map(baseline.texts.map((t) => [t.key, t.ratio]));
+  for (const text of themed.texts) {
+    const needed = Math.min(MIN_CONTRAST, nautical.get(text.key) ?? MIN_CONTRAST);
+    if (text.ratio + ROUNDING >= needed) continue;
+    const words = text.key.slice(text.part.length + 1);
+    findings.push({ ...place, part: text.part, problem: `the text "${words}" has a contrast of ${text.ratio}:1, below ${Math.round(needed * 100) / 100}:1` });
   }
   for (const missing of baseline.missingIds) {
     findings.push({ ...place, problem: `Fathom bug: the control ${missing} has no data-control id` });

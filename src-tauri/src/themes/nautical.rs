@@ -8,6 +8,15 @@ use super::{
 const APP_STYLES: &str = include_str!("../../../src/styles.css");
 const TOKEN_SELECTOR: &str = ":root";
 const KEPT_PROPERTIES: [&str; 1] = ["color-scheme"];
+const APP_OWNED_TOKENS: [&str; 7] = [
+    "--body-font",
+    "--heading",
+    "--board-scale",
+    "--row-label-width",
+    "--collapsed-width",
+    "--lane-width",
+    "--rail-width",
+];
 
 pub fn nautical_manifest(name: &str) -> Manifest {
     Manifest {
@@ -69,7 +78,12 @@ fn token_blocks(css: &str) -> String {
         let declarations: Vec<&str> = body
             .split(';')
             .map(str::trim)
-            .filter(|d| d.starts_with("--") || KEPT_PROPERTIES.iter().any(|p| d.starts_with(p)))
+            .filter(|d| {
+                let owned = APP_OWNED_TOKENS
+                    .iter()
+                    .any(|t| d.split(':').next().map(str::trim) == Some(t));
+                (d.starts_with("--") && !owned) || KEPT_PROPERTIES.iter().any(|p| d.starts_with(p))
+            })
             .collect();
         if declarations.is_empty() {
             continue;
@@ -108,9 +122,11 @@ mod tests {
             "--page:",
             "--term-background:",
             "--sailor-visor:",
-            "--heading:",
         ] {
             assert!(tokens.contains(needle), "{needle}");
+        }
+        for owned in APP_OWNED_TOKENS {
+            assert!(!tokens.contains(&format!("{owned}:")), "{owned}");
         }
         assert!(!tokens.contains("font-size"));
     }

@@ -59,8 +59,7 @@ fn check_changes(
         let _ = app.emit(EVENT_THEMES, ());
         for id in stale(themes) {
             let folder = themes.root.join(&id);
-            if let Err(error) = run_subprocess(program, &check_args(&folder, Some(db_file), false))
-            {
+            if let Err(error) = run_subprocess(program, &check_args(&folder, Some(db_file))) {
                 eprintln!("fathom: checking the theme {id} failed: {error}");
             }
             let _ = app.emit(EVENT_THEMES, ());
@@ -102,7 +101,13 @@ mod tests {
         let riso = themes.root.join("riso");
         let hash = folder_hash(&riso).unwrap();
         themes
-            .store_result("riso", &riso, &hash, vec![], 1)
+            .store_result(
+                "riso",
+                &themes.snapshot("riso", &riso).unwrap().dir,
+                &hash,
+                vec![],
+                1,
+            )
             .unwrap();
         assert_eq!(stale(&themes), vec!["kelp"]);
         std::fs::write(riso.join("theme.css"), "body {}").unwrap();

@@ -44,6 +44,7 @@ export function SettingsDialog({ settings, mac, rowNames, look: theme, onPreview
   const dialogRef = useRef<HTMLDialogElement>(null);
   const homeRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(settings);
+  const opened = useRef(settings);
   const [names, setNames] = useState(rowNames);
   const [prefixes, setPrefixes] = useState(settings.ticketPrefixes.join(", "));
   const [data, setData] = useState<DataInfo | null>(null);
@@ -124,7 +125,8 @@ export function SettingsDialog({ settings, mac, rowNames, look: theme, onPreview
         if (names[row] !== rowNames[row]) await api.setRowName(row, names[row]);
       }
       const ticketPrefixes = prefixes.split(/[\s,]+/).filter(Boolean);
-      onSaved(await api.saveSettings(withLatestWindow({ ...draft, ticketPrefixes }, settings)));
+      const themeId = draft.themeId === opened.current.themeId ? settings.themeId : draft.themeId;
+      onSaved(await api.saveSettings(withLatestWindow({ ...draft, ticketPrefixes, themeId }, settings)));
     } catch (e) {
       setNote({ text: errorText(e), error: true });
       setSaving(false);

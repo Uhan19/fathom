@@ -18,7 +18,8 @@ import {
   type Frame,
   type Outcome,
 } from "./interactions";
-import { scanView, type ViewName, type ViewScan } from "./scan";
+import { measurePaint, scanView, type Probe, type ViewName, type ViewScan } from "./scan";
+import type { Pixels } from "./pixels";
 
 type Size = "desktop" | "min";
 
@@ -141,31 +142,50 @@ const SETTINGS = '[data-part="settings-dialog"][open]';
 
 const openCard = (frame: Frame) => click(frame, '[data-part="row"][data-kind="surface"] [data-control="card-open"]', DETAIL);
 
+async function decodePixels(base64: string): Promise<Pixels> {
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const context = canvas.getContext("2d", { willReadFrequently: true })!;
+  context.drawImage(bitmap, 0, 0);
+  return { width: bitmap.width, height: bitmap.height, scale: bitmap.width / innerWidth, data: context.getImageData(0, 0, bitmap.width, bitmap.height).data };
+}
+
+async function look(frame: Frame, view: ViewName, scope: Element): Promise<ViewScan> {
+  const probe: Probe = { controls: new Map(), texts: new Map() };
+  const scan = scanView(view, scope, frame.win, probe);
+  if (!inTauri) return scan;
+  const pixels = await decodePixels(await invoke<string>("check_pixels"));
+  return measurePaint(scan, probe, pixels, frame.win);
+}
+
 async function scanAll(frame: Frame): Promise<ViewScan[]> {
-  const { doc, win } = frame;
-  const scans: ViewScan[] = [scanView("board", doc.querySelector('[data-part="app"]')!, win)];
+  const { doc } = frame;
+  const scans: ViewScan[] = [await look(frame, "board", doc.querySelector('[data-part="app"]')!)];
   await openCard(frame);
   const tabs = [...doc.querySelectorAll<HTMLElement>('[data-control="detail-tab"]')].map((t) => t.dataset.key ?? "");
   for (const tab of tabs) {
     await click(frame, `[data-control="detail-tab"][data-key="${tab}"]`, `[data-control="detail-tab"][data-key="${tab}"][aria-selected="true"]`);
     const detail = doc.querySelector('[data-part="detail"]');
-    if (detail) scans.push({ ...scanView("detail", detail, win), view: `detail:${tab}` as ViewName });
+    if (detail) scans.push(await look(frame, `detail:${tab}` as ViewName, detail));
   }
   await click(frame, '[data-control="close-detail"]', undefined, DETAIL);
   await click(frame, '[data-control="helper-open"]', DRAWER_OPEN);
   const drawer = doc.querySelector(DRAWER_OPEN);
-  if (drawer) scans.push(scanView("helper", drawer, win));
+  if (drawer) scans.push(await look(frame, "helper", drawer));
   await click(frame, '[data-control="helper-close"]', undefined, DRAWER_OPEN);
   await click(frame, '[data-control="open-settings"]', SETTINGS);
   const dialog = doc.querySelector(SETTINGS);
-  if (dialog) scans.push(scanView("settings", dialog, win));
+  if (dialog) scans.push(await look(frame, "settings", dialog));
   await click(frame, '[data-control="settings-cancel"]', undefined, SETTINGS);
   return scans;
 }
 
 async function scanEmpty(params: Record<string, string>): Promise<ViewScan> {
   const frame = await loadFrame({ ...params, empty: "" });
-  return scanView("empty", frame.doc.querySelector('[data-part="app"]')!, frame.win);
+  return look(frame, "empty", frame.doc.querySelector('[data-part="app"]')!);
 }
 
 async function step<T>(name: string, work: Promise<T>): Promise<T> {

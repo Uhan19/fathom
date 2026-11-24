@@ -857,7 +857,7 @@ impl Fathom {
         }
         let outcome = theme_check::run_subprocess(
             &self.host.program,
-            &theme_check::check_args(&folder, Some(&self.db_file()), false),
+            &theme_check::check_args(&folder, Some(&self.db_file())),
         )?;
         reply(Ok(self.check_reply(&p.id, outcome)))
     }
@@ -1759,7 +1759,15 @@ esac
         .unwrap();
         std::fs::write(folder.join(themes::STYLE_FILE), "").unwrap();
         let hash = themes::folder_hash(&folder).unwrap();
-        themes.store_result(id, &folder, &hash, vec![], 1).unwrap();
+        themes
+            .store_result(
+                id,
+                &themes.snapshot(id, &folder).unwrap().dir,
+                &hash,
+                vec![],
+                1,
+            )
+            .unwrap();
     }
 
     fn theme_id(id: &str) -> Parameters<ThemeId> {

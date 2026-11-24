@@ -79,7 +79,7 @@ Fathom implements each one, including dragging, resizing and keyboard behaviour.
 | --- | --- | --- |
 | `chatSide` | `right` (default), `left` | The chat panel sits on that side and its handle resizes outward. |
 | `board` | `rows` (default), `lanes` | `lanes` turns the stages into columns and the projects into rows. Card drops, project reordering and the collapse arrows follow; projects have no width handle in lanes. |
-| `header` | `top` (default), `bottom`, `rail` | `rail` puts the header in a column on the left from 1280 pixels wide, and back on top below that. |
+| `header` | `top` (default), `rail` | `rail` puts the header in a column on the left from 1280 pixels wide, and back on top below that. A header at the bottom is plain CSS: `[data-part="app"] { flex-direction: column-reverse; }`. |
 | `detail` | `side` (default), `overlay` | `overlay` opens a card's detail as a dialog over the board with a scrim: Escape or a click on the scrim closes it, and the board behind cannot be reached. It has no width handle. |
 | `rowLabelWidth` | 40 to 320 pixels | The first track, which holds the row names (rows) or the project names (lanes). Nautical: 150. |
 | `collapsedWidth` | 32 to 96 pixels | A folded column or lane. Nautical: 44. |
@@ -87,6 +87,22 @@ Fathom implements each one, including dragging, resizing and keyboard behaviour.
 | `railWidth` | 160 to 360 pixels | The header rail; only with `header: rail`. Default 236. |
 
 The options and the sizes are also set as attributes and custom properties on the root element, for the CSS to follow: `data-chat-side`, `data-board`, `data-header`, `data-detail`, `--row-label-width`, `--collapsed-width`, `--lane-width` and `--rail-width`.
+Set the sizes in `theme.json`, not in `theme.css`: Fathom sets these properties itself, so a value in `theme.css` has no effect.
+
+Fathom also sets these custom properties, which a theme may read but never needs to set:
+
+| Property | Set on | Value |
+| --- | --- | --- |
+| `--board-stages` | `[data-part="board"]` | The number of stages (rows in rows, lanes in lanes), 5. |
+| `--board-projects` | `[data-part="board"]` | The number of projects the board shows. |
+| `--board-columns` | `[data-part="board"]` | The projects plus the "Add column" head when it shows. |
+| `--board-min-width` | `[data-part="board"]` | The board's width in rows: every column, the row labels and the gaps. |
+| `--head-template` | `[data-part="board"]` | The grid columns of the project heads in rows. |
+| `--row-template` | `[data-part="board"]` | The grid columns of each row in rows. |
+| `--lane-template` | `[data-part="board"]` | The grid columns of the board in lanes. |
+| `--detail-width` | `[data-part="detail"]` | The card detail's width. |
+| `--chat-width` | `[data-part="chat"]` | The chat panel's width. |
+| `--helper-height` | `[data-part="bosun"]` | The helper drawer's height. |
 
 ## theme.css
 
@@ -112,12 +128,14 @@ The main regions are `app`, `header`, `main`, `board-column`, `board-scroll`, `b
 
 Colors and fonts are custom properties on `:root`.
 Duplicate Nautical in Settings to get a `theme.css` that sets every one of them, for light and dark, as a starting point.
+The board fonts (`--body-font`, `--heading`) and the structural sizes are not in that file: Fathom sets them from `theme.json` and Settings, so set them there.
 The terminal palette is `--term-background`, `--term-foreground`, `--term-cursor`, `--term-cursor-accent`, `--term-selection-background` and the sixteen `--term-<color>` and `--term-bright-<color>` tokens.
 
 ### Textures and fonts
 
 Reference files in the theme folder with relative URLs, such as `url("art/grain.svg")` or `url("fonts/stamp.woff2")`, or use `data:` URLs.
-Remote URLs, remote `@import` and script hooks are refused, and Fathom's window cannot load them anyway.
+Remote URLs, `@import` and script hooks are refused, and Fathom's window cannot load remote files anyway.
+Put every rule in `theme.css`.
 A texture laid over the whole window needs `pointer-events: none`, or the check finds every control covered.
 Fathom turns theme animations off when the system asks for reduced motion.
 
@@ -127,7 +145,8 @@ Fathom turns theme animations off when the system asks for reduced motion.
 It compares each view with Nautical on the same sample, control by control:
 
 - every control is present, visible (at least 4 pixels, opacity at least 0.3), reachable (a click at its middle reaches it) and labelled (it has a name, and its text still shows Nautical's label);
-- text keeps a contrast of at least 3:1 against its background wherever Nautical's does;
+- text is never less readable than in Nautical: text Nautical shows at 3:1 or more must keep at least 3:1 against its background, and text Nautical shows below 3:1 must keep at least Nautical's contrast;
+- what is painted counts: the check takes screenshots, so a control whose box shows nothing, as under an opaque layer with `pointer-events: none`, fails as painted over, and text under a layer is measured against what the layer leaves visible;
 - only a declared option may remove a control: one mode removes the dark mode switch, lanes remove the project width handles, and the overlay detail removes its width handle.
 
 Then it plays the interactions: dragging a card to another stage, at full size and by scrolling at the board's edge in the smallest window, moving a project both ways by its header, widening the chat, narrowing the card panel (or, for the overlay, Escape, the scrim and focus), raising the helper drawer, switching light and dark, and the reset shortcut.
@@ -159,42 +178,43 @@ The program is `/Applications/Fathom.app/Contents/MacOS/fathom` on macOS and `fa
 
 ```text
 agent-choice agent-choices agent-filter agent-filter-icon answer answer-text app app-version
-back-link banner bar beacon blocked-by board board-column board-empty board-scroll bosun
-bosun-about bosun-command bosun-dot bosun-examples bosun-handle bosun-head bosun-hint bosun-rail
-bosun-screen bosun-summary bosun-title brand brand-mark brand-mark-gap brand-name button call-bar
-call-box call-key call-letter call-opt call-pick call-progress call-q call-radio call-rec call-row
-call-row-text card card-body card-ghost card-name card-note card-number card-open card-ref cell
-chat chat-actions chat-body chat-ended chat-head chat-hide chat-rail chat-rail-caret chat-rail-name
-chat-status chat-wrap chip chips col-handle column-add column-add-head column-ghost column-heads
-column-heads-label column-name column-name-input column-slot column-total composer composer-box
-composer-field composer-foot composer-hint composer-recipient composer-to composer-to-label confirm
-confirm-foot confirm-move confirm-name count count-badge count-label count-lead count-value
-data-line detail detail-agent detail-head detail-meta detail-scrim detail-scroll detail-send
-detail-tab detail-tab-sailor detail-tabs detail-title detail-title-row drop-slot error-text fact
-facts field field-note field-pair file-actions file-glyph file-group file-list file-main file-meta
-file-name file-preview file-row file-text film-cell film-label filter-part filter-strip font-list
-font-picker font-picker-head font-row font-sample header header-toggles herdr-dot herdr-label hold
-icon icon-button key-links launcher launcher-error launcher-foot launcher-item launcher-list
-launcher-name launcher-note launcher-path launcher-section link-body link-detail link-glyph
-link-group link-list link-row link-sources main mark markdown matrix-cell matrix-grid matrix-head
-matrix-state md-image meta-text mini-button moment moment-dot moment-head moment-state moment-text
-moment-time more-link move move-actions muted muted-small ok-text opener opener-folder panel-handle
-path-link phrase picker picker-item picker-list picker-meta picker-name picker-reason pill
-pr-checks pr-line pr-state preview-head preview-image preview-name preview-text prose quiet-note
-rec-tag recipient-sailor result result-foot result-points result-prs result-watch result-watch-head
-result-watch-text rich-text row row-count row-label row-name row-names row-toggle sailor sailor-art
-sailor-visor sech sech-note seg seg-option segmented segmented-option segmented-thumb send-field
-send-note send-row settings-body settings-dialog settings-foot settings-head settings-legend
-settings-section settings-title shortcut-empty shortcut-key shortcut-name shortcut-note
-shortcut-row shortcut-tools shortcuts shot-axes shot-badge shot-badges shot-cell shot-cell-label
-shot-expand shot-lead shot-lead-frame shot-missing shot-pending shot-scale shot-strip
-shot-thumb-img spacer switch switch-knob switch-track tab-close tab-count tab-empty tab-label
-tab-pane tab-strip terminal-chip terminal-host terminal-scroll text-input theme-actions timeline
-toggle-text viewer viewer-bar viewer-body viewer-count viewer-file viewer-film viewer-frame
-viewer-half viewer-knob viewer-matrix viewer-scale viewer-side viewer-side-panel viewer-slider
-viewer-slider-top viewer-split viewer-stage viewer-task viewer-title vname wait-avatar wait-box
-wait-group wait-group-head wait-kind wait-meta wait-more wait-names wait-need wait-people wait-said
-wait-tag wait-what wait-who watch watch-backdrop watch-head watch-sailor watch-status watch-title
+back-link banner bar beacon blocked-by board board-column board-empty board-scroll bosun bosun-about
+bosun-command bosun-dot bosun-examples bosun-handle bosun-head bosun-hint bosun-rail bosun-screen
+bosun-summary bosun-title brand brand-mark brand-mark-gap brand-name button call-bar call-box
+call-key call-letter call-opt call-pick call-progress call-q call-radio call-rec call-row
+call-row-text card card-body card-ghost card-name card-note card-number card-open card-ref cell chat
+chat-actions chat-body chat-ended chat-head chat-hide chat-rail chat-rail-caret chat-rail-name
+chat-status chat-wrap chip chips col-handle column-add column-add-head column-ghost column-head
+column-heads column-heads-label column-name column-name-input column-slot column-total composer
+composer-box composer-field composer-foot composer-hint composer-recipient composer-to
+composer-to-label confirm confirm-foot confirm-move confirm-name count count-badge count-label
+count-lead count-value data-line detail detail-agent detail-head detail-meta detail-scrim
+detail-scroll detail-send detail-tab detail-tab-sailor detail-tabs detail-title detail-title-row
+drop-slot error-text fact facts field field-note field-pair file-actions file-glyph file-group
+file-list file-main file-meta file-name file-preview file-row file-text film-cell film-label
+filter-part filter-strip font-list font-picker font-picker-head font-row font-sample header
+header-toggles herdr-dot herdr-label hold icon icon-button inline-link key-links launcher
+launcher-error launcher-foot launcher-item launcher-list launcher-name launcher-note launcher-path
+launcher-section link-body link-detail link-glyph link-group link-label link-list link-row
+link-sources main mark markdown matrix-cell matrix-grid matrix-head matrix-state md-image meta-text
+mini-button moment moment-dot moment-head moment-state moment-text moment-time more-link move
+move-actions muted muted-small ok-text opener opener-folder panel-handle path-link phrase picker
+picker-item picker-list picker-meta picker-name picker-reason pill pr-checks pr-line pr-state
+preview-head preview-image preview-name preview-text prose quiet-note rec-tag recipient-sailor
+result result-foot result-points result-prs result-watch result-watch-head result-watch-text
+rich-text row row-count row-label row-name row-names row-toggle sailor sailor-art sailor-visor sech
+sech-note seg seg-option segmented segmented-option segmented-thumb send-field send-note send-row
+settings-body settings-dialog settings-foot settings-head settings-legend settings-section
+settings-title shortcut-empty shortcut-key shortcut-name shortcut-note shortcut-row shortcut-tools
+shortcuts shot-axes shot-badge shot-badges shot-cell shot-cell-label shot-expand shot-lead
+shot-lead-frame shot-lead-img shot-missing shot-pending shot-scale shot-strip shot-thumb-img spacer
+switch switch-knob switch-track tab tab-close tab-count tab-empty tab-label tab-pane tab-strip
+terminal-chip terminal-host terminal-scroll text-input theme-actions timeline toggle-text viewer
+viewer-bar viewer-body viewer-count viewer-file viewer-film viewer-frame viewer-half viewer-img
+viewer-knob viewer-matrix viewer-scale viewer-side viewer-side-panel viewer-slider viewer-slider-top
+viewer-split viewer-stage viewer-task viewer-title vname wait-avatar wait-box wait-group
+wait-group-head wait-kind wait-meta wait-more wait-names wait-need wait-people wait-said wait-tag
+wait-what wait-who watch watch-backdrop watch-head watch-sailor watch-status watch-title
 ```
 
 ### Control ids
@@ -206,22 +226,22 @@ chat-change-terminal chat-find-again chat-hide chat-reattach chat-retry chat-sho
 close-detail close-detail-scrim close-viewer close-worker-terminal column-add column-add-input
 column-collapse column-delete column-delete-cancel column-delete-confirm column-delete-new-name
 column-delete-target column-expand column-rename column-rename-input column-resize composer-message
-composer-recipient composer-send content-image content-path detail-tab expand-all file-back
-file-open file-open-app file-reveal font-add font-picker-done font-remove font-search
+composer-recipient composer-send content-image content-link content-path detail-tab expand-all
+file-back file-open file-open-app file-reveal font-add font-picker-done font-remove font-search
 helper-check-again helper-close helper-copy-install helper-open helper-restart helper-retry
-helper-start helper-start-again helper-stop launcher-toggle link-open move-dismiss move-resend
-no-match-clear-focus no-match-show-every-card open-agent open-blocker open-report open-settings
-picker-terminal resize-card-panel resize-chat resize-helper row-toggle settings-agent-folder
-settings-board-font settings-board-font-size settings-cancel settings-chat-font
-settings-chat-font-size settings-close settings-export settings-hc-session settings-hc-socket
-settings-home settings-linear-workspace settings-row-name settings-save settings-terminal-label
-settings-theme settings-theme-duplicate settings-themes-folder settings-ticket-prefixes
-shell-close-tab shell-reattach shell-retry shortcut-clear shortcut-record shortcut-reset shot-all
-shot-expand shot-open shot-phase shot-phase-option shot-state shot-theme shot-theme-option
-shot-width shot-width-option show-all-links show-all-projects show-every-card terminal-tab
-terminal-tab-close toggle-dark-mode viewer-cell viewer-compare viewer-compare-option viewer-phase
-viewer-phase-option viewer-split viewer-theme viewer-theme-option viewer-variant viewer-width
-viewer-width-option viewer-zoom wait-link worker-reattach worker-retry
+helper-start helper-start-again helper-stop launcher-attach launcher-folder launcher-toggle
+link-open move-dismiss move-resend no-match-clear-focus no-match-show-every-card open-agent
+open-blocker open-report open-settings picker-terminal resize-card-panel resize-chat resize-helper
+row-toggle settings-agent-folder settings-board-font settings-board-font-size settings-cancel
+settings-chat-font settings-chat-font-size settings-close settings-export settings-hc-session
+settings-hc-socket settings-home settings-linear-workspace settings-row-name settings-save
+settings-terminal-label settings-theme settings-theme-duplicate settings-themes-folder
+settings-ticket-prefixes shell-close-tab shell-reattach shell-retry shortcut-clear shortcut-record
+shortcut-reset shot-all shot-expand shot-open shot-phase shot-phase-option shot-state shot-theme
+shot-theme-option shot-width shot-width-option show-all-links show-all-projects show-every-card
+terminal-tab terminal-tab-close toggle-dark-mode viewer-cell viewer-compare viewer-compare-option
+viewer-phase viewer-phase-option viewer-split viewer-theme viewer-theme-option viewer-variant
+viewer-width viewer-width-option viewer-zoom wait-link worker-reattach worker-retry
 ```
 
 ### Token names
@@ -250,12 +270,11 @@ viewer-width-option viewer-zoom wait-link worker-reattach worker-retry
 --stage-bg --status-asking --status-asking-glow --status-busy --status-idle --status-problem
 --status-ready --strip-bg --strip-field-bg --strip-field-ink --strip-field-line
 --strip-field-placeholder --strip-ink --strip-line --strip-muted --tag-asked-bg --tag-asked-ink
---tag-failed-bg --tag-failed-ink --tag-reported-bg --tag-reported-ink --term-background
---term-black --term-blue --term-bright-black --term-bright-blue --term-bright-cyan
---term-bright-green --term-bright-magenta --term-bright-red --term-bright-white
---term-bright-yellow --term-cursor --term-cursor-accent --term-cyan --term-foreground --term-green
---term-magenta --term-red --term-selection-background --term-white --term-yellow --tone-active
---tone-attention --tone-good --tone-quiet --tone-trouble --viewer-knob-bg --viewer-knob-ink
---viewer-shadow --viewer-split --wait --wait-bg --wait-ink --wait-line --wait-solid
---wait-solid-ink --warn-ink
+--tag-failed-bg --tag-failed-ink --tag-reported-bg --tag-reported-ink --term-background --term-black
+--term-blue --term-bright-black --term-bright-blue --term-bright-cyan --term-bright-green
+--term-bright-magenta --term-bright-red --term-bright-white --term-bright-yellow --term-cursor
+--term-cursor-accent --term-cyan --term-foreground --term-green --term-magenta --term-red
+--term-selection-background --term-white --term-yellow --tone-active --tone-attention --tone-good
+--tone-quiet --tone-trouble --viewer-knob-bg --viewer-knob-ink --viewer-shadow --viewer-split --wait
+--wait-bg --wait-ink --wait-line --wait-solid --wait-solid-ink --warn-ink
 ```

@@ -4,7 +4,7 @@ export const NAUTICAL_ID = "nautical";
 
 export type ChatSide = "left" | "right";
 export type BoardShape = "rows" | "lanes";
-export type HeaderPlace = "top" | "bottom" | "rail";
+export type HeaderPlace = "top" | "rail";
 export type DetailPlace = "side" | "overlay";
 
 export interface ThemeFonts {

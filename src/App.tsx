@@ -149,6 +149,9 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   const shownLook = lookPreview ?? look;
   const themeId = settings?.themeId;
 
+  const previewingRef = useRef(false);
+  previewingRef.current = lookPreview !== null;
+
   useEffect(() => {
     if (themeId === undefined) return;
     let alive = true;
@@ -158,7 +161,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
       .catch(() => NAUTICAL_LOOK)
       .then(async (next) => {
         if (!alive) return;
-        await applyLook(next);
+        if (!previewingRef.current) await applyLook(next);
         if (alive) setLook(next);
       });
     return () => {
@@ -170,6 +173,8 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
     const reset = (e: Event) => {
       setLookPreview(null);
       setLook(NAUTICAL_LOOK);
+      setPreview(null);
+      setSettingsOpen(false);
       const saved = (e as CustomEvent<Settings>).detail;
       if (saved) setSettings(saved);
     };

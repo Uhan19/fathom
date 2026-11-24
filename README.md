@@ -564,7 +564,7 @@ The [theme guide](docs/themes.md) describes the folder, `theme.json`, the named 
 
 Themes are data, never code: `theme.json`, `theme.css` loaded after Fathom's own styles, and art, texture and font files, served to the window through the `fathom-theme` scheme.
 `theme.css` selects named parts such as `[data-part="card"]` and control ids such as `[data-control="open-settings"]`, never Fathom's class names.
-Layout that moves where things are clicked, dragged or resized goes through declared options that Fathom implements: the chat on the left or right, the board as rows or lanes, the header at the top, at the bottom or as a rail, the card detail as a side panel or an overlay, and a few structural sizes.
+Layout that moves where things are clicked, dragged or resized goes through declared options that Fathom implements: the chat on the left or right, the board as rows or lanes, the header at the top or as a rail, the card detail as a side panel or an overlay, and a few structural sizes.
 
 ### The theme check
 
@@ -573,7 +573,7 @@ fathom theme check <folder> [--json]
 ```
 
 The check renders an invented sample board with the theme, offscreen, in each mode the theme has, at 1600 by 1000 and at the smallest window.
-It compares every control with Nautical's: each must be present, visible, reachable by a click and labelled, and text must keep a contrast of at least 3:1; only a declared layout option may remove a control.
+It compares every control with Nautical's: each must be present, visible, reachable by a click and labelled, judged from the rendered pixels as well as the page, and no text may be less readable than in Nautical, which means at least 3:1 wherever Nautical reaches it; only a declared layout option may remove a control.
 Then it drags cards, reorders projects, resizes the panels, switches light and dark, and presses the reset shortcut.
 It prints each problem with the control or part, what failed and a screenshot in the theme's `.shots/check/`, and exits 1 when there is any.
 Fathom runs it whenever a theme in the themes folder changes and uses a theme only once it passes; after a failed change it keeps showing the last version that passed.

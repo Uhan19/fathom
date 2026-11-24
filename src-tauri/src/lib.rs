@@ -308,33 +308,37 @@ mod tests {
     #[test]
     fn the_default_theme_flag_starts_with_nautical_even_under_a_hostile_theme() {
         let args = |words: &[&str]| words.iter().map(|w| w.to_string()).collect::<Vec<_>>();
-        let dir = tempfile::tempdir().unwrap();
-        let db = db::Db::open(&dir.path().join("data")).unwrap();
-        let themes = themes::Themes::new(dir.path().join("themes"), &dir.path().join("data"));
-        let folder = themes.root.join("hostile-hidden");
-        std::fs::create_dir_all(&folder).unwrap();
-        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../fixtures/themes/hostile-hidden");
-        for file in [themes::MANIFEST_FILE, themes::STYLE_FILE] {
-            std::fs::copy(fixture.join(file), folder.join(file)).unwrap();
-        }
-        let hash = themes::folder_hash(&folder).unwrap();
-        themes
-            .store_result("hostile-hidden", &folder, &hash, vec![], 1)
+        for hostile in ["hostile-hidden", "hostile-white", "hostile-cover"] {
+            let dir = tempfile::tempdir().unwrap();
+            let db = db::Db::open(&dir.path().join("data")).unwrap();
+            let themes = themes::Themes::new(dir.path().join("themes"), &dir.path().join("data"));
+            let folder = themes.root.join(hostile);
+            std::fs::create_dir_all(&folder).unwrap();
+            let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../fixtures/themes")
+                .join(hostile);
+            for file in [themes::MANIFEST_FILE, themes::STYLE_FILE] {
+                std::fs::copy(fixture.join(file), folder.join(file)).unwrap();
+            }
+            let hash = themes::folder_hash(&folder).unwrap();
+            let checked = themes.snapshot(hostile, &folder).unwrap();
+            themes
+                .store_result(hostile, &checked.dir, &hash, vec![], 1)
+                .unwrap();
+            settings::update(&db, |s| {
+                s.theme_id = hostile.into();
+                Ok(())
+            })
             .unwrap();
-        settings::update(&db, |s| {
-            s.theme_id = "hostile-hidden".into();
-            Ok(())
-        })
-        .unwrap();
-        assert!(themes.active("hostile-hidden").is_some());
+            assert!(themes.active(hostile).is_some(), "{hostile}");
 
-        apply_launch_flags(&db, &args(&["fathom"])).unwrap();
-        assert_eq!(settings::load(&db).unwrap().theme_id, "hostile-hidden");
-        apply_launch_flags(&db, &args(&["fathom", "--default-theme"])).unwrap();
-        let theme_id = settings::load(&db).unwrap().theme_id;
-        assert_eq!(theme_id, themes::NAUTICAL);
-        assert!(themes.active(&theme_id).is_none());
+            apply_launch_flags(&db, &args(&["fathom"])).unwrap();
+            assert_eq!(settings::load(&db).unwrap().theme_id, hostile);
+            apply_launch_flags(&db, &args(&["fathom", "--default-theme"])).unwrap();
+            let theme_id = settings::load(&db).unwrap().theme_id;
+            assert_eq!(theme_id, themes::NAUTICAL, "{hostile}");
+            assert!(themes.active(&theme_id).is_none());
+        }
     }
 
     #[test]

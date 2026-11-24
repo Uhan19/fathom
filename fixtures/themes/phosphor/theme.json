@@ -9,6 +9,5 @@
     "terminal": "\"JetBrains Mono\", ui-monospace, monospace"
   },
   "text": { "brand": "fathom:~$", "helper": "Sysop", "projects": "ls ~/projects", "surfaceLead": "", "shallowsLead": "" },
-  "art": { "brandMark": "art/mark.svg", "sailor": "art/sailor.svg", "sailorActive": "art/sailor-active.svg" },
-  "layout": { "header": "bottom" }
+  "art": { "brandMark": "art/mark.svg", "sailor": "art/sailor.svg", "sailorActive": "art/sailor-active.svg" }
 }

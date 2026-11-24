@@ -79,6 +79,8 @@ export function Board(props: BoardProps) {
     "--row-template": columnTemplate(shown, geometry),
     "--lane-template": laneTemplate(collapsedRows, geometry),
     "--board-columns": String(shown.length + (props.onColumnAdd ? 1 : 0)),
+    "--board-projects": String(shown.length),
+    "--board-stages": String(ROW_ORDER.length),
   } as CSSProperties;
   const scroller = useRef<HTMLDivElement>(null);
 

@@ -4112,15 +4112,6 @@ button.md-image {
   transform: rotate(90deg);
 }
 
-:root[data-header="bottom"] .app {
-  flex-direction: column-reverse;
-}
-
-:root[data-header="bottom"] .top {
-  border-bottom: none;
-  border-top: 2px solid var(--header-rule);
-}
-
 @media (min-width: 1280px) {
   :root[data-header="rail"] .app {
     display: grid;

@@ -1,0 +1,8 @@
+[data-part="app"]::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  background: #102030;
+}

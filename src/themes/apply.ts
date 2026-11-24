@@ -43,19 +43,35 @@ export async function applyLook(look: Look, doc: Document = document): Promise<v
   doc.defaultView?.dispatchEvent(new Event(LOOK_EVENT));
 }
 
+const THEME_LINKS = "link[data-theme-link]";
+let wanted: string | null = null;
+
 function linkStyles(doc: Document, href: string | null): Promise<void> {
-  const current = doc.getElementById(LINK_ID) as HTMLLinkElement | null;
-  if (current?.getAttribute("href") === href) return Promise.resolve();
-  current?.remove();
-  if (!href) return Promise.resolve();
+  wanted = href;
+  const links = () => [...doc.querySelectorAll<HTMLLinkElement>(THEME_LINKS)];
+  if (links().some((l) => l.id === LINK_ID && l.getAttribute("href") === href)) {
+    links().filter((l) => l.id !== LINK_ID).forEach((l) => l.remove());
+    return Promise.resolve();
+  }
+  if (!href) {
+    links().forEach((l) => l.remove());
+    return Promise.resolve();
+  }
   const link = doc.createElement("link");
-  link.id = LINK_ID;
   link.rel = "stylesheet";
   link.href = href;
+  link.dataset.themeLink = "";
   const loaded = new Promise<void>((resolve) => {
     link.onload = () => resolve();
     link.onerror = () => resolve();
   });
   doc.head.append(link);
-  return loaded;
+  return loaded.then(() => {
+    if (wanted !== href) {
+      link.remove();
+      return;
+    }
+    links().filter((l) => l !== link).forEach((l) => l.remove());
+    link.id = LINK_ID;
+  });
 }
