@@ -7,6 +7,7 @@ mod fonts;
 mod herdr;
 mod launch;
 mod mcp;
+mod metrics;
 mod moves;
 mod pulls;
 mod requests;
@@ -30,6 +31,7 @@ mod workers;
 
 use std::ffi::OsString;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
 
 use tauri::{Manager, RunEvent};
@@ -95,6 +97,10 @@ pub fn run() {
             let db = db::Db::open(&data_dir)?;
             apply_launch_flags(&db, &std::env::args().collect::<Vec<_>>())?;
             let state = state::AppState::start(app.handle(), db, log_dir, started)?;
+            app.manage(metrics::Metrics::start(
+                app.handle().clone(),
+                Arc::clone(&state),
+            ));
             app.manage(state);
             app.manage(std::sync::Arc::new(pulls::PrCache::default()));
             Ok(())
@@ -159,6 +165,8 @@ pub fn run() {
             commands::list_themes,
             commands::duplicate_nautical,
             commands::reveal_themes_folder,
+            commands::set_metrics_demand,
+            commands::memory_sample,
         ])
         .build(context)
         .expect("error while building Fathom");
