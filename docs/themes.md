@@ -188,7 +188,7 @@ chat-status chat-wrap chip chips col-handle column-add column-add-head column-gh
 column-heads column-heads-label column-name column-name-input column-slot column-total composer
 composer-box composer-field composer-foot composer-hint composer-recipient composer-to
 composer-to-label confirm confirm-foot confirm-move confirm-name count count-badge count-label
-count-lead count-value data-line detail detail-agent detail-head detail-meta detail-scrim
+count-lead count-value data-line detail detail-agent detail-head detail-meta detail-note detail-scrim
 detail-scroll detail-send detail-tab detail-tab-sailor detail-tabs detail-title detail-title-row
 drop-slot error-text fact facts field field-note field-pair file-actions file-glyph file-group
 file-list file-main file-meta file-name file-preview file-row file-text film-cell film-label

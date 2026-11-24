@@ -863,12 +863,21 @@ fn blank(text: &str, open: &str, close: &str) -> String {
             .find(close)
             .map(|e| e + close.len())
             .unwrap_or(after.len());
-        let skipped = &rest[start..start + open.len() + end];
-        out.extend(skipped.chars().map(|c| if c == '\n' { '\n' } else { ' ' }));
+        for c in rest[start..start + open.len() + end].chars() {
+            push_blank(&mut out, c);
+        }
         rest = &after[end..];
     }
     out.push_str(rest);
     out
+}
+
+fn push_blank(out: &mut String, c: char) {
+    if c == '\n' {
+        out.push('\n');
+    } else {
+        out.extend(std::iter::repeat_n(' ', c.len_utf8()));
+    }
 }
 
 fn blank_strings(text: &str) -> String {
@@ -878,7 +887,7 @@ fn blank_strings(text: &str) -> String {
     for c in text.chars() {
         match quote {
             Some(q) => {
-                out.push(if c == '\n' { '\n' } else { ' ' });
+                push_blank(&mut out, c);
                 if escaped {
                     escaped = false;
                 } else if c == '\\' {
@@ -1320,6 +1329,23 @@ body { background: url(data:image/svg+xml,%3Csvg%23x) , url('https://cdn.example
         assert!(
             text.iter().any(|p| p.starts_with("expression(")),
             "{text:?}"
+        );
+    }
+
+    #[test]
+    fn private_selectors_after_non_ascii_comments_and_strings_keep_their_line() {
+        let problem = |name: &str| {
+            format!(
+                "{name} selects a private class or id; select a named part such as [data-part=\"card\"] instead"
+            )
+        };
+        assert_eq!(
+            lint_css("/* →→→→ */\n.card { }\n"),
+            vec![(2, problem(".card"))]
+        );
+        assert_eq!(
+            lint_css("[data-part=\"→→→→\"] { }\n.x { }\n"),
+            vec![(2, problem(".x"))]
         );
     }
 

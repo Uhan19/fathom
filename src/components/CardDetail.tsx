@@ -339,7 +339,7 @@ export function CardDetail(props: CardDetailProps) {
                   </div>
                 </div>
               )}
-              <div className="sec" data-part="card-note">
+              <div className="sec" data-part="detail-note">
                 <span className="sech" data-part="sech">Note</span>
                 {loadError && <p className="error-text" data-part="error-text">Could not load the full card: {loadError}</p>}
                 {!detail && !loadError && <p className="muted" data-part="muted">Loading…</p>}
