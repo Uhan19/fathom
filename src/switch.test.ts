@@ -7,10 +7,11 @@ const ignore = () => undefined;
 
 describe("Switch", () => {
   it("is a named switch that says whether it is on", () => {
-    const on = renderToStaticMarkup(createElement(Switch, { label: "Dark mode", checked: true, onChange: ignore }));
+    const on = renderToStaticMarkup(createElement(Switch, { control: "toggle-dark-mode", label: "Dark mode", checked: true, onChange: ignore }));
     expect(on).toContain('role="switch" aria-checked="true"');
+    expect(on).toContain('data-part="switch" data-control="toggle-dark-mode"');
     expect(on).toContain(">Dark mode<");
-    const off = renderToStaticMarkup(createElement(Switch, { label: "Dark mode", checked: false, onChange: ignore }));
+    const off = renderToStaticMarkup(createElement(Switch, { control: "toggle-dark-mode", label: "Dark mode", checked: false, onChange: ignore }));
     expect(off).toContain('aria-checked="false"');
   });
 });

@@ -257,19 +257,19 @@ export function CardDetail(props: CardDetailProps) {
   };
 
   return (
-    <section className="detail" style={{ width }} aria-label={`Card: ${shown.title}`}>
-      <div className="detail-head">
-        <div className="detail-title-row">
-          <h2 className="detail-title">
+    <section className="detail" data-part="detail" style={{ width }} aria-label={`Card: ${shown.title}`}>
+      <div className="detail-head" data-part="detail-head">
+        <div className="detail-title-row" data-part="detail-title-row">
+          <h2 className="detail-title" data-part="detail-title">
             <RichText text={shown.title} linking={linking} onPath={onPath} />
           </h2>
-          <button className="ico" onClick={onClose} aria-label="Close card" title="Close card">
+          <button className="ico" data-part="icon-button" data-control="close-detail" onClick={onClose} aria-label="Close card" title="Close card">
             <Close />
           </button>
         </div>
-        <div className="detail-meta">
-          <span className={`pill pill-${shown.row}`}>{rowNames[shown.row]}</span>
-          <span className="meta-text">
+        <div className="detail-meta" data-part="detail-meta">
+          <span className={`pill pill-${shown.row}`} data-part="pill" data-kind={shown.row}>{rowNames[shown.row]}</span>
+          <span className="meta-text" data-part="meta-text">
             {shown.project} · {shown.kind} · <code>{taskRef(shown, source)}</code>
           </span>
         </div>
@@ -289,7 +289,7 @@ export function CardDetail(props: CardDetailProps) {
           theme={theme}
         />
       ) : (
-        <div className="detail-scroll" ref={scrollRef} role="tabpanel" id={`detail-panel-${tab}`} aria-labelledby={`detail-tab-${tab}`}>
+        <div className="detail-scroll" data-part="detail-scroll" data-kind={tab} ref={scrollRef} role="tabpanel" id={`detail-panel-${tab}`} aria-labelledby={`detail-tab-${tab}`}>
           {tab === "overview" && (
             <>
               {waits.length > 0 && <WaitingSection waits={waits} people={people} statuses={statuses} />}
@@ -310,36 +310,36 @@ export function CardDetail(props: CardDetailProps) {
                 />
               )}
               {hold && !callShown && !waitsReplaceHold && (
-                <div className={`sec hold hold-${shown.holdKind}`}>
-                  <span className="sech">{hold}</span>
+                <div className={`sec hold hold-${shown.holdKind}`} data-part="hold" data-kind={shown.holdKind}>
+                  <span className="sech" data-part="sech">{hold}</span>
                   {shown.holdReason ? (
                     <Markdown text={shown.holdReason} linking={linking} onPath={onPath} />
                   ) : (
-                    <p className="muted">No reason recorded.</p>
+                    <p className="muted" data-part="muted">No reason recorded.</p>
                   )}
                 </div>
               )}
               {shown.blockedBy.length > 0 && (
-                <div className="sec">
-                  <span className="sech">Waits for</span>
-                  <div className="chips">
+                <div className="sec" data-part="blocked-by">
+                  <span className="sech" data-part="sech">Waits for</span>
+                  <div className="chips" data-part="chips">
                     {shown.blockedBy.map((id) => (
-                      <button key={id} className="chip" onClick={() => onOpenCard(id)}>
+                      <button key={id} className="chip" data-part="chip" data-control="open-blocker" data-key={id} onClick={() => onOpenCard(id)}>
                         {id}
                       </button>
                     ))}
                   </div>
                 </div>
               )}
-              <div className="sec">
-                <span className="sech">Note</span>
-                {loadError && <p className="error-text">Could not load the full card: {loadError}</p>}
-                {!detail && !loadError && <p className="muted">Loading…</p>}
-                {detail && (detail.body ? <Markdown text={detail.body} linking={linking} onPath={onPath} /> : <p className="muted">No note recorded.</p>)}
+              <div className="sec" data-part="card-note">
+                <span className="sech" data-part="sech">Note</span>
+                {loadError && <p className="error-text" data-part="error-text">Could not load the full card: {loadError}</p>}
+                {!detail && !loadError && <p className="muted" data-part="muted">Loading…</p>}
+                {detail && (detail.body ? <Markdown text={detail.body} linking={linking} onPath={onPath} /> : <p className="muted" data-part="muted">No note recorded.</p>)}
               </div>
               <KeyLinks links={links} hidden={shownPrs(result)} statuses={statuses} onAll={() => showTab("links")} />
               {detail && (
-                <div className="sec facts">
+                <div className="sec facts" data-part="facts">
                   {detail.created && <Fact name="Created" value={detail.created} />}
                   {shown.closed && <Fact name="Closed" value={shown.closed} />}
                   {detail.priority && <Fact name="Priority" value={detail.priority} />}
@@ -348,7 +348,7 @@ export function CardDetail(props: CardDetailProps) {
               )}
             </>
           )}
-          {tab === "links" && (sources ? <LinksTab links={links} statuses={statuses} /> : <p className="tab-empty">Looking for links…</p>)}
+          {tab === "links" && (sources ? <LinksTab links={links} statuses={statuses} /> : <p className="tab-empty" data-part="tab-empty">Looking for links…</p>)}
           {tab === "files" && (
             <FilesTab
               hasHome={hasHome}
@@ -368,28 +368,31 @@ export function CardDetail(props: CardDetailProps) {
       {tab !== "agent" && (
         <form
           className="detail-send"
+          data-part="detail-send"
           onSubmit={(e) => {
             e.preventDefault();
             void submit();
           }}
         >
-          <div className="send-row">
-            <label className="grow">
+          <div className="send-row" data-part="send-row">
+            <label className="grow" data-part="send-field">
               <span className="sr-only">{cardMessageLabel(source)}</span>
               <input
                 className="text-input"
+                data-part="text-input"
+                data-control="card-message"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder={cardMessagePrompt(source, chatTerminal !== null)}
                 disabled={!chatTerminal}
               />
             </label>
-            <button className="btn btn-dark" type="submit" disabled={!canSend}>
+            <button className="btn btn-dark" data-part="button" data-kind="dark" data-control="card-message-send" type="submit" disabled={!canSend}>
               {send.kind === "sending" ? "Sending…" : "Send"}
             </button>
           </div>
-          {send.kind === "sent" && <span className="send-note">Sent to {send.to}.</span>}
-          {send.kind === "failed" && <span className="send-note error-text">Not sent: {send.error}</span>}
+          {send.kind === "sent" && <span className="send-note" data-part="send-note">Sent to {send.to}.</span>}
+          {send.kind === "failed" && <span className="send-note error-text" data-part="send-note" data-kind="error">Not sent: {send.error}</span>}
         </form>
       )}
     </section>
@@ -417,6 +420,7 @@ function TabBar({ tabs, tab, counts, worker, source, onChange }: TabBarProps) {
   return (
     <div
       className="detail-tabs"
+      data-part="detail-tabs"
       role="tablist"
       aria-label="Card details"
       onKeyDown={(e) => {
@@ -438,17 +442,20 @@ function TabBar({ tabs, tab, counts, worker, source, onChange }: TabBarProps) {
           aria-controls={`detail-panel-${key}`}
           tabIndex={tab === key ? 0 : -1}
           className={`detail-tab ${tab === key ? "on" : ""}`}
+          data-part="detail-tab"
+          data-control="detail-tab"
+          data-key={key}
           title={key === "agent" && worker ? sailorLabel(source, worker.status) : undefined}
           onClick={() => onChange(key)}
         >
           {key === "agent" && worker && (
-            <span className={`sailor ${worker.status}`} aria-hidden="true">
+            <span className={`sailor ${worker.status}`} data-part="detail-tab-sailor" data-state={worker.status} aria-hidden="true">
               <Sailor size={TAB_SAILOR_SIZE} />
             </span>
           )}
           {name}
           {key === "agent" && worker && <span className="sr-only">, {worker.status}</span>}
-          {counts[key] !== null && counts[key] > 0 && <span className="tab-count">{counts[key]}</span>}
+          {counts[key] !== null && counts[key] > 0 && <span className="tab-count" data-part="tab-count">{counts[key]}</span>}
         </button>
       ))}
     </div>
@@ -466,15 +473,15 @@ function KeyLinks({ links, hidden, statuses, onAll }: KeyLinksProps) {
   const top = topLinks(links.filter((link) => !hidden.includes(link.url)));
   if (top.length === 0) return null;
   return (
-    <div className="sec">
-      <span className="sech">Key links</span>
-      <ul className="link-list">
+    <div className="sec" data-part="key-links">
+      <span className="sech" data-part="sech">Key links</span>
+      <ul className="link-list" data-part="link-list">
         {top.map((link) => (
           <LinkRow key={link.url} link={link} status={statuses.get(link.url)} showSources={false} />
         ))}
       </ul>
       {links.length > top.length && (
-        <button type="button" className="link more-link" onClick={onAll}>
+        <button type="button" className="link more-link" data-part="more-link" data-control="show-all-links" onClick={onAll}>
           All {links.length} links
         </button>
       )}
@@ -484,7 +491,7 @@ function KeyLinks({ links, hidden, statuses, onAll }: KeyLinksProps) {
 
 function Fact({ name, value }: { name: string; value: string }) {
   return (
-    <div className="fact">
+    <div className="fact" data-part="fact">
       <span>{name}</span>
       <span>{value}</span>
     </div>
@@ -505,16 +512,16 @@ function MoveSection({ request, source, rowNames, onResend, onDismiss }: MoveSec
   switch (request.status) {
     case "failed":
       return (
-        <div className="sec move move-failed">
-          <span className="sech">{copy.heading}</span>
-          <p className="error-text">
+        <div className="sec move move-failed" data-part="move" data-kind="failed">
+          <span className="sech" data-part="sech">{copy.heading}</span>
+          <p className="error-text" data-part="error-text">
             {copy.body} {request.error}
           </p>
-          <div className="move-actions">
-            <button className="btn btn-dark" onClick={() => onResend(request.requestId)}>
+          <div className="move-actions" data-part="move-actions">
+            <button className="btn btn-dark" data-part="button" data-kind="dark" data-control="move-resend" onClick={() => onResend(request.requestId)}>
               Send again
             </button>
-            <button className="btn" onClick={() => onDismiss(request.requestId)}>
+            <button className="btn" data-part="button" data-control="move-dismiss" onClick={() => onDismiss(request.requestId)}>
               Cancel
             </button>
           </div>
@@ -522,12 +529,12 @@ function MoveSection({ request, source, rowNames, onResend, onDismiss }: MoveSec
       );
     case "answered":
       return (
-        <div className="sec move move-answered">
-          <span className="sech">{copy.heading}</span>
-          <p className="muted">{copy.body}</p>
-          <p className="prose">{request.answer}</p>
-          <div className="move-actions">
-            <button className="btn" onClick={() => onDismiss(request.requestId)}>
+        <div className="sec move move-answered" data-part="move" data-kind="answered">
+          <span className="sech" data-part="sech">{copy.heading}</span>
+          <p className="muted" data-part="muted">{copy.body}</p>
+          <p className="prose" data-part="prose">{request.answer}</p>
+          <div className="move-actions" data-part="move-actions">
+            <button className="btn" data-part="button" data-control="move-dismiss" onClick={() => onDismiss(request.requestId)}>
               Dismiss
             </button>
           </div>
@@ -535,9 +542,9 @@ function MoveSection({ request, source, rowNames, onResend, onDismiss }: MoveSec
       );
     default:
       return (
-        <div className="sec move">
-          <span className="sech">{copy.heading}</span>
-          <p className="prose">{copy.body}</p>
+        <div className="sec move" data-part="move">
+          <span className="sech" data-part="sech">{copy.heading}</span>
+          <p className="prose" data-part="prose">{copy.body}</p>
         </div>
       );
   }

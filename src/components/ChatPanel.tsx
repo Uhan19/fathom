@@ -5,6 +5,7 @@ import { droppedPathsText } from "../fileDrop";
 import { useLiveTerminal } from "../liveTerminal";
 import { CHAT_TAB, closeTab, cycleTab, launcherShortcutLabel, listenForTabKeys, revealTab, tabKeys, withTab } from "../terminalTabs";
 import type { Theme } from "../theme";
+import { states } from "../parts";
 import { OpenTerminal } from "./OpenTerminal";
 import { ShellPane } from "./ShellPane";
 import { TabStrip } from "./TabStrip";
@@ -200,7 +201,7 @@ export function ChatPanel(props: ChatPanelProps) {
   const title = chatTitle(source, shown, agent);
 
   return (
-    <aside ref={panelRef} className="chat" style={{ width }} aria-label={`${title} chat`}>
+    <aside ref={panelRef} className="chat" data-part="chat" style={{ width }} aria-label={`${title} chat`}>
       <TabStrip
         title={title}
         chip={attachedName}
@@ -228,35 +229,44 @@ export function ChatPanel(props: ChatPanelProps) {
           onClose={closeLauncher}
         />
       )}
-      <div className="chat-body">
-        <div className={chatActive ? "tab-pane" : "tab-pane hidden"} role="tabpanel" aria-label={title}>
+      <div className="chat-body" data-part="chat-body">
+        <div
+          className={chatActive ? "tab-pane" : "tab-pane hidden"}
+          data-part="tab-pane"
+          data-state={states({ hidden: !chatActive })}
+          data-key={CHAT_TAB}
+          role="tabpanel"
+          aria-label={title}
+        >
           <div
             ref={scrollRef}
             className={`terminal-scroll${phase.kind === "attached" || phase.kind === "ended" ? "" : " hidden"}`}
+            data-part="terminal-scroll"
+            data-state={states({ hidden: phase.kind !== "attached" && phase.kind !== "ended" })}
             onClick={focus}
           >
-            <div ref={hostRef} className="terminal-host" />
+            <div ref={hostRef} className="terminal-host" data-part="terminal-host" />
           </div>
-          {phase.kind === "finding" && <p className="chat-status">{findingText(source, label)}</p>}
+          {phase.kind === "finding" && <p className="chat-status" data-part="chat-status">{findingText(source, label)}</p>}
           {phase.kind === "failed" && (
-            <div className="chat-status">
-              <p className="error-text">{phase.error}</p>
-              <button className="btn" onClick={() => void find()}>
+            <div className="chat-status" data-part="chat-status">
+              <p className="error-text" data-part="error-text">{phase.error}</p>
+              <button className="btn" data-part="button" data-control="chat-retry" onClick={() => void find()}>
                 Try again
               </button>
             </div>
           )}
           {phase.kind === "ended" && (
-            <div className="chat-ended">
+            <div className="chat-ended" data-part="chat-ended">
               <span>Detached from {attachedName}.</span>
-              <button className="mini" onClick={() => void attach(phase.terminal)}>
+              <button className="mini" data-part="mini-button" data-control="chat-reattach" onClick={() => void attach(phase.terminal)}>
                 Reattach
               </button>
             </div>
           )}
           {phase.kind === "picking" && (
-            <div className="picker">
-              <p className="picker-reason">{phase.reason}</p>
+            <div className="picker" data-part="picker">
+              <p className="picker-reason" data-part="picker-reason">{phase.reason}</p>
               {phase.offerOpen && (
                 <OpenTerminal
                   source={source}
@@ -271,16 +281,16 @@ export function ChatPanel(props: ChatPanelProps) {
                   onOpen={() => void openAgent()}
                 />
               )}
-              <span className="sech">{phase.offerOpen ? "Or pick a running terminal" : "Pick a herdr-core terminal"}</span>
-              {phase.error && <p className="error-text">{phase.error}</p>}
-              {phase.terminals === null && <p className="muted">Listing terminals…</p>}
-              {phase.terminals?.length === 0 && !phase.error && <p className="muted">No terminals are running.</p>}
-              <ul className="picker-list">
+              <span className="sech" data-part="sech">{phase.offerOpen ? "Or pick a running terminal" : "Pick a herdr-core terminal"}</span>
+              {phase.error && <p className="error-text" data-part="error-text">{phase.error}</p>}
+              {phase.terminals === null && <p className="muted" data-part="muted">Listing terminals…</p>}
+              {phase.terminals?.length === 0 && !phase.error && <p className="muted" data-part="muted">No terminals are running.</p>}
+              <ul className="picker-list" data-part="picker-list">
                 {phase.terminals?.map((t) => (
-                  <li key={t.address}>
-                    <button className="picker-item" onClick={() => void attach(t)}>
-                      <span className="picker-name">{t.name || t.address}</span>
-                      <span className="picker-meta">
+                  <li key={t.address} data-key={t.address}>
+                    <button className="picker-item" data-part="picker-item" data-control="picker-terminal" onClick={() => void attach(t)}>
+                      <span className="picker-name" data-part="picker-name">{t.name || t.address}</span>
+                      <span className="picker-meta" data-part="picker-meta">
                         {t.address}
                         {t.agent ? ` · ${t.agent}` : ""}
                         {t.cwd ? ` · ${t.cwd}` : ""}
@@ -289,7 +299,7 @@ export function ChatPanel(props: ChatPanelProps) {
                   </li>
                 ))}
               </ul>
-              <button className="mini" onClick={() => void find()}>
+              <button className="mini" data-part="mini-button" data-control="chat-find-again" onClick={() => void find()}>
                 Look for the label again
               </button>
             </div>

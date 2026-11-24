@@ -51,18 +51,28 @@ describe("the Agent tab in card details", () => {
 
   it("wears the board card's sailor with the worker's live state and wording", () => {
     const busy = agentTab(detail(working));
-    expect(busy).toContain('<span class="sailor working" aria-hidden="true">');
+    expect(busy).toContain('<span class="sailor working" data-part="detail-tab-sailor" data-state="working" aria-hidden="true">');
     expect(busy).toContain('title="A crewmate is working on this. Open its terminal"');
     expect(busy).toContain('<span class="sr-only">, working</span>');
 
     const resting = agentTab(detail(idle, "fathom"));
-    expect(resting).toContain('<span class="sailor idle" aria-hidden="true">');
+    expect(resting).toContain('<span class="sailor idle" data-part="detail-tab-sailor" data-state="idle" aria-hidden="true">');
     expect(resting).toContain('title="A worker is on this, idle. Open its terminal"');
+  });
+
+  it("names its parts and controls for themes", () => {
+    const html = detail(working);
+    expect(html).toContain('class="detail" data-part="detail"');
+    expect(html).toContain('data-part="icon-button" data-control="close-detail"');
+    expect([...html.matchAll(/data-control="detail-tab" data-key="(\w+)"/g)].map((m) => m[1])).toEqual(["overview", "links", "files", "activity", "agent"]);
+    expect(html).toContain('data-part="detail-scroll" data-kind="overview"');
+    expect(html).toContain('<span data-part="rich-text">');
+    expect(html).toContain('data-part="text-input" data-control="card-message"');
   });
 
   it("keeps the card's own send box on the other tabs", () => {
     const html = detail(working);
-    expect(html).toContain('class="detail-send"');
+    expect(html).toContain('class="detail-send" data-part="detail-send"');
     expect(html).not.toContain('class="composer"');
   });
 });
@@ -74,18 +84,18 @@ function composer(unreachable: string | null, chatTerminal: Terminal | null = ch
 describe("the agent composer", () => {
   it("is a multi-line box that talks to the worker first and names both recipients", () => {
     const html = composer(null);
-    expect(html).toMatch(/<textarea id="composer-field" class="composer-field" rows="2" placeholder="Message the crewmate on t3…">/);
-    expect(html).toContain('aria-pressed="true"><span class="sailor working" aria-hidden="true">');
-    expect(html).toMatch(/Crewmate<span class="terminal-chip">t3<\/span>/);
-    expect(html).toMatch(/aria-pressed="false">.*Firstmate<span class="terminal-chip">firstmate<\/span>/);
+    expect(html).toMatch(/<textarea id="composer-field" class="composer-field" data-part="composer-field" data-control="composer-message" rows="2" placeholder="Message the crewmate on t3…">/);
+    expect(html).toContain('data-key="worker" aria-pressed="true"><span class="sailor working" data-part="recipient-sailor" data-state="working" aria-hidden="true">');
+    expect(html).toMatch(/Crewmate<span class="terminal-chip" data-part="terminal-chip">t3<\/span>/);
+    expect(html).toMatch(/data-key="chat" aria-pressed="false">.*Firstmate<span class="terminal-chip" data-part="terminal-chip">firstmate<\/span>/);
     expect(html).toContain("adds a line");
   });
 
   it("is disabled with the reason when the worker's terminal cannot be reached", () => {
     const html = composer("Detached from t3. Reattach to send again.");
     expect(html).toContain('placeholder="The crewmate&#x27;s terminal t3 is not reachable" disabled=""');
-    expect(html).toContain('class="composer-box off"');
-    expect(html).toContain('<span class="send-note error-text">Detached from t3. Reattach to send again.</span>');
+    expect(html).toContain('class="composer-box off" data-part="composer-box" data-state="off"');
+    expect(html).toContain('<span class="send-note error-text" data-part="send-note" data-kind="error">Detached from t3. Reattach to send again.</span>');
   });
 });
 

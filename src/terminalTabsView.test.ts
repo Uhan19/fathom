@@ -66,7 +66,7 @@ describe("tab strip", () => {
   it("marks only the active tab", () => {
     const html = strip(TABS[1].terminal);
     expect(html.match(/class="tab on"/g)).toHaveLength(1);
-    expect(html).toContain(`class="tab on" data-tab="${TABS[1].terminal}"`);
+    expect(html).toContain(`class="tab on" data-part="tab" data-state="active" data-key="${TABS[1].terminal}" data-tab="${TABS[1].terminal}"`);
     expect(html.match(/aria-selected="true"/g)).toHaveLength(1);
   });
 
@@ -78,7 +78,7 @@ describe("tab strip", () => {
 describe("hidden panel rail", () => {
   it("shows the active tab name", () => {
     const html = renderToStaticMarkup(createElement(ChatRail, { name: "zsh · atlas-api", title: "Show chat (⌘B)", onOpen: ignore }));
-    expect(html).toContain('<span class="vname">zsh · atlas-api</span>');
+    expect(html).toContain('<span class="vname" data-part="chat-rail-name">zsh · atlas-api</span>');
     expect(html).toContain('aria-label="Show chat: zsh · atlas-api"');
     expect(html).toContain('title="Show chat (⌘B)"');
   });

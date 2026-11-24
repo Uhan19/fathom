@@ -16,6 +16,7 @@ mod shell_tabs;
 mod source;
 mod state;
 mod tasks;
+mod themes;
 #[cfg(test)]
 mod test_support;
 mod toon;

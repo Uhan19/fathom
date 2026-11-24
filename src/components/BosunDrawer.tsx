@@ -18,6 +18,7 @@ import {
 } from "../bosun";
 import { resizer, startDrag } from "../drag";
 import { useLiveTerminal } from "../liveTerminal";
+import { states } from "../parts";
 import type { Theme } from "../theme";
 import { ChevronDown, ChevronUp } from "./Icons";
 
@@ -157,9 +158,18 @@ export function BosunDrawer(props: BosunDrawerProps) {
 
   return (
     <>
-      <section ref={drawerRef} className={`bosun${open ? "" : " closed"}`} style={{ height: props.height, maxHeight: MAX_HEIGHT }} aria-label={BOSUN}>
+      <section
+        ref={drawerRef}
+        className={`bosun${open ? "" : " closed"}`}
+        data-part="bosun"
+        data-state={states({ closed: !open })}
+        style={{ height: props.height, maxHeight: MAX_HEIGHT }}
+        aria-label={BOSUN}
+      >
         <div
           className="bosun-handle"
+          data-part="bosun-handle"
+          data-control="resize-helper"
           role="separator"
           aria-label="Resize Bosun"
           onPointerDown={(e) => {
@@ -170,44 +180,50 @@ export function BosunDrawer(props: BosunDrawerProps) {
         >
           <span />
         </div>
-        <header className="bosun-head">
-          <span className={`bosun-dot ${dotOf(state)}`} aria-hidden="true" />
-          <span className="bosun-title">{BOSUN}</span>
-          <span className="bosun-summary">{summaryOf(state)}</span>
-          <span className="spacer" />
+        <header className="bosun-head" data-part="bosun-head">
+          <span className={`bosun-dot ${dotOf(state)}`} data-part="bosun-dot" data-state={dotOf(state)} aria-hidden="true" />
+          <span className="bosun-title" data-part="bosun-title">{BOSUN}</span>
+          <span className="bosun-summary" data-part="bosun-summary">{summaryOf(state)}</span>
+          <span className="spacer" data-part="spacer" />
           {running && (
             <>
-              <button className="mini" onClick={() => void restart()}>
+              <button className="mini" data-part="mini-button" data-control="helper-restart" onClick={() => void restart()}>
                 Restart
               </button>
-              <button className="mini" onClick={() => void stop()}>
+              <button className="mini" data-part="mini-button" data-control="helper-stop" onClick={() => void stop()}>
                 Stop
               </button>
             </>
           )}
-          <button className="ico" onClick={props.onToggle} aria-label={`Close ${BOSUN}`} title={`Close ${BOSUN} (${props.shortcut})`}>
+          <button className="ico" data-part="icon-button" data-control="helper-close" onClick={props.onToggle} aria-label={`Close ${BOSUN}`} title={`Close ${BOSUN} (${props.shortcut})`}>
             <ChevronDown />
           </button>
         </header>
-        {hint && <p className={`bosun-hint ${state}`}>{hint}</p>}
-        <div className="chat-body bosun-body">
+        {hint && (
+          <p className={`bosun-hint ${state}`} data-part="bosun-hint" data-state={state}>
+            {hint}
+          </p>
+        )}
+        <div className="chat-body bosun-body" data-part="chat-body" data-kind="bosun">
           <div
             ref={scrollRef}
             className={`terminal-scroll${shownTerminal ? "" : " hidden"}${phase.kind === "stopped" ? " dimmed" : ""}`}
+            data-part="terminal-scroll"
+            data-state={states({ hidden: !shownTerminal, dimmed: phase.kind === "stopped" })}
             onClick={focus}
           >
-            <div ref={hostRef} className="terminal-host" />
+            <div ref={hostRef} className="terminal-host" data-part="terminal-host" />
           </div>
           <Screen phase={phase} mac={props.mac} onStart={() => void start()} onFind={() => void find()} />
         </div>
       </section>
       {!open && (
-        <button className="bosun-rail" onClick={props.onToggle} aria-label={`Open ${BOSUN}`} title={`Open ${BOSUN} (${props.shortcut})`}>
+        <button className="bosun-rail" data-part="bosun-rail" data-control="helper-open" onClick={props.onToggle} aria-label={`Open ${BOSUN}`} title={`Open ${BOSUN} (${props.shortcut})`}>
           <ChevronUp />
-          <span className={`bosun-dot ${dotOf(state)}`} aria-hidden="true" />
-          <span className="bosun-title">{BOSUN}</span>
-          <span className="bosun-summary">{summaryOf(state)}</span>
-          <span className="spacer" />
+          <span className={`bosun-dot ${dotOf(state)}`} data-part="bosun-dot" data-state={dotOf(state)} aria-hidden="true" />
+          <span className="bosun-title" data-part="bosun-title">{BOSUN}</span>
+          <span className="bosun-summary" data-part="bosun-summary">{summaryOf(state)}</span>
+          <span className="spacer" data-part="spacer" />
           <kbd>{props.shortcut}</kbd>
         </button>
       )}
@@ -225,28 +241,28 @@ interface ScreenProps {
 function Screen({ phase, mac, onStart, onFind }: ScreenProps) {
   switch (phase.kind) {
     case "finding":
-      return <p className="chat-status">Looking for {BOSUN}…</p>;
+      return <p className="chat-status" data-part="chat-status">Looking for {BOSUN}…</p>;
     case "dormant":
     case "starting":
-      return <p className="chat-status">Starting {BOSUN}…</p>;
+      return <p className="chat-status" data-part="chat-status">Starting {BOSUN}…</p>;
     case "notStarted":
       return <Intro onStart={onStart} />;
     case "missing":
       return <Install mac={mac} onCheck={onStart} />;
     case "failed":
       return (
-        <div className="chat-status">
-          <p className="error-text">{phase.error}</p>
-          <button className="btn" onClick={onFind}>
+        <div className="chat-status" data-part="chat-status">
+          <p className="error-text" data-part="error-text">{phase.error}</p>
+          <button className="btn" data-part="button" data-control="helper-retry" onClick={onFind}>
             Try again
           </button>
         </div>
       );
     case "stopped":
       return (
-        <div className="chat-ended">
+        <div className="chat-ended" data-part="chat-ended">
           <span>{BOSUN} stopped.</span>
-          <button className="mini" onClick={onStart}>
+          <button className="mini" data-part="mini-button" data-control="helper-start-again" onClick={onStart}>
             Start again
           </button>
         </div>
@@ -258,19 +274,19 @@ function Screen({ phase, mac, onStart, onFind }: ScreenProps) {
 
 function Intro({ onStart }: { onStart: () => void }) {
   return (
-    <div className="bosun-screen">
-      <div className="bosun-about">
+    <div className="bosun-screen" data-part="bosun-screen">
+      <div className="bosun-about" data-part="bosun-about">
         <p>
           {BOSUN} changes Fathom when you ask in plain words: columns, rows, which projects show, the theme, fonts and panels. It runs Claude Code
           with only Fathom's own tools and asks before risky changes.
         </p>
-        <button className="btn btn-dark" onClick={onStart}>
+        <button className="btn btn-dark" data-part="button" data-kind="dark" data-control="helper-start" onClick={onStart}>
           Start {BOSUN}
         </button>
-        <p className="muted">{BOSUN} keeps running when Fathom quits, and Fathom finds it again next time.</p>
+        <p className="muted" data-part="muted">{BOSUN} keeps running when Fathom quits, and Fathom finds it again next time.</p>
       </div>
-      <div className="bosun-examples">
-        <span className="sech">Try asking</span>
+      <div className="bosun-examples" data-part="bosun-examples">
+        <span className="sech" data-part="sech">Try asking</span>
         <ul>
           {EXAMPLE_REQUESTS.map((request) => (
             <li key={request}>{request}</li>
@@ -293,22 +309,22 @@ function Install({ mac, onCheck }: { mac: boolean; onCheck: () => void }) {
   const copy = () => void writeText(INSTALL_COMMAND).then(() => setCopied(true), () => undefined);
 
   return (
-    <div className="bosun-screen">
-      <div className="bosun-about">
+    <div className="bosun-screen" data-part="bosun-screen">
+      <div className="bosun-about" data-part="bosun-about">
         <p>{BOSUN} runs on Claude Code, which is not installed or not on your PATH. Install it in a terminal, then check again.</p>
-        <div className="bosun-command">
+        <div className="bosun-command" data-part="bosun-command">
           <code>{INSTALL_COMMAND}</code>
-          <button className="mini" onClick={copy}>
+          <button className="mini" data-part="mini-button" data-control="helper-copy-install" onClick={copy}>
             {copied ? "Copied" : "Copy"}
           </button>
         </div>
         {mac && (
-          <p className="muted">
+          <p className="muted" data-part="muted">
             Or with Homebrew: <code>{BREW_COMMAND}</code>. That copy does not update itself.
           </p>
         )}
-        <p className="muted">Claude Code needs a paid Claude plan or a Claude Console account.</p>
-        <button className="btn" onClick={onCheck}>
+        <p className="muted" data-part="muted">Claude Code needs a paid Claude plan or a Claude Console account.</p>
+        <button className="btn" data-part="button" data-control="helper-check-again" onClick={onCheck}>
           Check again
         </button>
       </div>

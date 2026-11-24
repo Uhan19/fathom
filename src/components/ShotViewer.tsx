@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { createPortal } from "react-dom";
 import { api, errorText } from "../api";
 import { counterpart, pickShot, stateLabel, stepShot, type Axes, type Axis, type Phase, type Shot, type ShotSet } from "../result";
+import { states } from "../parts";
 import { Close, ImageIcon, OpenIcon, RevealIcon } from "./Icons";
 
 const THUMB_MAX_BYTES = 4 * 1024 * 1024;
@@ -77,22 +78,22 @@ export function ShotImage({ shot, className, onScale }: { shot: Shot; className?
       img.removeEventListener("load", measure);
     };
   }, [onScale, loaded]);
-  if (!loaded) return <span className={`shot-pending ${className ?? ""}`} aria-label={`Loading ${shot.name}`} />;
+  if (!loaded) return <span className={`shot-pending ${className ?? ""}`} data-part="shot-pending" aria-label={`Loading ${shot.name}`} />;
   if ("error" in loaded)
     return (
-      <span className={`shot-missing ${className ?? ""}`}>
+      <span className={`shot-missing ${className ?? ""}`} data-part="shot-missing">
         <ImageIcon />
         <span>{loaded.error}</span>
       </span>
     );
-  return <img ref={ref} className={className} src={loaded.src} alt={describeShot(shot)} draggable={false} />;
+  return <img ref={ref} className={className} data-part={className} src={loaded.src} alt={describeShot(shot)} draggable={false} />;
 }
 
 export function ShotThumb({ shot }: { shot: Shot | null }) {
   const small = shot !== null && (shot.size ?? Infinity) <= THUMB_MAX_BYTES;
   const [loaded, observe] = useImage(small ? shot.path : null, true);
   return (
-    <span ref={observe} className="shot-thumb-img">
+    <span ref={observe} className="shot-thumb-img" data-part="shot-thumb-img">
       {loaded && "src" in loaded ? <img src={loaded.src} alt="" draggable={false} /> : <ImageIcon />}
     </span>
   );
@@ -113,6 +114,7 @@ export function scaleText(scale: number | null): string {
 }
 
 interface SegmentProps<T> {
+  control: string;
   label: string;
   values: T[];
   current: T | null;
@@ -121,14 +123,17 @@ interface SegmentProps<T> {
   onPick: (value: T) => void;
 }
 
-export function Segment<T extends string | number>({ label, values, current, name, enabled, onPick }: SegmentProps<T>) {
+export function Segment<T extends string | number>({ control, label, values, current, name, enabled, onPick }: SegmentProps<T>) {
   return (
-    <span className="seg" role="group" aria-label={label}>
+    <span className="seg" data-part="seg" data-control={control} role="group" aria-label={label}>
       {values.map((value) => (
         <button
           key={value}
           type="button"
           className={value === current ? "on" : ""}
+          data-part="seg-option"
+          data-control={`${control}-option`}
+          data-key={String(value)}
           aria-pressed={value === current}
           disabled={enabled ? !enabled(value) : false}
           onClick={() => onPick(value)}
@@ -142,7 +147,15 @@ export function Segment<T extends string | number>({ label, values, current, nam
 
 export const PHASE_NAMES: Record<Phase, string> = { before: "Before", after: "After" };
 
-export function AxisSwitches({ axes, shots, current, onPick }: { axes: Axes; shots: Shot[]; current: Shot; onPick: (shot: Shot) => void }) {
+interface AxisSwitchesProps {
+  control: string;
+  axes: Axes;
+  shots: Shot[];
+  current: Shot;
+  onPick: (shot: Shot) => void;
+}
+
+export function AxisSwitches({ control, axes, shots, current, onPick }: AxisSwitchesProps) {
   const choose = <K extends Axis>(axis: K, value: Shot[K]) => {
     const next = pickShot(shots, current, { [axis]: value });
     if (next) onPick(next);
@@ -151,13 +164,13 @@ export function AxisSwitches({ axes, shots, current, onPick }: { axes: Axes; sho
   return (
     <>
       {axes.phase.length > 0 && current.phase && (
-        <Segment label="Before or after" values={axes.phase} current={current.phase} name={(p) => PHASE_NAMES[p]} enabled={(p) => reachable("phase", p)} onPick={(p) => choose("phase", p)} />
+        <Segment control={`${control}-phase`} label="Before or after" values={axes.phase} current={current.phase} name={(p) => PHASE_NAMES[p]} enabled={(p) => reachable("phase", p)} onPick={(p) => choose("phase", p)} />
       )}
       {axes.width.length > 0 && current.width && (
-        <Segment label="Width" values={axes.width} current={current.width} name={String} enabled={(w) => reachable("width", w)} onPick={(w) => choose("width", w)} />
+        <Segment control={`${control}-width`} label="Width" values={axes.width} current={current.width} name={String} enabled={(w) => reachable("width", w)} onPick={(w) => choose("width", w)} />
       )}
       {axes.theme.length > 0 && current.theme && (
-        <Segment label="Theme" values={axes.theme} current={current.theme} name={capital} enabled={(t) => reachable("theme", t)} onPick={(t) => choose("theme", t)} />
+        <Segment control={`${control}-theme`} label="Theme" values={axes.theme} current={current.theme} name={capital} enabled={(t) => reachable("theme", t)} onPick={(t) => choose("theme", t)} />
       )}
     </>
   );
@@ -225,14 +238,15 @@ export function ViewerLayer({ set, start, title, onClose }: ShotViewerProps) {
   }, [shots, onClose]);
 
   return (
-    <div className="viewer" role="dialog" aria-modal="true" aria-label={`Screenshots: ${title}`} ref={dialog} tabIndex={-1}>
-      <div className="viewer-bar">
-        <span className="viewer-title" title={current.path}>
-          <span className="viewer-task">{title}</span>
+    <div className="viewer" data-part="viewer" role="dialog" aria-modal="true" aria-label={`Screenshots: ${title}`} ref={dialog} tabIndex={-1}>
+      <div className="viewer-bar" data-part="viewer-bar">
+        <span className="viewer-title" data-part="viewer-title" title={current.path}>
+          <span className="viewer-task" data-part="viewer-task">{title}</span>
           <span>{describeShot(current)}</span>
         </span>
         {pair && (
           <Segment<CompareMode>
+            control="viewer-compare"
             label="Compare"
             values={wide ? ["flip", "slider", "side"] : ["flip", "slider"]}
             current={mode}
@@ -240,45 +254,47 @@ export function ViewerLayer({ set, start, title, onClose }: ShotViewerProps) {
             onPick={setMode}
           />
         )}
-        <AxisSwitches axes={comparing ? { ...set.axes, phase: [] } : set.axes} shots={shots} current={current} onPick={show} />
-        <span className="viewer-count">
+        <AxisSwitches control="viewer" axes={comparing ? { ...set.axes, phase: [] } : set.axes} shots={shots} current={current} onPick={show} />
+        <span className="viewer-count" data-part="viewer-count">
           {at + 1} / {shots.length}
         </span>
-        <button type="button" className="ico viewer-close" onClick={onClose} aria-label="Close screenshots" title="Close (Esc)">
+        <button type="button" className="ico viewer-close" data-part="icon-button" data-control="close-viewer" onClick={onClose} aria-label="Close screenshots" title="Close (Esc)">
           <Close />
         </button>
       </div>
-      <div className="viewer-body">
-        <div className={`viewer-stage ${zoomed ? "zoomed" : ""}`}>
+      <div className="viewer-body" data-part="viewer-body">
+        <div className={`viewer-stage ${zoomed ? "zoomed" : ""}`} data-part="viewer-stage" data-state={states({ zoomed })}>
           {comparing && before && after ? (
             mode === "slider" ? (
               <Slider before={before} after={after} split={split} onSplit={setSplit} />
             ) : (
-              <div className="viewer-side">
+              <div className="viewer-side" data-part="viewer-side">
                 <Framed shot={before} />
                 <Framed shot={after} />
               </div>
             )
           ) : (
-            <button type="button" className="viewer-frame" onClick={() => setZoomed((z) => !z)} title={zoomed ? "Fit to window" : "Show at full size"}>
+            <button type="button" className="viewer-frame" data-part="viewer-frame" data-control="viewer-zoom" onClick={() => setZoomed((z) => !z)} title={zoomed ? "Fit to window" : "Show at full size"}>
               <ShotImage shot={current} className="viewer-img" onScale={setScale} />
             </button>
           )}
-          {!comparing && <span className="viewer-scale">{zoomed ? "1:1" : `fit · ${scaleText(scale)}`}</span>}
+          {!comparing && <span className="viewer-scale" data-part="viewer-scale">{zoomed ? "1:1" : `fit · ${scaleText(scale)}`}</span>}
         </div>
-        <aside className="viewer-side-panel">
+        <aside className="viewer-side-panel" data-part="viewer-side-panel">
           <StateMatrix set={set} current={current} onPick={show} />
-          <div className="viewer-file">
-            <h4 className="sech">File</h4>
+          <div className="viewer-file" data-part="viewer-file" data-key={current.path}>
+            <h4 className="sech" data-part="sech">
+              File
+            </h4>
             <code>
               {current.folder}/{current.name}
             </code>
-            <div className="file-actions wide">
-              <button type="button" className="btn btn-small" onClick={() => void api.openFile(current.path)}>
+            <div className="file-actions wide" data-part="file-actions" data-kind="wide">
+              <button type="button" className="btn btn-small" data-part="button" data-kind="small" data-control="file-open-app" onClick={() => void api.openFile(current.path)}>
                 <OpenIcon />
                 <span>Open</span>
               </button>
-              <button type="button" className="btn btn-small" onClick={() => void api.revealFile(current.path)}>
+              <button type="button" className="btn btn-small" data-part="button" data-kind="small" data-control="file-reveal" onClick={() => void api.revealFile(current.path)}>
                 <RevealIcon />
                 <span>Reveal</span>
               </button>
@@ -287,11 +303,21 @@ export function ViewerLayer({ set, start, title, onClose }: ShotViewerProps) {
         </aside>
       </div>
       {variants.length > 1 && (
-        <div className="viewer-film" role="group" aria-label={`Variants of ${stateLabel(current.state)}`}>
+        <div className="viewer-film" data-part="viewer-film" role="group" aria-label={`Variants of ${stateLabel(current.state)}`}>
           {variants.map((shot) => (
-            <button key={shot.path} type="button" className={`film-cell ${shot.path === current.path ? "on" : ""}`} onClick={() => show(shot)} title={shot.name}>
+            <button
+              key={shot.path}
+              type="button"
+              className={`film-cell ${shot.path === current.path ? "on" : ""}`}
+              data-part="film-cell"
+              data-state={states({ selected: shot.path === current.path })}
+              data-control="viewer-variant"
+              data-key={shot.path}
+              onClick={() => show(shot)}
+              title={shot.name}
+            >
               <ShotThumb shot={shot} />
-              <span className="film-label">{variantWords(shot).join(" ") || shot.name}</span>
+              <span className="film-label" data-part="film-label">{variantWords(shot).join(" ") || shot.name}</span>
             </button>
           ))}
         </div>
@@ -301,12 +327,16 @@ export function ViewerLayer({ set, start, title, onClose }: ShotViewerProps) {
 }
 
 function PhaseBadge({ phase }: { phase: Phase }) {
-  return <span className={`shot-badge phase-${phase} viewer-phase`}>{PHASE_NAMES[phase]}</span>;
+  return (
+    <span className={`shot-badge phase-${phase} viewer-phase`} data-part="shot-badge" data-kind={phase}>
+      {PHASE_NAMES[phase]}
+    </span>
+  );
 }
 
 function Framed({ shot }: { shot: Shot }) {
   return (
-    <div className="viewer-half">
+    <div className="viewer-half" data-part="viewer-half">
       <ShotImage shot={shot} className="viewer-img" />
       {shot.phase && <PhaseBadge phase={shot.phase} />}
     </div>
@@ -324,6 +354,7 @@ function Slider({ before, after, split, onSplit }: { before: Shot; after: Shot; 
   return (
     <div
       className="viewer-slider"
+      data-part="viewer-slider"
       ref={box}
       onPointerDown={(e) => {
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -334,20 +365,25 @@ function Slider({ before, after, split, onSplit }: { before: Shot; after: Shot; 
       onPointerUp={() => setDragging(false)}
     >
       <ShotImage shot={after} className="viewer-img" />
-      <div className="viewer-slider-top" style={clip}>
+      <div className="viewer-slider-top" data-part="viewer-slider-top" style={clip}>
         <ShotImage shot={before} className="viewer-img" />
       </div>
-      <span className="viewer-split" style={{ left: `${split}%` }}>
-        <span className="viewer-knob">
+      <span className="viewer-split" data-part="viewer-split" style={{ left: `${split}%` }}>
+        <span className="viewer-knob" data-part="viewer-knob">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M6 4.5L2.5 8L6 11.5M10 4.5L13.5 8L10 11.5" />
           </svg>
         </span>
       </span>
-      <span className="shot-badge phase-before viewer-phase">Before</span>
-      <span className="shot-badge phase-after viewer-phase right">After</span>
+      <span className="shot-badge phase-before viewer-phase" data-part="shot-badge" data-kind="before">
+        Before
+      </span>
+      <span className="shot-badge phase-after viewer-phase right" data-part="shot-badge" data-kind="after">
+        After
+      </span>
       <input
         className="sr-only"
+        data-control="viewer-split"
         type="range"
         min={0}
         max={100}
@@ -367,21 +403,32 @@ function StateMatrix({ set, current, onPick }: { set: ShotSet; current: Shot; on
   }, [current.path]);
   const cell = (shot: Shot | null, key: string, label: string): ReactNode =>
     shot ? (
-      <button key={key} type="button" className={`matrix-cell ${shot.path === current.path ? "on" : ""}`} onClick={() => onPick(shot)} title={describeShot(shot)} aria-label={label}>
+      <button
+        key={key}
+        type="button"
+        className={`matrix-cell ${shot.path === current.path ? "on" : ""}`}
+        data-part="matrix-cell"
+        data-state={states({ selected: shot.path === current.path })}
+        data-control="viewer-cell"
+        data-key={key}
+        onClick={() => onPick(shot)}
+        title={describeShot(shot)}
+        aria-label={label}
+      >
         <ShotThumb shot={shot} />
       </button>
     ) : (
-      <span key={key} className="matrix-cell empty" />
+      <span key={key} className="matrix-cell empty" data-part="matrix-cell" data-kind="empty" />
     );
   return (
-    <div className="viewer-matrix">
-      <h4 className="sech">{themes.length > 0 ? "States × theme" : `States · ${set.states.length}`}</h4>
-      <div className="matrix-grid" ref={list} style={{ gridTemplateColumns: `minmax(0, 1fr) repeat(${Math.max(themes.length, 1)}, 64px)` }}>
+    <div className="viewer-matrix" data-part="viewer-matrix">
+      <h4 className="sech" data-part="sech">{themes.length > 0 ? "States × theme" : `States · ${set.states.length}`}</h4>
+      <div className="matrix-grid" data-part="matrix-grid" ref={list} style={{ gridTemplateColumns: `minmax(0, 1fr) repeat(${Math.max(themes.length, 1)}, 64px)` }}>
         {themes.length > 0 && (
           <>
             <span />
             {themes.map((t) => (
-              <span key={t} className="matrix-head">
+              <span key={t} className="matrix-head" data-part="matrix-head">
                 {capital(t)}
               </span>
             ))}
@@ -402,7 +449,7 @@ function StateMatrix({ set, current, onPick }: { set: ShotSet; current: Shot; on
 function MatrixRow({ state, active, children }: { state: string; active: boolean; children: ReactNode }) {
   return (
     <>
-      <span className={`matrix-state ${active ? "on" : ""}`} title={stateLabel(state)}>
+      <span className={`matrix-state ${active ? "on" : ""}`} data-part="matrix-state" data-state={states({ active })} title={stateLabel(state)}>
         {stateLabel(state)}
       </span>
       {children}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type RefObject } from "react";
 import { api, errorText, events, type ShellTab } from "../api";
 import { droppedPathsText } from "../fileDrop";
 import { useLiveTerminal } from "../liveTerminal";
+import { states } from "../parts";
 import { shellView } from "../terminalTabs";
 import type { Theme } from "../theme";
 
@@ -73,9 +74,22 @@ export function ShellPane({ tab, active, focusTick, fontFamily, fontSize, theme,
 
   const shown = phase.kind === "attached" || phase.kind === "ended";
   return (
-    <div className={active ? "tab-pane" : "tab-pane hidden"} role="tabpanel" aria-label={tab.name}>
-      <div ref={scrollRef} className={shown ? "terminal-scroll" : "terminal-scroll hidden"} onClick={focus}>
-        <div ref={hostRef} className="terminal-host" />
+    <div
+      className={active ? "tab-pane" : "tab-pane hidden"}
+      data-part="tab-pane"
+      data-state={states({ hidden: !active })}
+      data-key={tab.terminal}
+      role="tabpanel"
+      aria-label={tab.name}
+    >
+      <div
+        ref={scrollRef}
+        className={shown ? "terminal-scroll" : "terminal-scroll hidden"}
+        data-part="terminal-scroll"
+        data-state={states({ hidden: !shown })}
+        onClick={focus}
+      >
+        <div ref={hostRef} className="terminal-host" data-part="terminal-host" />
       </div>
       <ShellNotice name={tab.name} phase={phase} onReattach={() => void connect()} onClose={onClose} />
     </div>
@@ -91,20 +105,20 @@ interface ShellNoticeProps {
 
 export function ShellNotice({ name, phase, onReattach, onClose }: ShellNoticeProps) {
   const closeButton = (
-    <button className="mini" onClick={onClose}>
+    <button className="mini" data-part="mini-button" data-control="shell-close-tab" onClick={onClose}>
       Close tab
     </button>
   );
   switch (phase.kind) {
     case "attaching":
-      return <p className="chat-status">Attaching to {name}…</p>;
+      return <p className="chat-status" data-part="chat-status">Attaching to {name}…</p>;
     case "attached":
       return null;
     case "ended":
       return (
-        <div className="chat-ended">
+        <div className="chat-ended" data-part="chat-ended">
           <span>Detached from {name}.</span>
-          <button className="mini" onClick={onReattach}>
+          <button className="mini" data-part="mini-button" data-control="shell-reattach" onClick={onReattach}>
             Reattach
           </button>
           {closeButton}
@@ -112,17 +126,17 @@ export function ShellNotice({ name, phase, onReattach, onClose }: ShellNoticePro
       );
     case "gone":
       return (
-        <div className="chat-status">
+        <div className="chat-status" data-part="chat-status">
           <p>{name} is gone. Its terminal has ended, so there is nothing to reattach.</p>
           {closeButton}
         </div>
       );
     case "failed":
       return (
-        <div className="chat-status">
-          <p className="error-text">{phase.error}</p>
-          <div className="chat-actions">
-            <button className="mini" onClick={onReattach}>
+        <div className="chat-status" data-part="chat-status">
+          <p className="error-text" data-part="error-text">{phase.error}</p>
+          <div className="chat-actions" data-part="chat-actions">
+            <button className="mini" data-part="mini-button" data-control="shell-retry" onClick={onReattach}>
               Try again
             </button>
             {closeButton}

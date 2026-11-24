@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { unknownPrStatus, type FileEntry, type PrStatus } from "./api";
 import { ResultSection } from "./components/DetailResult";
+import { Markdown } from "./components/Markdown";
 import { ViewerLayer } from "./components/ShotViewer";
 import { NO_LINKING } from "./links";
 import { buildResult, reportFile, shotSet, toShots, type ResultInput, type ResultModel } from "./result";
@@ -54,7 +55,7 @@ describe("the Result section", () => {
   it("leads an investigation with its answer and links the full report", () => {
     const report = reportFile("data/web-7/report.md", "# Check\n\n## Answer\n\nYes, the feed is safe. It held within 0.2%.\n\n- No stale rounds.\n\n## Method\n\nRounds.");
     const html = section(model({ report }));
-    expect(html).toContain('<span class="sech">Answer</span>');
+    expect(html).toContain('<span class="sech" data-part="sech">Answer</span>');
     expect(text(html)).toContain("Yes, the feed is safe.");
     expect(html.match(/<li>/g)).toHaveLength(2);
     expect(text(html)).toContain("Read the full report → 2 sections · 11 lines");
@@ -66,7 +67,7 @@ describe("the Result section", () => {
     expect(html).toContain('aria-label="Before or after"');
     expect(html).toContain('aria-label="Theme"');
     expect(html).not.toContain('aria-label="Width"');
-    expect([...html.matchAll(/class="shot-cell-label">([^<]+)</g)].map((m) => m[1])).toEqual(["Home", "Alerts", "Billing", "Profile", "Full window"]);
+    expect([...html.matchAll(/class="shot-cell-label" data-part="shot-cell-label">([^<]+)</g)].map((m) => m[1])).toEqual(["Home", "Alerts", "Billing", "Profile", "Full window"]);
     expect(text(html)).toContain("All 7");
   });
 
@@ -96,7 +97,7 @@ describe("the Result section", () => {
   it("offers a captain call as options to pick, with the recommended one tagged", () => {
     const html = section(model({ card: { id: "web-7", kind: "task", state: "queued", holdKind: "captain", holdReason: "212 rows have no account. Options: (a) delete them; (b) archive them (recommended); (c) keep them." } }));
     expect(html).toContain("result-call");
-    expect(html).toContain('<span class="sech">Your call</span>');
+    expect(html).toContain('<span class="sech" data-part="sech">Your call</span>');
     expect(html.match(/role="radio"/g)).toHaveLength(3);
     expect(text(html)).toContain("B) archive them Recommended");
     expect(html).not.toContain("call-progress");
@@ -146,6 +147,15 @@ describe("the full-window viewer", () => {
     expect(html).toContain("States × theme");
     expect(html.match(/<button[^>]*class="matrix-cell/g)).toHaveLength(6);
     expect(html.match(/matrix-cell empty/g)).toHaveLength(4);
-    expect([...html.matchAll(/class="film-label">([^<]+)</g)].map((m) => m[1])).toEqual(["After 1280 Dark", "After 1280 Light", "Before 1280 Light"]);
+    expect([...html.matchAll(/class="film-label" data-part="film-label">([^<]+)</g)].map((m) => m[1])).toEqual(["After 1280 Dark", "After 1280 Light", "Before 1280 Light"]);
+  });
+});
+
+describe("content links", () => {
+  it("name each link and file path by its target", () => {
+    const html = renderToStaticMarkup(createElement(Markdown, { text: `See ${PR} and data/web-7/report.md`, linking: NO_LINKING, onPath: () => ignore }));
+    expect(html).toContain('data-part="markdown"');
+    expect(html).toContain(`data-part="inline-link" data-control="content-link" data-key="${PR}"`);
+    expect(html).toContain('data-part="path-link" data-control="content-path" data-key="data/web-7/report.md"');
   });
 });

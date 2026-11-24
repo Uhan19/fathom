@@ -41,13 +41,13 @@ function backlogBoard(workers: Worker[], source: SourceKind = "fathom") {
   );
 }
 
-const cardMarkup = (html: string, id: string) => html.match(new RegExp(`<div class="card[^"]*" data-id="${id}">.*?</button></div>`))?.[0] ?? "";
+const cardMarkup = (html: string, id: string) => html.match(new RegExp(`<div class="card[^"]*" data-part="card"[^>]* data-id="${id}">.*?</button></div>`))?.[0] ?? "";
 
 describe("sailors on a Fathom backlog board", () => {
   it("puts a working and an idle sailor on the cards their workers are on", () => {
     const html = backlogBoard(FIXTURE_BACKLOG_WORKERS);
-    expect(cardMarkup(html, "2")).toContain('<button class="sailor working" aria-label="A worker is working on this. Open its terminal"');
-    expect(cardMarkup(html, "5")).toContain('<button class="sailor idle" aria-label="A worker is on this, idle. Open its terminal"');
+    expect(cardMarkup(html, "2")).toContain('<button class="sailor working" data-part="sailor" data-state="working" data-control="card-sailor" aria-label="A worker is working on this. Open its terminal"');
+    expect(cardMarkup(html, "5")).toContain('<button class="sailor idle" data-part="sailor" data-state="idle" data-control="card-sailor" aria-label="A worker is on this, idle. Open its terminal"');
     expect(html.match(/class="sailor /g)).toHaveLength(2);
   });
 
@@ -78,14 +78,14 @@ describe("the worker view on a Fathom backlog board", () => {
   it("names the worker, its task and its terminal", () => {
     const html = workerView("fathom", "working");
     expect(html).toContain('aria-label="Worker terminal for Chart the north reef from the new soundings"');
-    expect(html).toContain('<span class="sailor working" aria-hidden="true">');
-    expect(html).toContain('<span class="terminal-chip">2</span><span class="terminal-chip">t3</span><span class="watch-status">working</span>');
+    expect(html).toContain('<span class="sailor working" data-part="watch-sailor" data-state="working" aria-hidden="true">');
+    expect(html).toContain('<span class="terminal-chip" data-part="terminal-chip">2</span><span class="terminal-chip" data-part="terminal-chip">t3</span><span class="watch-status" data-part="watch-status">working</span>');
     expect(html).toContain('aria-label="Close the worker terminal" title="Close (the worker keeps running)"');
     expect(html).toContain("Attaching to t3…");
   });
 
   it("says when the worker is no longer live", () => {
-    expect(workerView("fathom", null)).toContain('<span class="watch-status">no longer live</span>');
+    expect(workerView("fathom", null)).toContain('<span class="watch-status" data-part="watch-status">no longer live</span>');
   });
 
   it("keeps the crewmate wording for Firstmate", () => {

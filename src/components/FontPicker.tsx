@@ -25,6 +25,8 @@ export function FontPicker({ surface, families, error, added, onAdd, onRemove, o
   return (
     <div
       className="font-picker"
+      data-part="font-picker"
+      data-kind={surface}
       onKeyDown={(e) => {
         if (e.key !== "Escape") return;
         e.preventDefault();
@@ -32,14 +34,16 @@ export function FontPicker({ surface, families, error, added, onAdd, onRemove, o
         onClose();
       }}
     >
-      <div className="font-picker-head">
+      <div className="font-picker-head" data-part="font-picker-head">
         <span>Add an installed font to the {SURFACE_NAME[surface]}</span>
-        <button type="button" className="mini" onClick={onClose}>
+        <button type="button" className="mini" data-part="mini-button" data-control="font-picker-done" onClick={onClose}>
           Done
         </button>
       </div>
       <input
         className="text-input"
+        data-part="text-input"
+        data-control="font-search"
         type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
@@ -48,24 +52,24 @@ export function FontPicker({ surface, families, error, added, onAdd, onRemove, o
         spellCheck={false}
         autoFocus
       />
-      {error && <p className="error-text">{error}</p>}
-      {families === null && !error && <p className="muted">Listing installed fonts…</p>}
-      {families && shown.length === 0 && <p className="muted">No installed font matches “{query.trim()}”.</p>}
+      {error && <p className="error-text" data-part="error-text">{error}</p>}
+      {families === null && !error && <p className="muted" data-part="muted">Listing installed fonts…</p>}
+      {families && shown.length === 0 && <p className="muted" data-part="muted">No installed font matches “{query.trim()}”.</p>}
       {shown.length > 0 && (
-        <ul className="font-list" aria-label="Installed fonts">
+        <ul className="font-list" data-part="font-list" aria-label="Installed fonts">
           {shown.map((family) => {
             const isAdded = added.includes(family);
             return (
-              <li key={family} className="font-row">
-                <span className="font-sample" style={{ fontFamily: `${cssFamily(family)}, ${SAMPLE_FALLBACK[surface]}` }}>
+              <li key={family} className="font-row" data-part="font-row" data-key={family}>
+                <span className="font-sample" data-part="font-sample" style={{ fontFamily: `${cssFamily(family)}, ${SAMPLE_FALLBACK[surface]}` }}>
                   {family}
                 </span>
                 {isAdded ? (
-                  <button type="button" className="mini" onClick={() => onRemove(family)} aria-label={`Remove ${family}`}>
+                  <button type="button" className="mini" data-part="mini-button" data-control="font-remove" onClick={() => onRemove(family)} aria-label={`Remove ${family}`}>
                     Remove
                   </button>
                 ) : (
-                  <button type="button" className="mini" onClick={() => onAdd(family)} aria-label={`Add ${family}`}>
+                  <button type="button" className="mini" data-part="mini-button" data-control="font-add" onClick={() => onAdd(family)} aria-label={`Add ${family}`}>
                     Add
                   </button>
                 )}

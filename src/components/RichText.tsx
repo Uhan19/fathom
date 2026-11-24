@@ -5,10 +5,22 @@ import type { PathAction } from "./Markdown";
 
 const CODE_SPAN = /(`[^`\n]+`)/;
 
-export function WebAnchor({ url, title, className, children }: { url: string; title?: string; className?: string; children: ReactNode }) {
+interface WebAnchorProps {
+  url: string;
+  title?: string;
+  className?: string;
+  part?: string;
+  control?: string;
+  children: ReactNode;
+}
+
+export function WebAnchor({ url, title, className, part = "inline-link", control = "content-link", children }: WebAnchorProps) {
   return (
     <a
       className={`inline-link ${className ?? ""}`}
+      data-part={part}
+      data-control={control}
+      data-key={url}
       href={url}
       title={title ?? url}
       onClick={(e) => {
@@ -23,7 +35,7 @@ export function WebAnchor({ url, title, className, children }: { url: string; ti
 
 export function RichText({ text, linking, onPath }: { text: string; linking: Linking; onPath: PathAction }) {
   return (
-    <>
+    <span data-part="rich-text">
       {text.split(CODE_SPAN).map((part, i) => {
         if (!part) return null;
         if (CODE_SPAN.test(part) && part.startsWith("`")) {
@@ -38,7 +50,7 @@ export function RichText({ text, linking, onPath }: { text: string; linking: Lin
         }
         return splitText(part, linking).map((piece, j) => <PieceView key={`${i}-${j}`} piece={piece} onPath={onPath} />);
       })}
-    </>
+    </span>
   );
 }
 
@@ -54,7 +66,7 @@ function PieceView({ piece, onPath, shown }: { piece: Piece; onPath: PathAction;
   const open = onPath(piece.path);
   if (!open) return <>{shown ?? piece.text}</>;
   return (
-    <button type="button" className="inline-link path-link" title={piece.path} onClick={open}>
+    <button type="button" className="inline-link path-link" data-part="path-link" data-control="content-path" data-key={piece.path} title={piece.path} onClick={open}>
       {shown ?? piece.label ?? fileName(piece.path)}
     </button>
   );

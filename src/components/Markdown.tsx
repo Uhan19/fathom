@@ -37,7 +37,7 @@ export function Markdown({ text, linking, onPath, className }: MarkdownProps) {
     [onPath],
   );
   return (
-    <div className={`md ${className ?? ""}`}>
+    <div className={`md ${className ?? ""}`} data-part="markdown" data-kind={className}>
       <ReactMarkdown remarkPlugins={plugins} components={components} urlTransform={toTarget}>
         {text}
       </ReactMarkdown>
@@ -97,7 +97,7 @@ function MdLink({ href, onPath, children }: { href: string; onPath: PathAction; 
     const shown = typeof children === "string" && children === path ? fileName(path) : children;
     if (open)
       return (
-        <button type="button" className="inline-link path-link" title={path} onClick={open}>
+        <button type="button" className="inline-link path-link" data-part="path-link" data-control="content-path" data-key={path} title={path} onClick={open}>
           {shown}
         </button>
       );
@@ -111,9 +111,9 @@ function MdImage({ src, alt, onPath }: { src: string; alt: string; onPath: PathA
   const open = src.startsWith(LOCAL) ? onPath(src.slice(LOCAL.length)) : null;
   if (open)
     return (
-      <button type="button" className="inline-link md-image" onClick={open} title={src.slice(LOCAL.length)}>
+      <button type="button" className="inline-link md-image" data-part="md-image" data-control="content-image" data-key={src.slice(LOCAL.length)} onClick={open} title={src.slice(LOCAL.length)}>
         Image: {name}
       </button>
     );
-  return <span className="md-image" title={WEB.test(src) ? src : undefined}>Image: {name}</span>;
+  return <span className="md-image" data-part="md-image" title={WEB.test(src) ? src : undefined}>Image: {name}</span>;
 }

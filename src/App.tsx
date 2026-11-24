@@ -45,6 +45,7 @@ import { comboLabel, listenForShortcuts, type ShortcutAction } from "./shortcuts
 import { chatResizer, detailResizer } from "./windowSettings";
 import { isUnseen, leftCard, NO_UPDATES, seenLocally, type CardUpdates } from "./updates";
 import { waitsOf } from "./waits";
+import { states } from "./parts";
 
 const NO_HELPER: HelperStatus = { terminal: null, status: "", asking: false };
 const NO_WAITS: Waits = { tasks: {}, people: {} };
@@ -164,7 +165,7 @@ export default function App() {
   };
 
   useLayoutEffect(() => {
-    document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.mode = theme;
   }, [theme]);
 
   useEffect(() => {
@@ -346,28 +347,34 @@ export default function App() {
   const chatName = chatTitle(chatSource, chatTerminal, chatAgent);
 
   return (
-    <div className="app">
-      <header className="top">
+    <div className="app" data-part="app">
+      <header className="top" data-part="header">
         <Brand />
-        <span className="count">
-          <span className="count-label">
-            <span className="count-lead">At the </span>surface
+        <span className="count" data-part="count" data-kind="surface">
+          <span className="count-label" data-part="count-label">
+            <span className="count-lead" data-part="count-lead">At the </span>surface
           </span>
-          <b className="count-surface">{counts.surface}</b>
+          <b className="count-surface" data-part="count-value">{counts.surface}</b>
         </span>
-        <span className="count">
-          <span className="count-label">
-            <span className="count-lead">In the </span>shallows
+        <span className="count" data-part="count" data-kind="shallows">
+          <span className="count-label" data-part="count-label">
+            <span className="count-lead" data-part="count-lead">In the </span>shallows
           </span>
-          <b className="count-shallows">{counts.shallows}</b>
+          <b className="count-shallows" data-part="count-value">{counts.shallows}</b>
         </span>
-        <span className={`herdr-dot${herdr.connected ? " up" : ""}`} title={herdr.connected ? "herdr-core connected" : herdr.message}>
-          <span className="herdr-label">herdr-core</span>
+        <span
+          className={`herdr-dot${herdr.connected ? " up" : ""}`}
+          data-part="herdr-dot"
+          data-state={states({ up: herdr.connected })}
+          title={herdr.connected ? "herdr-core connected" : herdr.message}
+        >
+          <span className="herdr-label" data-part="herdr-label">herdr-core</span>
         </span>
-        <div className="header-toggles">
+        <div className="header-toggles" data-part="header-toggles">
           <AgentFilterToggle filter={agentFilter} disabled={!settings} onChange={changeAgentFilter} />
           {(anyCollapsed || unfolded) && (
             <Switch
+              control="expand-all"
               label="Expand all"
               checked={!anyCollapsed}
               title={anyCollapsed ? "Open every folded column and collapsed row" : "Fold back what Expand all opened"}
@@ -375,6 +382,7 @@ export default function App() {
             />
           )}
           <Switch
+            control="toggle-dark-mode"
             label="Dark mode"
             checked={theme === "dark"}
             disabled={!settings}
@@ -382,49 +390,57 @@ export default function App() {
             onChange={(dark) => changeWindow({ theme: dark ? "dark" : "light" })}
           />
         </div>
-        <button className="btn btn-header" onClick={() => setSettingsOpen(true)} disabled={!settings} title={withShortcut("Settings", shortcuts?.openSettings)}>
+        <button
+          className="btn btn-header"
+          data-part="button"
+          data-kind="header"
+          data-control="open-settings"
+          onClick={() => setSettingsOpen(true)}
+          disabled={!settings}
+          title={withShortcut("Settings", shortcuts?.openSettings)}
+        >
           Settings
         </button>
       </header>
       {readError && (
-        <div className="banner" role="status">
+        <div className="banner" data-part="banner" role="status">
           Could not read tasks: {readError}
         </div>
       )}
       {moveError && (
-        <div className="banner" role="status">
+        <div className="banner" data-part="banner" role="status">
           Could not save the move: {moveError}
         </div>
       )}
       {columnError && (
-        <div className="banner" role="status">
+        <div className="banner" data-part="banner" role="status">
           Could not change the columns: {columnError}
         </div>
       )}
-      <main className="main" ref={mainRef}>
-        <div className="board-column" ref={boardColumnRef}>
+      <main className="main" data-part="main" ref={mainRef}>
+        <div className="board-column" data-part="board-column" ref={boardColumnRef}>
           {(focus.length > 0 || projectFilter.length > 0 || agentFilter !== "all") && (
-            <div className="filter-strip" role="status">
+            <div className="filter-strip" data-part="filter-strip" role="status">
               {focus.length > 0 && (
-                <div className="filter-part">
+                <div className="filter-part" data-part="filter-part">
                   <span>{focusText(focus)}</span>
-                  <button className="mini" onClick={clearFocus}>
+                  <button className="mini" data-part="mini-button" data-control="clear-focus" onClick={clearFocus}>
                     Clear focus
                   </button>
                 </div>
               )}
               {projectFilter.length > 0 && (
-                <div className="filter-part">
+                <div className="filter-part" data-part="filter-part">
                   <span>{filterText(projectFilter)}</span>
-                  <button className="mini" onClick={showAllProjects}>
+                  <button className="mini" data-part="mini-button" data-control="show-all-projects" onClick={showAllProjects}>
                     Show all
                   </button>
                 </div>
               )}
               {agentFilter !== "all" && (
-                <div className="filter-part">
+                <div className="filter-part" data-part="filter-part">
                   <span>{agentFilterText(agentFilter)}</span>
-                  <button className="mini" onClick={() => changeAgentFilter("all")}>
+                  <button className="mini" data-part="mini-button" data-control="show-every-card" onClick={() => changeAgentFilter("all")}>
                     Show every card
                   </button>
                 </div>
@@ -460,10 +476,10 @@ export default function App() {
                 onWatch={(card, worker) => setWatched({ taskId: card.id, title: card.title, terminal: worker.terminal })}
               />
             ) : (
-              <div className="board-empty">{emptyBoardText(view.source, view.home)}</div>
+              <div className="board-empty" data-part="board-empty">{emptyBoardText(view.source, view.home)}</div>
             )
           ) : (
-            <div className="board-empty">{readError ? "" : "Reading tasks…"}</div>
+            <div className="board-empty" data-part="board-empty">{readError ? "" : "Reading tasks…"}</div>
           )}
           {settings && (
             <BosunDrawer
@@ -486,6 +502,8 @@ export default function App() {
           <>
             <div
               className="panel-handle"
+              data-part="panel-handle"
+              data-control="resize-card-panel"
               role="separator"
               aria-label="Resize card panel"
               onPointerDown={(e) => {
@@ -525,9 +543,11 @@ export default function App() {
           </>
         )}
         {settings && (
-          <div className={chatOpen ? "chat-wrap" : "chat-wrap closed"}>
+          <div className={chatOpen ? "chat-wrap" : "chat-wrap closed"} data-part="chat-wrap" data-state={states({ closed: !chatOpen })}>
             <div
               className="panel-handle"
+              data-part="panel-handle"
+              data-control="resize-chat"
               role="separator"
               aria-label="Resize chat"
               onPointerDown={(e) => {

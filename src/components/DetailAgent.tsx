@@ -3,6 +3,7 @@ import { api, errorText, events, type Card, type SourceKind, type Terminal, type
 import { canReach, outgoing, sendsOnKey, type Recipient, type Recipients } from "../composer";
 import { useLiveTerminal } from "../liveTerminal";
 import { cardMessageLabel, cardMessagePrompt, chatAgentTitle, workerMessageLabel, workerMessagePrompt, workerTitle } from "../source";
+import { states } from "../parts";
 import type { Theme } from "../theme";
 import { ChatIcon, Sailor } from "./Icons";
 
@@ -56,24 +57,26 @@ export function AgentTab({ card, source, worker, chatTerminal, fontFamily, fontS
         : null;
 
   return (
-    <div className="detail-agent" role="tabpanel" id="detail-panel-agent" aria-labelledby="detail-tab-agent">
-      <div className="chat-body">
-        <div ref={scrollRef} className={`terminal-scroll${shown ? "" : " hidden"}`} onClick={focus}>
-          <div ref={hostRef} className="terminal-host" />
+    <div className="detail-agent" data-part="detail-agent" role="tabpanel" id="detail-panel-agent" aria-labelledby="detail-tab-agent">
+      <div className="chat-body" data-part="chat-body">
+        <div ref={scrollRef} className={`terminal-scroll${shown ? "" : " hidden"}`} data-part="terminal-scroll" data-state={states({ hidden: !shown })} onClick={focus}>
+          <div ref={hostRef} className="terminal-host" data-part="terminal-host" />
         </div>
-        {phase.kind === "attaching" && <p className="chat-status">Attaching to {worker.terminal}…</p>}
+        {phase.kind === "attaching" && <p className="chat-status" data-part="chat-status">Attaching to {worker.terminal}…</p>}
         {phase.kind === "failed" && (
-          <div className="chat-status">
-            <p className="error-text">{phase.error}</p>
-            <button className="btn" onClick={() => void attach()}>
+          <div className="chat-status" data-part="chat-status">
+            <p className="error-text" data-part="error-text">
+              {phase.error}
+            </p>
+            <button className="btn" data-part="button" data-control="agent-retry" onClick={() => void attach()}>
               Try again
             </button>
           </div>
         )}
         {phase.kind === "ended" && (
-          <div className="chat-ended">
+          <div className="chat-ended" data-part="chat-ended">
             <span>Detached from {worker.terminal}.</span>
-            <button className="mini" onClick={() => void attach()}>
+            <button className="mini" data-part="mini-button" data-control="agent-reattach" onClick={() => void attach()}>
               Reattach
             </button>
           </div>
@@ -135,37 +138,52 @@ export function AgentComposer({ card, source, worker, unreachable, chatTerminal 
   return (
     <form
       className="composer"
+      data-part="composer"
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
       }}
     >
-      <div className="composer-to" role="group" aria-label="Send to">
-        <span className="composer-to-label">To</span>
+      <div className="composer-to" data-part="composer-to" role="group" aria-label="Send to">
+        <span className="composer-to-label" data-part="composer-to-label">
+          To
+        </span>
         <button
           type="button"
           className={`composer-recipient ${recipient === "worker" ? "on" : ""}`}
+          data-part="composer-recipient"
+          data-control="composer-recipient"
+          data-key="worker"
           aria-pressed={recipient === "worker"}
           onClick={() => choose("worker")}
         >
-          <span className={`sailor ${worker.status}`} aria-hidden="true">
+          <span className={`sailor ${worker.status}`} data-part="recipient-sailor" data-state={worker.status} aria-hidden="true">
             <Sailor size={RECIPIENT_SAILOR_SIZE} />
           </span>
           {workerTitle(source)}
-          <span className="terminal-chip">{worker.terminal}</span>
+          <span className="terminal-chip" data-part="terminal-chip">
+            {worker.terminal}
+          </span>
         </button>
         <button
           type="button"
           className={`composer-recipient ${recipient === "chat" ? "on" : ""}`}
+          data-part="composer-recipient"
+          data-control="composer-recipient"
+          data-key="chat"
           aria-pressed={recipient === "chat"}
           onClick={() => choose("chat")}
         >
           <ChatIcon />
           {chatAgentTitle(source)}
-          {chatTerminal && <span className="terminal-chip">{chatTerminal.name || chatTerminal.address}</span>}
+          {chatTerminal && (
+            <span className="terminal-chip" data-part="terminal-chip">
+              {chatTerminal.name || chatTerminal.address}
+            </span>
+          )}
         </button>
       </div>
-      <div className={`composer-box${reachable ? "" : " off"}`}>
+      <div className={`composer-box${reachable ? "" : " off"}`} data-part="composer-box" data-state={states({ off: !reachable })}>
         <label className="sr-only" htmlFor="composer-field">
           {label}
         </label>
@@ -173,6 +191,8 @@ export function AgentComposer({ card, source, worker, unreachable, chatTerminal 
           id="composer-field"
           ref={fieldRef}
           className="composer-field"
+          data-part="composer-field"
+          data-control="composer-message"
           rows={2}
           value={draft}
           placeholder={prompt}
@@ -187,18 +207,30 @@ export function AgentComposer({ card, source, worker, unreachable, chatTerminal 
             void submit();
           }}
         />
-        <div className="composer-foot">
-          <span className="composer-hint">
+        <div className="composer-foot" data-part="composer-foot">
+          <span className="composer-hint" data-part="composer-hint">
             <kbd>Enter</kbd> sends · <kbd>Shift</kbd>+<kbd>Enter</kbd> adds a line
           </span>
-          <button className="btn btn-dark" type="submit" disabled={!ready}>
+          <button className="btn btn-dark" data-part="button" data-kind="dark" data-control="composer-send" type="submit" disabled={!ready}>
             {send.kind === "sending" ? "Sending…" : "Send"}
           </button>
         </div>
       </div>
-      {recipient === "worker" && unreachable && <span className="send-note error-text">{unreachable}</span>}
-      {send.kind === "sent" && <span className="send-note">Sent to {send.to}.</span>}
-      {send.kind === "failed" && <span className="send-note error-text">Not sent: {send.error}</span>}
+      {recipient === "worker" && unreachable && (
+        <span className="send-note error-text" data-part="send-note" data-kind="error">
+          {unreachable}
+        </span>
+      )}
+      {send.kind === "sent" && (
+        <span className="send-note" data-part="send-note">
+          Sent to {send.to}.
+        </span>
+      )}
+      {send.kind === "failed" && (
+        <span className="send-note error-text" data-part="send-note" data-kind="error">
+          Not sent: {send.error}
+        </span>
+      )}
     </form>
   );
 }

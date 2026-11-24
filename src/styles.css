@@ -107,7 +107,7 @@
 }
 
 :root,
-:root[data-theme="light"] {
+:root[data-mode="light"] {
   color-scheme: light;
   --page: #e3e9f4;
   --page-ink: #3a4048;
@@ -219,7 +219,7 @@
   --term-bright-white: #c3cce0;
 }
 
-:root[data-theme="dark"] {
+:root[data-mode="dark"] {
   color-scheme: dark;
   --page: #cdd6e6;
   --page-ink: #2b3036;

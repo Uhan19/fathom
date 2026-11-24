@@ -611,10 +611,10 @@ impl Fathom {
     )]
     fn set_panels(&self, Parameters(p): Parameters<SetPanels>) -> Result<String, String> {
         let change = WindowChange {
-            theme: None,
             chat_open: p.chat_open,
             chat_width: p.chat_width,
             detail_width: p.detail_width,
+            ..WindowChange::default()
         };
         reply(settings::change_window(&self.db.lock().unwrap(), &change).map(settings_view))
     }

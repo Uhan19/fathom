@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 export function ChevronLeft() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+    <svg data-part="icon" data-kind="chevron-left" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
       <path d="M8.5 3L4.5 7l4 4" />
     </svg>
   );
@@ -10,7 +10,7 @@ export function ChevronLeft() {
 
 export function ChevronRight() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+    <svg data-part="icon" data-kind="chevron-right" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
       <path d="M5.5 3l4 4-4 4" />
     </svg>
   );
@@ -18,7 +18,7 @@ export function ChevronRight() {
 
 export function ChevronUp() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+    <svg data-part="icon" data-kind="chevron-up" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
       <path d="M3 8.5l4-4 4 4" />
     </svg>
   );
@@ -26,7 +26,7 @@ export function ChevronUp() {
 
 export function ChevronDown() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+    <svg data-part="icon" data-kind="chevron-down" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
       <path d="M3 5.5l4 4 4-4" />
     </svg>
   );
@@ -34,7 +34,7 @@ export function ChevronDown() {
 
 export function Close() {
   return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+    <svg data-part="icon" data-kind="close" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
       <path d="M2 2l8 8M10 2l-8 8" />
     </svg>
   );
@@ -42,7 +42,7 @@ export function Close() {
 
 export function Plus() {
   return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+    <svg data-part="icon" data-kind="plus" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
       <path d="M6 1.5v9M1.5 6h9" />
     </svg>
   );
@@ -50,7 +50,7 @@ export function Plus() {
 
 export function TerminalIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+    <svg data-part="icon" data-kind="terminal" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
       <rect x="1.5" y="2.5" width="11" height="9" rx="1.5" />
       <path d="M4 5.5l1.8 1.5L4 8.5M7.2 8.7h2.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
@@ -59,7 +59,7 @@ export function TerminalIcon() {
 
 export function Trash() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+    <svg data-part="icon" data-kind="trash" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
       <path d="M2.5 3.8h9M5.5 3.8V2.5h3v1.3M3.7 3.8l.6 7.7h5.4l.6-7.7M5.9 6v3.6M8.1 6v3.6" strokeLinejoin="round" />
     </svg>
   );
@@ -69,7 +69,7 @@ const SAILOR_SIZE = 32;
 
 export function Sailor({ size = SAILOR_SIZE }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 30 30" overflow="visible" aria-hidden="true">
+    <svg data-part="sailor-art" width={size} height={size} viewBox="0 0 30 30" overflow="visible" aria-hidden="true">
       <path d="M2 30c0-3.2 2.2-5.4 5.4-6h15.2c3.2.6 5.4 2.8 5.4 6z" fill="var(--sailor-coat)" />
       <path d="M7 25.2c2.4 1.6 5 2.3 8 2.3s5.6-.7 8-2.3" fill="none" stroke="var(--sailor-collar)" strokeWidth="1" />
       <rect x="3.5" y="13" width="3" height="7" rx="1" fill="var(--sailor-ear)" />
@@ -90,7 +90,7 @@ export function Sailor({ size = SAILOR_SIZE }: { size?: number }) {
         strokeWidth="1.08"
         strokeLinecap="round"
       />
-      <g className="sailor-visor">
+      <g className="sailor-visor" data-part="sailor-visor">
         <rect x="-5" y="15.6" width="40" height="1.3" rx="0.65" fill="var(--sailor-visor-glow)" opacity="0.35" />
         <rect x="-1" y="15" width="32" height="2.5" rx="1.25" fill="var(--sailor-visor-glow)" opacity="0.4" />
         <rect x="3" y="14.2" width="24" height="4.1" rx="2" fill="var(--sailor-visor-glow)" opacity="0.45" />
@@ -101,9 +101,9 @@ export function Sailor({ size = SAILOR_SIZE }: { size?: number }) {
   );
 }
 
-function Glyph({ children, size = 14 }: { children: ReactNode; size?: number }) {
+function Glyph({ kind, children, size = 14 }: { kind: string; children: ReactNode; size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg data-part="icon" data-kind={kind} width={size} height={size} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {children}
     </svg>
   );
@@ -111,7 +111,7 @@ function Glyph({ children, size = 14 }: { children: ReactNode; size?: number }) 
 
 export function HandoffIcon({ size }: { size?: number }) {
   return (
-    <Glyph size={size}>
+    <Glyph kind="handoff" size={size}>
       <circle cx="10" cy="3.7" r="1.8" />
       <path d="M7 12.3c0-2 1.3-3.6 3-3.6s3 1.6 3 3.6" />
       <path d="M1.2 7.4h4.4M3.9 5.6l1.8 1.8-1.8 1.8" />
@@ -121,7 +121,7 @@ export function HandoffIcon({ size }: { size?: number }) {
 
 export function MailIcon() {
   return (
-    <Glyph>
+    <Glyph kind="mail">
       <rect x="1.6" y="3" width="10.8" height="8" rx="1.2" />
       <path d="M2.1 3.7L7 7.6l4.9-3.9" />
     </Glyph>
@@ -130,7 +130,7 @@ export function MailIcon() {
 
 export function CheckIcon({ size }: { size?: number }) {
   return (
-    <Glyph size={size}>
+    <Glyph kind="check" size={size}>
       <path d="M3.2 7.3l2.5 2.5 5.1-5.3" strokeWidth="1.7" />
     </Glyph>
   );
@@ -138,7 +138,7 @@ export function CheckIcon({ size }: { size?: number }) {
 
 export function PullRequestIcon() {
   return (
-    <Glyph>
+    <Glyph kind="pull-request">
       <circle cx="3.5" cy="3" r="1.4" />
       <circle cx="3.5" cy="11" r="1.4" />
       <circle cx="10.5" cy="11" r="1.4" />
@@ -149,7 +149,7 @@ export function PullRequestIcon() {
 
 export function IssueIcon() {
   return (
-    <Glyph>
+    <Glyph kind="issue">
       <circle cx="7" cy="7" r="5.2" />
       <circle cx="7" cy="7" r="1" fill="currentColor" />
     </Glyph>
@@ -158,7 +158,7 @@ export function IssueIcon() {
 
 export function CommitIcon() {
   return (
-    <Glyph>
+    <Glyph kind="commit">
       <circle cx="7" cy="7" r="2.2" />
       <path d="M1 7h3.8M9.2 7H13" />
     </Glyph>
@@ -167,7 +167,7 @@ export function CommitIcon() {
 
 export function RepoIcon() {
   return (
-    <Glyph>
+    <Glyph kind="repo">
       <path d="M3 11.5V3a1.5 1.5 0 0 1 1.5-1.5H11v8H4.5A1.5 1.5 0 0 0 3 11a1.5 1.5 0 0 0 1.5 1.5H11" />
     </Glyph>
   );
@@ -175,7 +175,7 @@ export function RepoIcon() {
 
 export function TicketIcon() {
   return (
-    <Glyph>
+    <Glyph kind="ticket">
       <path d="M1.8 4.2h10.4v1.6a1.3 1.3 0 0 0 0 2.4v1.6H1.8V8.2a1.3 1.3 0 0 0 0-2.4z" />
       <path d="M8.6 4.4v5.2" strokeDasharray="1 1.2" />
     </Glyph>
@@ -184,7 +184,7 @@ export function TicketIcon() {
 
 export function ChatIcon() {
   return (
-    <Glyph>
+    <Glyph kind="chat">
       <path d="M2 3.2A1.2 1.2 0 0 1 3.2 2h7.6A1.2 1.2 0 0 1 12 3.2v5.1a1.2 1.2 0 0 1-1.2 1.2H6.2L3.4 12V9.5h-.2A1.2 1.2 0 0 1 2 8.3z" />
     </Glyph>
   );
@@ -192,7 +192,7 @@ export function ChatIcon() {
 
 export function GlobeIcon() {
   return (
-    <Glyph>
+    <Glyph kind="globe">
       <circle cx="7" cy="7" r="5.3" />
       <path d="M1.7 7h10.6M7 1.7c1.6 1.6 2.3 3.4 2.3 5.3S8.6 10.7 7 12.3C5.4 10.7 4.7 8.9 4.7 7S5.4 3.3 7 1.7z" />
     </Glyph>
@@ -201,7 +201,7 @@ export function GlobeIcon() {
 
 export function FileIcon() {
   return (
-    <Glyph>
+    <Glyph kind="file">
       <path d="M3 1.8h5l3 3v7.4H3z" />
       <path d="M8 1.8v3h3M5 7.5h4M5 9.8h4" />
     </Glyph>
@@ -210,7 +210,7 @@ export function FileIcon() {
 
 export function ImageIcon() {
   return (
-    <Glyph>
+    <Glyph kind="image">
       <rect x="1.8" y="2.5" width="10.4" height="9" rx="1.2" />
       <circle cx="5" cy="5.6" r="1" />
       <path d="M2.2 10.4l3.2-3 2.4 2.2 1.6-1.4 2.6 2.4" />
@@ -220,7 +220,7 @@ export function ImageIcon() {
 
 export function PageIcon() {
   return (
-    <Glyph>
+    <Glyph kind="page">
       <rect x="1.8" y="2.2" width="10.4" height="9.6" rx="1.2" />
       <path d="M1.8 4.8h10.4M5.4 7.2L4 8.4l1.4 1.2M8.6 7.2L10 8.4 8.6 9.6" />
     </Glyph>
@@ -229,7 +229,7 @@ export function PageIcon() {
 
 export function FolderIcon() {
   return (
-    <Glyph>
+    <Glyph kind="folder">
       <path d="M1.8 3.4a1 1 0 0 1 1-1h2.8l1.3 1.4h4.3a1 1 0 0 1 1 1v6.3a1 1 0 0 1-1 1H2.8a1 1 0 0 1-1-1z" />
     </Glyph>
   );
@@ -237,7 +237,7 @@ export function FolderIcon() {
 
 export function OpenIcon() {
   return (
-    <Glyph>
+    <Glyph kind="open">
       <path d="M8 2h4v4M12 2L6.5 7.5M10.5 8.5v2.7a.8.8 0 0 1-.8.8H2.8a.8.8 0 0 1-.8-.8V4.3a.8.8 0 0 1 .8-.8h2.7" />
     </Glyph>
   );
@@ -245,7 +245,7 @@ export function OpenIcon() {
 
 export function RevealIcon() {
   return (
-    <Glyph>
+    <Glyph kind="reveal">
       <path d="M1.8 3.4a1 1 0 0 1 1-1h2.8l1.3 1.4h4.3a1 1 0 0 1 1 1v1.4M1.8 3.4v7.3a1 1 0 0 0 1 1h3.4" />
       <circle cx="9.6" cy="9.2" r="2" />
       <path d="M11.1 10.7l1.4 1.4" />
@@ -255,7 +255,7 @@ export function RevealIcon() {
 
 export function ExpandIcon() {
   return (
-    <Glyph>
+    <Glyph kind="expand">
       <path d="M8.5 2.5h3v3M11.5 2.5L8 6M5.5 11.5h-3v-3M2.5 11.5L6 8" />
     </Glyph>
   );

@@ -49,7 +49,7 @@ describe("a column without a name", () => {
 
   it("still shows a rename button with something to click", () => {
     const [nameless, named] = renameButtons(header(FIXTURE_UNFILED_COLUMNS));
-    expect(nameless).toBe('<button class="column-name unnamed" title="Rename this unnamed column">Unnamed</button>');
+    expect(nameless).toBe('<button class="column-name unnamed" data-part="column-name" data-state="unnamed" data-control="column-rename" title="Rename this unnamed column">Unnamed</button>');
     expect(named).toContain(">atlas-api</button>");
   });
 
