@@ -36,7 +36,8 @@ export function rootTokens(look: Look): Record<string, string> {
 export async function applyLook(look: Look, doc: Document = document): Promise<void> {
   const root = doc.documentElement;
   Object.assign(root.dataset, rootAttributes(look));
-  Object.values(FONT_TOKENS).forEach((token) => root.style.removeProperty(token));
+  (root.dataset.themeFonts ?? "").split(" ").filter(Boolean).forEach((token) => root.style.removeProperty(token));
+  root.dataset.themeFonts = themedTokens(look).join(" ");
   Object.entries(rootTokens(look)).forEach(([token, value]) => root.style.setProperty(token, value));
   await linkStyles(doc, look.styles);
   doc.defaultView?.dispatchEvent(new Event(LOOK_EVENT));

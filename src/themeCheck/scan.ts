@@ -11,6 +11,7 @@ export interface ControlScan {
   state: ControlState;
   name: string;
   text: string;
+  cover?: string;
 }
 
 export interface TextScan {
@@ -86,12 +87,21 @@ function effectiveOpacity(el: Element, win: FrameWindow): number {
   return opacity;
 }
 
-function hits(el: Element, bounds: DOMRect, win: FrameWindow): boolean {
+function topAt(el: Element, bounds: DOMRect, win: FrameWindow): Element | null {
   const box = el.getClientRects()[0] ?? bounds;
   const x = Math.min(Math.max(box.left + box.width / 2, 1), win.innerWidth - 2);
   const y = Math.min(Math.max(box.top + box.height / 2, 1), win.innerHeight - 2);
-  const top = win.document.elementFromPoint(x, y);
+  return win.document.elementFromPoint(x, y);
+}
+
+function reaches(el: Element, top: Element | null): boolean {
   return !!top && (top === el || el.contains(top) || (top.tagName === "LABEL" && top.contains(el)));
+}
+
+export function describeElement(el: Element | null): string {
+  if (!el) return "nothing";
+  const part = el.closest("[data-part]")?.getAttribute("data-part");
+  return part ? `[data-part="${part}"]` : el.tagName.toLowerCase();
 }
 
 function stateOf(el: Element, win: FrameWindow, name: string): ControlState {
@@ -103,7 +113,9 @@ function stateOf(el: Element, win: FrameWindow, name: string): ControlState {
   if (effectiveOpacity(el, win) < MIN_OPACITY) return "faint";
   if (box.right <= 0 || box.bottom <= 0 || box.left >= win.innerWidth || box.top >= win.innerHeight) return "offscreen";
   if (!name) return "unlabelled";
-  return hits(el, box, win) ? "ok" : "covered";
+  if (reaches(el, topAt(el, box, win))) return "ok";
+  el.scrollIntoView({ block: "center", inline: "center" });
+  return reaches(el, topAt(el, el.getBoundingClientRect(), win)) ? "ok" : "covered";
 }
 
 function scrollPositions(doc: Document): [Element, number, number][] {
@@ -128,7 +140,9 @@ export function scanControls(scope: Element, win: FrameWindow): { controls: Cont
     const count = (seen.get(base) ?? 0) + 1;
     seen.set(base, count);
     const key = count === 1 ? base : `${base}#${count}`;
-    controls.push({ key, control, state: stateOf(el, win, name), name, text: renderedText(el, win) });
+    const state = stateOf(el, win, name);
+    const cover = state === "covered" ? describeElement(topAt(el, el.getBoundingClientRect(), win)) : undefined;
+    controls.push({ key, control, state, name, text: renderedText(el, win), ...(cover ? { cover } : {}) });
   }
   for (const [node, top, left] of scrolled) {
     node.scrollTop = top;

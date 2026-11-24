@@ -52,6 +52,7 @@ function declaredAbsent(control: string, allow: Allowances): boolean {
 
 function controlFinding(base: ControlScan, themed: ControlScan | undefined, allow: Allowances): string | null {
   if (!themed) return declaredAbsent(base.control, allow) ? null : "is missing";
+  if (themed.state === "covered" && themed.cover) return `is covered by ${themed.cover}, so a click does not reach it`;
   if (themed.state !== "ok") return PROBLEMS[themed.state];
   const wanted = normal(expectedLabel(base.text, allow.helper));
   if (wanted && !normal(themed.text).includes(wanted)) return `no longer shows its label "${expectedLabel(base.text, allow.helper)}"; it reads "${themed.text}"`;

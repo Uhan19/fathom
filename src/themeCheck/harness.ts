@@ -168,12 +168,23 @@ async function scanEmpty(params: Record<string, string>): Promise<ViewScan> {
   return scanView("empty", frame.doc.querySelector('[data-part="app"]')!, frame.win);
 }
 
+async function step<T>(name: string, work: Promise<T>): Promise<T> {
+  const at = performance.now();
+  const result = await work;
+  log(`  ${name} took ${((performance.now() - at) / 1000).toFixed(1)}s`);
+  return result;
+}
+
 async function interact(plan: Plan, run: Run, params: Record<string, string>): Promise<Outcome[]> {
   const layout = plan.theme.manifest.layout ?? {};
   const single = (plan.theme.manifest.modes ?? ["light", "dark"]).length === 1;
-  const frame = await loadFrame(params);
-  if (run.size === "min") return [await edgeDragCard(frame)];
-  const outcomes = [await dragCard(frame), ...(await reorderProjects(frame, layout.board === "lanes")), await resizeChat(frame, layout.chatSide === "left")];
+  const frame = await step("load", loadFrame(params));
+  if (run.size === "min") return [await step("edge drag", edgeDragCard(frame))];
+  const outcomes = [
+    await step("drag", dragCard(frame)),
+    ...(await step("reorder", reorderProjects(frame, layout.board === "lanes"))),
+    await step("chat", resizeChat(frame, layout.chatSide === "left")),
+  ];
   await openCard(frame);
   if (layout.detail === "overlay") outcomes.push(...(await overlayIsModal(frame, () => openCard(frame))));
   else {
@@ -227,6 +238,16 @@ async function proveFindings(findings: Finding[], run: Run, params: Record<strin
   }
 }
 
+async function nauticalBaseline(run: Run, params: Record<string, string>): Promise<ViewScan[]> {
+  const where = { mode: run.mode, size: run.size };
+  const cached = inTauri ? await invoke<ViewScan[] | null>("check_baseline", where) : null;
+  if (cached) return cached;
+  log(`${run.mode} ${run.size}: scanning Nautical`);
+  const scans = [...(await scanAll(await loadFrame(params))), await scanEmpty(params)];
+  if (inTauri) await invoke("check_keep_baseline", { ...where, scans });
+  return scans;
+}
+
 async function checkRun(plan: Plan, run: Run): Promise<Finding[]> {
   const where = { mode: run.mode, size: run.size };
   const manifest = plan.theme.manifest;
@@ -238,8 +259,7 @@ async function checkRun(plan: Plan, run: Run): Promise<Finding[]> {
   };
   const themed = { theme: run.mode };
   const nautical = { ...themed, look: NAUTICAL };
-  log(`${run.mode} ${run.size}: scanning Nautical`);
-  const baseline = [...(await scanAll(await loadFrame(nautical))), await scanEmpty(nautical)];
+  const baseline = await nauticalBaseline(run, nautical);
   log(`${run.mode} ${run.size}: scanning ${plan.theme.id}`);
   const scans = [...(await scanAll(await loadFrame(themed))), await scanEmpty(themed)];
   const findings = baseline.flatMap((base) => {

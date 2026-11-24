@@ -170,7 +170,7 @@
   --lamp-ink: var(--rs-pink-ink);
   --tone-active: var(--rs-pink);
   --tag-asked-bg: transparent;
-  --tag-asked-ink: var(--rs-pink);
+  --tag-asked-ink: var(--rs-ink);
 }
 
 /* Paper grain over everything; it never takes a click */
@@ -359,8 +359,8 @@
 [data-part="row-count"] {
   font-family: var(--stamp);
   font-size: 10px;
-  background: transparent;
-  color: var(--rs-pink);
+  background: var(--rs-paper);
+  color: var(--rs-ink);
   box-shadow: inset 0 0 0 1.5px var(--rs-pink);
   border-radius: 999px;
 }
@@ -567,6 +567,10 @@
   font-size: 10px;
   letter-spacing: 0.14em;
   border-radius: 999px;
+}
+
+:root[data-mode="dark"] [data-part="pill"][data-kind="surface"] {
+  color: var(--rs-pink-ink);
 }
 
 /* Chat and helper: folder tabs over a ruled sheet */

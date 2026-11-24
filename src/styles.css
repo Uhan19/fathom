@@ -4081,6 +4081,12 @@ button.md-image {
   }
 }
 
+.theme-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 /* Declared theme layouts */
 
 :root[data-chat-side="left"] .chat-wrap,

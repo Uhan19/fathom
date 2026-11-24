@@ -174,7 +174,30 @@ struct HarnessReport {
 struct Session {
     plan: Plan,
     folder: PathBuf,
+    baselines: PathBuf,
     report: Mutex<Option<HarnessReport>>,
+}
+
+const BASELINES_DIR: &str = ".baselines";
+
+fn build_stamp() -> String {
+    let modified = std::env::current_exe()
+        .and_then(fs::metadata)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or_default();
+    format!("{}-{modified}", env!("CARGO_PKG_VERSION"))
+}
+
+fn baseline_file(dir: &Path, mode: Mode, size: Size) -> PathBuf {
+    dir.join(format!(
+        "{}-{}-{}.json",
+        build_stamp(),
+        mode_name(mode),
+        size.name()
+    ))
 }
 
 fn runs_for(manifest: &Manifest, job: &Job) -> Vec<Run> {
@@ -301,7 +324,15 @@ fn execute(context: tauri::Context, request: &Request, data_dir: &Path) -> Resul
             let mut shots = Vec::new();
             if let Some(manifest) = manifest.filter(|_| findings.is_empty()) {
                 let _ = fs::remove_dir_all(folder.join(SHOTS_DIR).join(CHECK_SHOTS));
-                let report = render(context, &folder, &id, &hash, manifest, &request.job)?;
+                let report = render(
+                    context,
+                    &folder,
+                    &id,
+                    &hash,
+                    manifest,
+                    &request.job,
+                    &themes.store,
+                )?;
                 findings.extend(report.findings);
                 shots = report.shots;
             }
@@ -336,7 +367,15 @@ fn execute(context: tauri::Context, request: &Request, data_dir: &Path) -> Resul
                 });
             };
             let hash = folder_hash(&folder)?;
-            let report = render(context, &folder, &id, &hash, manifest, &request.job)?;
+            let report = render(
+                context,
+                &folder,
+                &id,
+                &hash,
+                manifest,
+                &request.job,
+                &themes.store,
+            )?;
             Ok(Outcome {
                 theme: id,
                 passed: report.findings.is_empty(),
@@ -364,6 +403,7 @@ fn render(
     version: &str,
     manifest: Manifest,
     job: &Job,
+    store: &Path,
 ) -> Result<HarnessReport, String> {
     context.config_mut().app.windows.clear();
     let runs = runs_for(&manifest, job);
@@ -383,6 +423,7 @@ fn render(
             runs,
         },
         folder: folder.to_path_buf(),
+        baselines: store.join(BASELINES_DIR),
         report: Mutex::new(None),
     });
     let served_id = id.to_string();
@@ -400,6 +441,8 @@ fn render(
             check_resize,
             check_snapshot,
             check_log,
+            check_baseline,
+            check_keep_baseline,
             check_finish
         ])
         .setup(move |app| {
@@ -460,6 +503,34 @@ fn check_resize(window: tauri::WebviewWindow, width: u32, height: u32) -> Result
     window
         .set_size(tauri::LogicalSize::new(width, height))
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn check_baseline(session: SessionRef, mode: Mode, size: Size) -> Option<serde_json::Value> {
+    let text = fs::read_to_string(baseline_file(&session.baselines, mode, size)).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+#[tauri::command]
+fn check_keep_baseline(
+    session: SessionRef,
+    mode: Mode,
+    size: Size,
+    scans: serde_json::Value,
+) -> Result<(), String> {
+    fs::create_dir_all(&session.baselines).map_err(|e| e.to_string())?;
+    let stamp = build_stamp();
+    for entry in fs::read_dir(&session.baselines)
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
+        if !entry.file_name().to_string_lossy().starts_with(&stamp) {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+    let text = serde_json::to_string(&scans).map_err(|e| e.to_string())?;
+    fs::write(baseline_file(&session.baselines, mode, size), text).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

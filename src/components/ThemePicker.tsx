@@ -60,26 +60,24 @@ export function ThemePicker({ value, mac, onChange }: ThemePickerProps) {
 
   return (
     <>
-      <div className="field-pair" data-part="field-pair">
-        <label className="field" data-part="field">
-          <span>Theme</span>
-          <select className="text-input" data-part="text-input" data-control="settings-theme" value={value} onChange={(e) => onChange(e.target.value)}>
-            {themes.length === 0 && <option value={NAUTICAL_ID}>Nautical (built in)</option>}
-            {themes.map((theme) => (
-              <option key={theme.id} value={theme.id} disabled={theme.id !== value && !theme.usable}>
-                {themeChoiceText(theme)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="theme-actions" data-part="theme-actions">
-          <button type="button" className="btn" data-part="button" data-control="settings-theme-duplicate" onClick={() => void duplicate()}>
-            Duplicate Nautical
-          </button>
-          <button type="button" className="btn" data-part="button" data-control="settings-themes-folder" onClick={() => void api.revealThemes()}>
-            Open themes folder
-          </button>
-        </div>
+      <label className="field" data-part="field">
+        <span>Theme</span>
+        <select className="text-input" data-part="text-input" data-control="settings-theme" value={value} onChange={(e) => onChange(e.target.value)}>
+          {themes.length === 0 && <option value={NAUTICAL_ID}>Nautical (built in)</option>}
+          {themes.map((theme) => (
+            <option key={theme.id} value={theme.id} disabled={theme.id !== value && !theme.usable}>
+              {themeChoiceText(theme)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="theme-actions" data-part="theme-actions">
+        <button type="button" className="btn" data-part="button" data-control="settings-theme-duplicate" onClick={() => void duplicate()}>
+          Duplicate Nautical
+        </button>
+        <button type="button" className="btn" data-part="button" data-control="settings-themes-folder" onClick={() => void api.revealThemes()}>
+          Open themes folder
+        </button>
       </div>
       <small className="field-note" data-part="field-note">
         Themes live in {list ? <code>{list.folder}</code> : "the themes folder"}. Fathom checks each change before using it. {comboLabel(resetShortcut(mac), mac)}{" "}

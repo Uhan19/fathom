@@ -1,4 +1,5 @@
 import DEFAULTS from "./shortcutDefaults.json";
+import RESET_THEME from "./resetThemeShortcut.json";
 
 export const SHORTCUT_ACTIONS = ["toggleChat", "toggleTheme", "openSettings"] as const;
 export type ShortcutAction = (typeof SHORTCUT_ACTIONS)[number];
@@ -114,6 +115,7 @@ export function fixedShortcuts(mac: boolean): Taken[] {
     { combo: mac ? "Meta+KeyT" : "Ctrl+Shift+KeyT", doing: "opens the terminal launcher" },
     { combo: "Ctrl+Tab", doing: "moves to the next chat tab" },
     { combo: "Ctrl+Shift+Tab", doing: "moves to the previous chat tab" },
+    { combo: RESET_THEME[mac ? "macos" : "linux"], doing: "goes back to the Nautical theme" },
   ];
 }
 
