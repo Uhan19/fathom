@@ -15,7 +15,7 @@ It needs herdr-core to open agent terminals in its chat panel, and a coding agen
   Show the exact command when you ask, and wait for a yes.
 - Before installing anything, check whether it is already there.
   If it is, report the version you found and skip it.
-- Never install Firstmate unless the user asks for it after step 8.
+- Install Firstmate only after the user says yes to it in step 8.
 - Commands that need an interactive sign-in or a password prompt you cannot answer are for the user: tell them the command and continue.
 - If a step fails twice, stop that step, note why, and move on to the next one if it does not depend on it.
 - Keep three lists as you go: installed, skipped (with the reason), and left for the user.
@@ -195,9 +195,9 @@ codex mcp add fathom -- "FATHOM_BIN" --mcp
 
 Replace FATHOM_BIN with the full path from step 3.
 
-## Step 8: Firstmate (optional, off by default)
+## Step 8: Firstmate (recommended)
 
-Tell the user, in one line, without recommending it: "Optional: Firstmate (https://github.com/kunchenguid/firstmate) runs a crew of coding agents for you, and Fathom then shows its tasks instead of its own backlog. Most people skip it. Want it?"
+Ask the user, in one line: "Fathom works best with Firstmate (https://github.com/kunchenguid/firstmate), which runs a crew of coding agents for you; Fathom then shows its tasks instead of its own backlog. Set it up? (recommended)"
 If the answer is anything but a clear yes, skip it.
 If yes: it needs git, the GitHub CLI signed in with `gh auth login`, and Claude Code (install Claude Code as in step 5 if it is missing, after asking).
 Then, after asking:
