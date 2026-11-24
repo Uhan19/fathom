@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     cwd TEXT NOT NULL DEFAULT '',
     branch TEXT NOT NULL DEFAULT '',
+    repo TEXT NOT NULL DEFAULT '',
     prompts INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS messages (
@@ -295,12 +296,12 @@ impl Store {
         Ok(Store { conn })
     }
 
-    pub fn scan(&mut self, root: &Path, now_ms: i64) -> Result<(), String> {
+    pub fn scan(&mut self, root: &Path, now_ms: i64, is_repo: IsRepo) -> Result<(), String> {
         let mut files = Vec::new();
         transcripts(root, &mut files);
         let tx = self.conn.transaction().map_err(|e| e.to_string())?;
         for path in files {
-            if let Err(error) = scan_file(&tx, &path, now_ms) {
+            if let Err(error) = scan_file(&tx, &path, now_ms, is_repo) {
                 eprintln!("fathom: cannot read {}: {error}", path.display());
             }
         }
@@ -315,7 +316,7 @@ impl Store {
     fn sessions(&self) -> Result<HashMap<String, Session>, String> {
         let mut statement = self
             .conn
-            .prepare("SELECT id, cwd, branch, prompts FROM sessions")
+            .prepare("SELECT id, cwd, branch, repo, prompts FROM sessions")
             .map_err(|e| e.to_string())?;
         let rows = statement
             .query_map([], |r| {
@@ -324,7 +325,8 @@ impl Store {
                     Session {
                         cwd: r.get(1)?,
                         branch: r.get(2)?,
-                        prompts: r.get::<_, i64>(3)? as u64,
+                        repo: r.get(3)?,
+                        prompts: r.get::<_, i64>(4)? as u64,
                     },
                 ))
             })
@@ -380,7 +382,12 @@ fn transcripts(dir: &Path, found: &mut Vec<PathBuf>) {
     }
 }
 
-fn scan_file(tx: &rusqlite::Transaction, path: &Path, now_ms: i64) -> Result<(), String> {
+fn scan_file(
+    tx: &rusqlite::Transaction,
+    path: &Path,
+    now_ms: i64,
+    is_repo: IsRepo,
+) -> Result<(), String> {
     let key = path.display().to_string();
     let meta = std::fs::metadata(path).map_err(|e| e.to_string())?;
     let size = meta.len();
@@ -409,7 +416,7 @@ fn scan_file(tx: &rusqlite::Transaction, path: &Path, now_ms: i64) -> Result<(),
             .read_to_end(&mut bytes)
             .map_err(|e| e.to_string())?;
         let chunk = parse_chunk(&bytes, &turn);
-        save_chunk(tx, &chunk)?;
+        save_chunk(tx, &chunk, is_repo)?;
         offset += chunk.consumed as u64;
         turn = chunk.turn;
     }
@@ -431,7 +438,7 @@ fn modified_ms(meta: &std::fs::Metadata) -> Option<i64> {
     Some(since.as_millis() as i64)
 }
 
-fn save_chunk(tx: &rusqlite::Transaction, chunk: &Chunk) -> Result<(), String> {
+fn save_chunk(tx: &rusqlite::Transaction, chunk: &Chunk, is_repo: IsRepo) -> Result<(), String> {
     let mut message = tx
         .prepare_cached(
             "INSERT INTO messages (id, session, at_ms, model, input, output, cache_write, cache_write_1h, cache_read, turn)
@@ -446,12 +453,14 @@ fn save_chunk(tx: &rusqlite::Transaction, chunk: &Chunk) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let mut session = tx
         .prepare_cached(
-            "INSERT INTO sessions (id, cwd, branch) VALUES (?1, ?2, ?3)
+            "INSERT INTO sessions (id, cwd, branch, repo) VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT(id) DO UPDATE SET
                cwd = CASE WHEN excluded.cwd = '' THEN cwd ELSE excluded.cwd END,
-               branch = CASE WHEN excluded.branch = '' THEN branch ELSE excluded.branch END",
+               branch = CASE WHEN excluded.branch = '' THEN branch ELSE excluded.branch END,
+               repo = CASE WHEN excluded.repo = '' THEN repo ELSE excluded.repo END",
         )
         .map_err(|e| e.to_string())?;
+    let mut repos: HashMap<&str, String> = HashMap::new();
     for m in &chunk.messages {
         let u = &m.usage;
         message
@@ -468,8 +477,11 @@ fn save_chunk(tx: &rusqlite::Transaction, chunk: &Chunk) -> Result<(), String> {
                 m.turn
             ])
             .map_err(|e| e.to_string())?;
+        let repo = repos
+            .entry(m.cwd.as_str())
+            .or_insert_with(|| repo_root(&m.cwd, is_repo));
         session
-            .execute(params![m.session, m.cwd, m.branch])
+            .execute(params![m.session, m.cwd, m.branch, repo.as_str()])
             .map_err(|e| e.to_string())?;
     }
     let mut prompts = tx
@@ -490,6 +502,7 @@ fn save_chunk(tx: &rusqlite::Transaction, chunk: &Chunk) -> Result<(), String> {
 struct Session {
     cwd: String,
     branch: String,
+    repo: String,
     prompts: u64,
 }
 
@@ -564,11 +577,43 @@ fn base(path: &str) -> &str {
         .unwrap_or(path)
 }
 
+pub type IsRepo<'a> = &'a dyn Fn(&Path) -> bool;
+
+fn repo_root(cwd: &str, is_repo: IsRepo) -> String {
+    if cwd.is_empty() {
+        return String::new();
+    }
+    Path::new(cwd)
+        .ancestors()
+        .find(|folder| is_repo(folder))
+        .map(|root| root.display().to_string())
+        .unwrap_or_default()
+}
+
 fn projects(sessions: &HashMap<String, Session>) -> HashMap<String, String> {
-    let by_branch: HashMap<&str, &str> = sessions
+    let known: Vec<&Path> = sessions
+        .values()
+        .filter(|s| !s.repo.is_empty())
+        .map(|s| Path::new(&s.repo))
+        .collect();
+    let named = |s: &Session| -> String {
+        if !s.repo.is_empty() {
+            return base(&s.repo).to_string();
+        }
+        let folder = Path::new(&s.cwd);
+        known
+            .iter()
+            .filter(|root| folder.starts_with(root))
+            .max_by_key(|root| root.as_os_str().len())
+            .map_or_else(
+                || base(&s.cwd).to_string(),
+                |root| base(&root.to_string_lossy()).to_string(),
+            )
+    };
+    let by_branch: HashMap<&str, String> = sessions
         .values()
         .filter(|s| !s.branch.is_empty() && !s.cwd.contains(PIPELINE_WORKTREES))
-        .map(|s| (s.branch.as_str(), base(&s.cwd)))
+        .map(|s| (s.branch.as_str(), named(s)))
         .collect();
     sessions
         .iter()
@@ -576,12 +621,12 @@ fn projects(sessions: &HashMap<String, Session>) -> HashMap<String, String> {
             let project = if s.cwd.contains(PIPELINE_WORKTREES) {
                 by_branch
                     .get(s.branch.as_str())
-                    .copied()
-                    .unwrap_or(PIPELINE_PROJECT)
+                    .cloned()
+                    .unwrap_or_else(|| PIPELINE_PROJECT.to_string())
             } else {
-                base(&s.cwd)
+                named(s)
             };
-            (id.clone(), project.to_string())
+            (id.clone(), project)
         })
         .collect()
 }
@@ -1059,6 +1104,93 @@ mod tests {
         assert!(price_for(&prices, "gpt-9").is_none());
     }
 
+    fn no_repo(_: &Path) -> bool {
+        false
+    }
+
+    fn session(cwd: &str, branch: &str, repo: &str) -> Session {
+        Session {
+            cwd: cwd.into(),
+            branch: branch.into(),
+            repo: repo.into(),
+            prompts: 0,
+        }
+    }
+
+    #[test]
+    fn a_session_belongs_to_the_repository_that_contains_its_folder() {
+        let repos = ["/pool/2/fathom", "/home/mate"];
+        let is_repo = |p: &Path| repos.iter().any(|r| Path::new(r) == p);
+        assert_eq!(
+            repo_root("/pool/2/fathom/src-tauri/src", &is_repo),
+            "/pool/2/fathom"
+        );
+        assert_eq!(repo_root("/tmp/scratch", &is_repo), "");
+
+        let sessions: HashMap<String, Session> = [
+            (
+                "root",
+                session("/pool/2/fathom", "fm/reef-7", "/pool/2/fathom"),
+            ),
+            (
+                "sub",
+                session("/pool/2/fathom/src-tauri", "", "/pool/2/fathom"),
+            ),
+            ("gone", session("/pool/2/fathom/old/deleted", "", "")),
+            ("mate", session("/home/mate", "main", "/home/mate")),
+            ("loose", session("/tmp/scratch", "", "")),
+            (
+                "review",
+                session("/u/.no-mistakes/worktrees/abc/run1", "fm/reef-7", ""),
+            ),
+            (
+                "orphan",
+                session("/u/.no-mistakes/worktrees/abc/run2", "fm/lost", ""),
+            ),
+        ]
+        .into_iter()
+        .map(|(id, s)| (id.to_string(), s))
+        .collect();
+        let found = projects(&sessions);
+        assert_eq!(
+            ["root", "sub", "gone", "mate", "loose", "review", "orphan"]
+                .map(|id| found[id].as_str()),
+            [
+                "fathom",
+                "fathom",
+                "fathom",
+                "mate",
+                "scratch",
+                "fathom",
+                PIPELINE_PROJECT
+            ]
+        );
+    }
+
+    #[test]
+    fn the_scan_remembers_each_sessions_repository_while_its_folder_exists() {
+        let projects_dir = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&data.path().join(STORE_FILE)).unwrap();
+        let today = DAY0 + 29 * MS_PER_DAY;
+        write(
+            projects_dir.path(),
+            "p/one.jsonl",
+            &[line(
+                "x1",
+                "sub",
+                "/pool/2/fathom/src-tauri",
+                "",
+                today,
+                "claude-opus-5-5",
+                5,
+            )],
+        );
+        let is_repo = |p: &Path| p == Path::new("/pool/2/fathom");
+        store.scan(projects_dir.path(), today, &is_repo).unwrap();
+        assert_eq!(store.sessions().unwrap()["sub"].repo, "/pool/2/fathom");
+    }
+
     fn days() -> Vec<DayStart> {
         (0..DAYS as i64)
             .map(|i| DayStart {
@@ -1195,7 +1327,7 @@ mod tests {
                 40,
             )],
         );
-        store.scan(projects.path(), today).unwrap();
+        store.scan(projects.path(), today, &no_repo).unwrap();
 
         let roles = Roles {
             home: Some("/home/mate".into()),
@@ -1245,7 +1377,7 @@ mod tests {
             .open(&file)
             .unwrap();
         std::io::Write::write_all(&mut file_handle, format!("{more}\n").as_bytes()).unwrap();
-        store.scan(projects.path(), today + 2000).unwrap();
+        store.scan(projects.path(), today + 2000, &no_repo).unwrap();
         let again = super::report(&store, &roles, &prices, &days(), today + 2000).unwrap();
         assert_eq!(again.days[29].cache_read, 990 + 7);
     }
@@ -1294,7 +1426,7 @@ mod tests {
                 ),
             ],
         );
-        store.scan(projects.path(), today).unwrap();
+        store.scan(projects.path(), today, &no_repo).unwrap();
         let roles = Roles {
             home: Some("/home/mate".into()),
             assistant_folder: "/data/bosun".into(),

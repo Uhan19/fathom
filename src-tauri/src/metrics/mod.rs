@@ -25,6 +25,7 @@ const TOKENS_EVERY: Duration = Duration::from_secs(60);
 const CLAUDE_CONFIG_ENV: &str = "CLAUDE_CONFIG_DIR";
 const CLAUDE_DIR: &str = ".claude";
 const TRANSCRIPTS_DIR: &str = "projects";
+const GIT_DIR: &str = ".git";
 const SESSION_LOCK: &str = "state/.lock";
 const MAX_ANCESTRY: usize = 64;
 
@@ -128,12 +129,15 @@ fn read_tokens(
     }
     let store = store.as_mut().ok_or("the token store is not open")?;
     let now = now_ms();
+    let home = std::env::home_dir();
+    let is_repo = |folder: &Path| Some(folder) != home.as_deref() && folder.join(GIT_DIR).exists();
     if let Some(root) = transcripts_root() {
-        store.scan(&root, now)?;
+        store.scan(&root, now, &is_repo)?;
     }
     let (prices, prices_error) = tokens::load_prices(&data_dir.join(tokens::PRICES_FILE));
     let days = tokens::local_days(now, tokens::DAYS);
-    let mut report = tokens::report(store, &token_roles(state, data_dir), &prices, &days, now)?;
+    let roles = token_roles(state, data_dir);
+    let mut report = tokens::report(store, &roles, &prices, &days, now)?;
     report.prices_error = prices_error;
     Ok(report)
 }
