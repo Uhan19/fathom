@@ -13,9 +13,22 @@ export function parseColor(text: string): Rgba | null {
   const value = text.trim();
   if (value === "transparent") return { r: 0, g: 0, b: 0, a: 0 };
   const m = value.match(CHANNELS);
-  if (!m) return null;
+  if (!m) return paintedColor(value);
   const alpha = m[4] === undefined ? 1 : m[4].endsWith("%") ? Number(m[4].slice(0, -1)) / 100 : Number(m[4]);
   return { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]), a: alpha };
+}
+
+let pen: CanvasRenderingContext2D | null | undefined;
+
+function paintedColor(value: string): Rgba | null {
+  if (typeof document === "undefined" || !CSS.supports("color", value)) return null;
+  pen ??= document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  if (!pen) return null;
+  pen.clearRect(0, 0, 1, 1);
+  pen.fillStyle = value;
+  pen.fillRect(0, 0, 1, 1);
+  const [r, g, b, a] = pen.getImageData(0, 0, 1, 1).data;
+  return { r, g, b, a: a / 255 };
 }
 
 export function over(top: Rgba, bottom: Rgba): Rgba {

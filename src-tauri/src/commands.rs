@@ -460,15 +460,11 @@ pub struct ThemeList {
     themes: Vec<Summary>,
 }
 
-pub fn theme_base(id: &str) -> String {
-    format!("{}://localhost/{id}/", themes::scheme::SCHEME)
-}
-
 #[tauri::command]
 pub fn active_theme(state: AppStateRef, id: Option<String>) -> Option<ActiveTheme> {
     let id = id.unwrap_or_else(|| state.settings.lock().unwrap().theme_id.clone());
     state.themes.active(&id).map(|active| ActiveTheme {
-        base: theme_base(&active.id),
+        base: themes::scheme::base(&active.id, &active.version),
         id: active.id,
         version: active.version,
         manifest: active.manifest,

@@ -72,7 +72,6 @@ export function lookOf(theme: ActiveTheme | null): Look {
   if (!theme || theme.id === NAUTICAL_ID) return NAUTICAL_LOOK;
   const { manifest, base } = theme;
   const asset = (file: string | undefined) => (file ? base + file : undefined);
-  const versioned = (url: string) => (theme.version ? `${url}?v=${encodeURIComponent(theme.version)}` : url);
   const modes = manifest.modes?.length ? manifest.modes : BOTH_MODES;
   return {
     id: theme.id,
@@ -83,7 +82,7 @@ export function lookOf(theme: ActiveTheme | null): Look {
     text: { ...DEFAULT_TEXT, ...defined(manifest.text) },
     art: { brandMark: asset(manifest.art?.brandMark), sailor: asset(manifest.art?.sailor), sailorActive: asset(manifest.art?.sailorActive) },
     layout: { ...DEFAULT_LAYOUT, ...defined(manifest.layout) },
-    styles: versioned(base + "theme.css"),
+    styles: base + "theme.css",
   };
 }
 

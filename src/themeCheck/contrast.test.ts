@@ -7,7 +7,6 @@ describe("contrast", () => {
     expect(parseColor("rgba(255, 255, 255, 0.5)")).toEqual({ r: 255, g: 255, b: 255, a: 0.5 });
     expect(parseColor("rgb(0 0 0 / 25%)")).toEqual({ r: 0, g: 0, b: 0, a: 0.25 });
     expect(parseColor("transparent")?.a).toBe(0);
-    expect(parseColor("color(display-p3 1 0 0)")).toBeNull();
   });
 
   it("gives black on white 21 and white on white 1", () => {

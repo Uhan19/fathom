@@ -76,9 +76,13 @@ export function compareView(baseline: ViewScan, themed: ViewScan, allow: Allowan
   }
   const nautical = new Map(baseline.texts.map((t) => [t.key, t.ratio]));
   for (const text of themed.texts) {
+    const words = text.key.slice(text.part.length + 1);
+    if (text.unreadable) {
+      findings.push({ ...place, part: text.part, problem: `the text "${words}" has the color ${text.unreadable}, which the check cannot read; use an sRGB color` });
+      continue;
+    }
     const needed = Math.min(MIN_CONTRAST, nautical.get(text.key) ?? MIN_CONTRAST);
     if (text.ratio + ROUNDING >= needed) continue;
-    const words = text.key.slice(text.part.length + 1);
     findings.push({ ...place, part: text.part, problem: `the text "${words}" has a contrast of ${text.ratio}:1, below ${Math.round(needed * 100) / 100}:1` });
   }
   for (const missing of baseline.missingIds) {

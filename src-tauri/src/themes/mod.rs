@@ -897,6 +897,74 @@ fn blank_strings(text: &str) -> String {
     out
 }
 
+const URL_OPEN: &str = "url(";
+const IMAGE_SET_OPEN: &str = "image-set(";
+
+fn as_parsed(css: &str) -> (String, Vec<usize>) {
+    let mut text = String::with_capacity(css.len());
+    let mut lines = Vec::with_capacity(css.len());
+    let mut line = 1;
+    let mut chars = css.chars().peekable();
+    while let Some(c) = chars.next() {
+        let at = line;
+        let shown = if c == '\\' && chars.peek().is_some_and(|n| *n != '\n') {
+            escaped(&mut chars, &mut line)
+        } else {
+            c
+        };
+        if c == '\n' {
+            line += 1;
+        }
+        let shown = shown.to_ascii_lowercase();
+        lines.extend(std::iter::repeat_n(at, shown.len_utf8()));
+        text.push(shown);
+    }
+    (text, lines)
+}
+
+fn escaped(chars: &mut std::iter::Peekable<std::str::Chars>, line: &mut usize) -> char {
+    let mut hex = String::new();
+    while hex.len() < 6
+        && let Some(digit) = chars.next_if(char::is_ascii_hexdigit)
+    {
+        hex.push(digit);
+    }
+    if hex.is_empty() {
+        return chars.next().unwrap_or(char::REPLACEMENT_CHARACTER);
+    }
+    if chars.next_if(char::is_ascii_whitespace) == Some('\n') {
+        *line += 1;
+    }
+    u32::from_str_radix(&hex, 16)
+        .ok()
+        .and_then(char::from_u32)
+        .filter(|c| *c != '\0')
+        .unwrap_or(char::REPLACEMENT_CHARACTER)
+}
+
+fn quoted_arguments(args: &str) -> Vec<&str> {
+    let mut found = Vec::new();
+    let mut depth = 0;
+    let mut quote: Option<(char, usize)> = None;
+    for (i, c) in args.char_indices() {
+        match quote {
+            Some((q, start)) if c == q => {
+                if depth == 0 {
+                    found.push(&args[start..i]);
+                }
+                quote = None;
+            }
+            Some(_) => {}
+            None if c == '"' || c == '\'' => quote = Some((c, i + 1)),
+            None if c == '(' => depth += 1,
+            None if c == ')' && depth == 0 => break,
+            None if c == ')' => depth -= 1,
+            None => {}
+        }
+    }
+    found
+}
+
 fn line_at(text: &str, index: usize) -> usize {
     text[..index].matches('\n').count() + 1
 }
@@ -950,22 +1018,31 @@ pub fn lint_css(css: &str) -> Vec<(usize, String)> {
         }
     }
     let without_comments = blank(css, "/*", "*/");
+    let (parsed, lines) = as_parsed(&without_comments);
     let mut search = 0;
-    while let Some(found) = without_comments[search..].find("url(") {
-        let start = search + found + 4;
-        let end = without_comments[start..]
+    while let Some(found) = parsed[search..].find(URL_OPEN) {
+        let at = search + found;
+        let start = at + URL_OPEN.len();
+        let end = parsed[start..]
             .find(')')
             .map(|e| start + e)
-            .unwrap_or(without_comments.len());
-        let target = &without_comments[start..end];
+            .unwrap_or(parsed.len());
+        let target = &parsed[start..end];
         if remote(target) {
-            out.push((line_at(css, start), format!("url({}) loads from outside the theme; use a file inside the theme folder or a data: URL", target.trim())));
+            out.push((lines[at], format!("url({}) loads from outside the theme; use a file inside the theme folder or a data: URL", target.trim())));
         }
         search = end;
     }
-    for (at, _) in without_comments.match_indices("@import") {
+    for (at, _) in parsed.match_indices(IMAGE_SET_OPEN) {
+        for target in quoted_arguments(&parsed[at + IMAGE_SET_OPEN.len()..]) {
+            if remote(target) {
+                out.push((lines[at], format!("image-set(\"{target}\") loads from outside the theme; use a file inside the theme folder or a data: URL")));
+            }
+        }
+    }
+    for (at, _) in parsed.match_indices("@import") {
         out.push((
-            line_at(css, at),
+            lines[at],
             "@import is not allowed; put every rule in theme.css".to_string(),
         ));
     }
@@ -1244,6 +1321,26 @@ body { background: url(data:image/svg+xml,%3Csvg%23x) , url('https://cdn.example
             text.iter().any(|p| p.starts_with("expression(")),
             "{text:?}"
         );
+    }
+
+    #[test]
+    fn css_is_linted_as_the_parser_reads_it() {
+        let css = r#"@IMPORT "parts.css";
+@\69mport "more.css";
+body { background: URL(https://x.example/t.png); }
+body { background: u\72l(https://x.example/u.png); }
+body { background: -webkit-image-set("https://x.example/a.png" 1x, url(art/b.png) 2x); }
+body { background: image-set('//x.example/c.png' 1x, linear-gradient(red, blue) 2x); }
+body { background: image-set("art/d.png" 1x); content: "https://fine.example"; }
+"#;
+        let problems = lint_css(css);
+        let lines: Vec<usize> = problems.iter().map(|(line, _)| *line).collect();
+        assert_eq!(lines, vec![1, 2, 3, 4, 5, 6], "{problems:?}");
+        assert!(problems[0].1.contains("@import") && problems[1].1.contains("@import"));
+        assert!(problems[2].1.contains("https://x.example/t.png"));
+        assert!(problems[3].1.contains("https://x.example/u.png"));
+        assert!(problems[4].1.contains("https://x.example/a.png"));
+        assert!(problems[5].1.contains("//x.example/c.png"));
     }
 
     #[test]

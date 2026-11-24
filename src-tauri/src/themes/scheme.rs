@@ -34,9 +34,16 @@ impl Asset {
     }
 }
 
+pub fn base(id: &str, version: &str) -> String {
+    format!("{SCHEME}://localhost/{id}/{version}/")
+}
+
 pub fn serve(path: &str, folder_of: impl Fn(&str) -> Option<PathBuf>) -> Asset {
     let decoded = percent_decode(path.trim_start_matches('/'));
-    let Some((id, file)) = decoded.split_once('/') else {
+    let Some((id, versioned)) = decoded.split_once('/') else {
+        return Asset::missing();
+    };
+    let Some((_version, file)) = versioned.split_once('/') else {
         return Asset::missing();
     };
     if check_id(id).is_err() || check_asset_path(file, &ASSET_EXTENSIONS).is_err() {
@@ -112,15 +119,39 @@ mod tests {
         dir
     }
 
+    fn path_of(url: &str) -> String {
+        url.parse::<tauri::http::Uri>().unwrap().path().to_string()
+    }
+
     #[test]
     fn serves_assets_of_a_known_theme_with_their_type() {
         let dir = folder();
         let lookup = |id: &str| (id == "riso").then(|| dir.path().to_path_buf());
-        let css = serve("/riso/theme.css", lookup);
+        let css = serve(
+            &path_of(&format!("{}theme.css", base("riso", "abc"))),
+            lookup,
+        );
         assert_eq!((css.status, css.content_type), (OK, "text/css"));
         assert_eq!(css.body, b"body{}");
-        let art = serve("/riso/art/mark%20one.svg", lookup);
+        let art = serve(
+            &path_of(&format!("{}art/mark%20one.svg", base("riso", "abc"))),
+            lookup,
+        );
         assert_eq!((art.status, art.content_type), (OK, "image/svg+xml"));
+    }
+
+    #[test]
+    fn a_new_version_gives_every_asset_a_new_url() {
+        let before = format!("{}art/mark.svg", base("riso", "abc"));
+        let after = format!("{}art/mark.svg", base("riso", "def"));
+        assert_ne!(before, after);
+        let dir = folder();
+        let lookup = |id: &str| (id == "riso").then(|| dir.path().to_path_buf());
+        let css = serve(
+            &path_of(&format!("{}theme.css", base("riso", "def"))),
+            lookup,
+        );
+        assert_eq!(css.status, OK);
     }
 
     #[test]
@@ -128,14 +159,15 @@ mod tests {
         let dir = folder();
         let lookup = |id: &str| (id == "riso").then(|| dir.path().to_path_buf());
         for path in [
-            "/other/theme.css",
-            "/riso/../riso/theme.css",
-            "/riso/%2e%2e/secret.css",
-            "/riso/theme.json",
-            "/riso/.shots/board.png",
-            "/riso//etc/passwd.css",
+            "/other/v/theme.css",
+            "/riso/v/../riso/theme.css",
+            "/riso/v/%2e%2e/secret.css",
+            "/riso/v/theme.json",
+            "/riso/v/.shots/board.png",
+            "/riso/v//etc/passwd.css",
+            "/riso/theme.css",
             "/riso",
-            "/Riso/theme.css",
+            "/Riso/v/theme.css",
         ] {
             assert_eq!(serve(path, lookup).status, NOT_FOUND, "{path}");
         }

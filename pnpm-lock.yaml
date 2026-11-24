@@ -72,6 +72,9 @@ importers:
       '@xterm/headless':
         specifier: 6.0.0
         version: 6.0.0
+      postcss:
+        specifier: ^8.5.33
+        version: 8.5.33
       typescript:
         specifier: ~6.0.3
         version: 6.0.3

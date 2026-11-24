@@ -64,6 +64,13 @@ describe("compareView", () => {
     ]);
   });
 
+  it("reports a text whose color the check cannot read instead of skipping it", () => {
+    const themed = view([], [{ key: "phrase|Ship dark mode", part: "phrase", ratio: 0, unreadable: "color(rec2100-pq 1 1 1)" }]);
+    expect(compareView(view([]), themed, NONE, WHERE)).toEqual([
+      { view: "board", mode: "light", size: "desktop", part: "phrase", problem: 'the text "Ship dark mode" has the color color(rec2100-pq 1 1 1), which the check cannot read; use an sRGB color' },
+    ]);
+  });
+
   it("reports a control whose box no longer shows anything, as under an opaque layer that lets clicks through", () => {
     const baseline = view([control("open-settings", { ink: 9 }), control("column-resize@column=1", { ink: 1 })]);
     const themed = view([control("open-settings", { ink: 1.02 }), control("column-resize@column=1", { ink: 1 })]);

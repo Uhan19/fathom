@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { parse } from "postcss";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -154,17 +155,14 @@ const rendered = [
 
 const attributeValues = (name: string) => new Set([...rendered.matchAll(new RegExp(`${name}="([a-z0-9-]+)"`, "g"))].map((m) => m[1]));
 
-function rootDeclarations(css: string): string[] {
-  const names: string[] = [];
-  const blocks = css.replace(/\/\*[\s\S]*?\*\//g, "").split("}");
-  for (const block of blocks) {
-    const [selector, body] = block.split("{");
-    if (body === undefined || !selector.trim().split(",").every((s) => s.trim().startsWith(":root"))) continue;
-    for (const declaration of body.split(";")) {
-      const name = declaration.split(":")[0].trim();
-      if (name) names.push(name);
-    }
-  }
+function rootTokens(css: string): Set<string> {
+  const names = new Set<string>();
+  parse(css).walkRules((rule) => {
+    if (!rule.selectors.every((s) => s.startsWith(":root"))) return;
+    rule.each((node) => {
+      if (node.type === "decl" && node.prop.startsWith("--")) names.add(node.prop);
+    });
+  });
   return names;
 }
 
@@ -188,7 +186,8 @@ describe("the theme guide", () => {
   });
 
   it("lists every token the app's root rules define", () => {
-    const tokens = new Set(rootDeclarations(STYLES).filter((name) => name.startsWith("--")));
+    const tokens = rootTokens(STYLES);
+    expect(tokens.size).toBeGreaterThan(40);
     expect([...tokens].filter((t) => !listed("Token names").has(t))).toEqual([]);
   });
 });

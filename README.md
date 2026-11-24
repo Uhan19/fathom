@@ -75,7 +75,8 @@ This runs the TypeScript compiler, the vitest suite, `cargo fmt --check`, `cargo
 GitHub Actions runs the same checks on Ubuntu 24.04 for every pull request and every push to `main`.
 
 `scripts/check-fixture-themes.sh` runs the [theme check](#the-theme-check) on the fixture themes in `fixtures/themes`.
-Phosphor, Switchboard, Riso and Plain must pass; the hostile themes, one that hides everything and one that is white on white, must fail without blocking the reset shortcut.
+Phosphor, Switchboard, Riso and Plain must pass; the three hostile themes, one that hides everything, one that is white on white and one that lays an opaque layer over the window while letting clicks through, must fail without blocking the reset shortcut.
+The white-on-white one must also be reported for its contrast.
 It builds the debug binary and starts the dev server on port 1420 when none is running.
 It opens windows, so on Linux run it under `xvfb-run -a`, as CI does.
 

@@ -39,6 +39,7 @@ interface Plan {
 interface Report {
   findings: Finding[];
   shots: string[];
+  incomplete?: boolean;
 }
 
 const APP_PAGE = "themecheck-app.html";
@@ -329,6 +330,7 @@ async function main() {
     }
   } catch (error) {
     report.findings.push({ problem: `the check could not finish: ${error instanceof Error ? error.message : String(error)}` });
+    report.incomplete = true;
   }
   Object.assign(window, { fathomCheckReport: report });
   if (inTauri) await invoke("check_finish", { report });

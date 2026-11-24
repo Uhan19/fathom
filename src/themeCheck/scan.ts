@@ -20,6 +20,7 @@ export interface TextScan {
   key: string;
   part: string;
   ratio: number;
+  unreadable?: string;
 }
 
 export interface ViewScan {
@@ -215,6 +216,7 @@ function backgroundOf(el: Element, win: FrameWindow): { color: Rgba; underlaid: 
     const style = win.getComputedStyle(node);
     if (style.backgroundImage !== "none") underlaid = true;
     const color = parseColor(style.backgroundColor);
+    if (!color) underlaid = true;
     if (color && color.a > 0) {
       layers.push(color);
       if (color.a >= 1) break;
@@ -243,14 +245,17 @@ export function scanTexts(scope: Element, win: FrameWindow, probe?: Probe): Text
     const style = win.getComputedStyle(el);
     if (style.visibility !== "visible" || !(el as HTMLElement).getClientRects().length) continue;
     if (el.closest(":disabled, [aria-disabled='true']")) continue;
+    const part = el.closest("[data-part]")?.getAttribute("data-part") ?? el.tagName.toLowerCase();
+    const key = `${part}|${text.slice(0, 40)}`;
     const color = parseColor(style.color);
-    if (!color) continue;
+    if (!color) {
+      lowest.set(key, { key, part, ratio: 0, unreadable: style.color });
+      continue;
+    }
     const { color: background, underlaid } = backgroundOf(el, win);
     const faded = { ...color, a: color.a * effectiveOpacity(el, win) };
     const ratio = Math.round(contrast(faded, background) * 100) / 100;
     const solid = over(background, WHITE);
-    const part = el.closest("[data-part]")?.getAttribute("data-part") ?? el.tagName.toLowerCase();
-    const key = `${part}|${text.slice(0, 40)}`;
     const known = lowest.get(key);
     if (!known || ratio < known.ratio) {
       lowest.set(key, { key, part, ratio });

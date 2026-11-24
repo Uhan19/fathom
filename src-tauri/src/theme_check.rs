@@ -1,5 +1,5 @@
 use std::fs::{self, OpenOptions};
-use std::io::Write as _;
+use std::io::{Read, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -166,6 +166,8 @@ struct HarnessReport {
     findings: Vec<Finding>,
     #[serde(default)]
     shots: Vec<String>,
+    #[serde(default)]
+    incomplete: bool,
 }
 
 struct Session {
@@ -316,7 +318,7 @@ fn execute(context: tauri::Context, request: &Request, data_dir: &Path) -> Resul
             shots: Vec::new(),
         });
     }
-    let (manifest, mut findings) = check_folder(&snapshot.dir);
+    let (manifest, findings) = check_folder(&snapshot.dir);
     let Some(manifest) = manifest.filter(|_| findings.is_empty()) else {
         return finish(
             &themes,
@@ -326,8 +328,10 @@ fn execute(context: tauri::Context, request: &Request, data_dir: &Path) -> Resul
             &folder,
             &hash,
             request,
-            findings,
-            Vec::new(),
+            HarnessReport {
+                findings,
+                ..HarnessReport::default()
+            },
         );
     };
     if request.job == Job::Check {
@@ -341,7 +345,6 @@ fn execute(context: tauri::Context, request: &Request, data_dir: &Path) -> Resul
         store: &themes.store,
     };
     let report = render(context, &rendering, manifest, &request.job)?;
-    findings.extend(report.findings);
     finish(
         &themes,
         kept,
@@ -350,8 +353,7 @@ fn execute(context: tauri::Context, request: &Request, data_dir: &Path) -> Resul
         &folder,
         &hash,
         request,
-        findings,
-        report.shots,
+        report,
     )
 }
 
@@ -364,18 +366,17 @@ fn finish(
     folder: &Path,
     hash: &str,
     request: &Request,
-    findings: Vec<Finding>,
-    shots: Vec<String>,
+    report: HarnessReport,
 ) -> Result<Outcome, String> {
     let outcome = Outcome {
         theme: id.to_string(),
-        passed: findings.is_empty(),
+        passed: report.findings.is_empty(),
         cached: false,
-        findings,
-        shots,
+        findings: report.findings,
+        shots: report.shots,
     };
     if request.job == Job::Check {
-        if kept {
+        if kept && !report.incomplete {
             themes.store_result(
                 id,
                 checked,
@@ -431,7 +432,7 @@ fn render(
             theme: PlanTheme {
                 id: id.to_string(),
                 version: version.to_string(),
-                base: crate::commands::theme_base(id),
+                base: themes::scheme::base(id, version),
                 manifest,
             },
             runs,
@@ -489,6 +490,7 @@ fn render(
                             CHECK_TIMEOUT.as_secs()
                         ))],
                         shots: Vec::new(),
+                        incomplete: true,
                     });
                 }
                 handle.exit(1);
@@ -656,6 +658,8 @@ pub fn run_subprocess(program: &Path, args: &[String]) -> Result<Outcome, String
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("cannot start the theme check: {e}"))?;
+    let stdout = drain(child.stdout.take());
+    let stderr = drain(child.stderr.take());
     let started = Instant::now();
     let deadline = CHECK_TIMEOUT * 2 + Duration::from_secs(30);
     loop {
@@ -663,16 +667,29 @@ pub fn run_subprocess(program: &Path, args: &[String]) -> Result<Outcome, String
             Some(_) => break,
             None if started.elapsed() > deadline => {
                 let _ = child.kill();
+                let _ = child.wait();
                 return Err("the theme check did not finish".into());
             }
             None => std::thread::sleep(LOCK_POLL),
         }
     }
-    let output = child.wait_with_output().map_err(|e| e.to_string())?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    serde_json::from_str(stdout.trim()).map_err(|_| {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        format!("the theme check failed: {}", stderr.trim())
+    let stdout = stdout.join().unwrap_or_default();
+    serde_json::from_str(String::from_utf8_lossy(&stdout).trim()).map_err(|_| {
+        let stderr = stderr.join().unwrap_or_default();
+        format!(
+            "the theme check failed: {}",
+            String::from_utf8_lossy(&stderr).trim()
+        )
+    })
+}
+
+fn drain(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHandle<Vec<u8>> {
+    std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        if let Some(mut pipe) = pipe {
+            let _ = pipe.read_to_end(&mut bytes);
+        }
+        bytes
     })
 }
 
@@ -827,6 +844,84 @@ mod tests {
             describe(&finding),
             "[board, dark, min] control column-collapse: covered by another element (.shots/check/dark-min-board.png)"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reads_an_outcome_larger_than_a_pipe_holds() {
+        let dir = tempfile::tempdir().unwrap();
+        let outcome = Outcome {
+            theme: "riso".into(),
+            passed: false,
+            cached: false,
+            findings: (0..5000)
+                .map(|i| Finding::general(format!("problem {i} with a long description")))
+                .collect(),
+            shots: Vec::new(),
+        };
+        let file = dir.path().join("outcome.json");
+        fs::write(&file, serde_json::to_string(&outcome).unwrap()).unwrap();
+        assert!(fs::metadata(&file).unwrap().len() > 128 * 1024);
+        let started = Instant::now();
+        let read = run_subprocess(Path::new("cat"), &[file.display().to_string()]).unwrap();
+        assert_eq!(read.findings.len(), 5000);
+        assert!(started.elapsed() < Duration::from_secs(30));
+    }
+
+    #[test]
+    fn a_check_that_could_not_finish_leaves_no_verdict_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        let themes = Themes::new(dir.path().join("themes"), &dir.path().join("data"));
+        let folder = themes.root.join("riso");
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(
+            folder.join(themes::MANIFEST_FILE),
+            r#"{"fathomTheme":1,"name":"Riso"}"#,
+        )
+        .unwrap();
+        let hash = folder_hash(&folder).unwrap();
+        let request = Request {
+            folder: folder.clone(),
+            job: Job::Check,
+            json: true,
+        };
+        let stopped = HarnessReport {
+            findings: vec![Finding::general("the check could not finish: timed out")],
+            incomplete: true,
+            ..HarnessReport::default()
+        };
+        let snapshot = themes.snapshot("riso", &folder).unwrap();
+        let outcome = finish(
+            &themes,
+            true,
+            "riso",
+            &snapshot.dir,
+            &folder,
+            &hash,
+            &request,
+            stopped,
+        )
+        .unwrap();
+        assert!(!outcome.passed);
+        assert!(themes.record("riso").is_none());
+        assert_eq!(crate::theme_watch::stale(&themes), vec!["riso"]);
+        let failed = HarnessReport {
+            findings: vec![Finding::general("the brand mark is hidden")],
+            ..HarnessReport::default()
+        };
+        finish(
+            &themes,
+            true,
+            "riso",
+            &snapshot.dir,
+            &folder,
+            &hash,
+            &request,
+            failed,
+        )
+        .unwrap();
+        assert_eq!(themes.record("riso").map(|r| r.hash), Some(hash));
+        assert!(crate::theme_watch::stale(&themes).is_empty());
     }
 
     #[test]
