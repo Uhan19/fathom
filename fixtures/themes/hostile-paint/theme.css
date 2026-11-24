@@ -1,0 +1,12 @@
+[data-control="open-settings"] {
+  -webkit-text-fill-color: transparent;
+}
+
+[data-control="open-settings"]::before {
+  content: "Gear";
+  -webkit-text-fill-color: currentcolor;
+}
+
+[data-part="row-label"] {
+  clip-path: inset(50%);
+}

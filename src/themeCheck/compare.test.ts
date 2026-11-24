@@ -64,6 +64,22 @@ describe("compareView", () => {
     ]);
   });
 
+  it("reports a text whose letters are no longer painted, but not one Nautical barely shows", () => {
+    const baseline = view([], [
+      { key: "row-label|Deep", part: "row-label", ratio: 9, ink: 8 },
+      { key: "phrase|Ship dark mode", part: "phrase", ratio: 12, ink: 10 },
+      { key: "card-note|Until 2026", part: "card-note", ratio: 4, ink: 1.2 },
+    ]);
+    const themed = view([], [
+      { key: "row-label|Deep", part: "row-label", ratio: 9, ink: 1.02 },
+      { key: "phrase|Ship dark mode", part: "phrase", ratio: 12, ink: 6 },
+      { key: "card-note|Until 2026", part: "card-note", ratio: 4, ink: 1 },
+    ]);
+    expect(compareView(baseline, themed, NONE, WHERE)).toEqual([
+      { view: "board", mode: "light", size: "desktop", part: "row-label", problem: 'the text "Deep" does not show: none of its letters are painted' },
+    ]);
+  });
+
   it("reports a text whose color the check cannot read instead of skipping it", () => {
     const themed = view([], [{ key: "phrase|Ship dark mode", part: "phrase", ratio: 0, unreadable: "color(rec2100-pq 1 1 1)" }]);
     expect(compareView(view([]), themed, NONE, WHERE)).toEqual([

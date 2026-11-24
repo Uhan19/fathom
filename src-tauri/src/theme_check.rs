@@ -291,9 +291,18 @@ pub fn describe(finding: &Finding) -> String {
     text
 }
 
+fn theme_folder(given: &Path) -> Result<PathBuf, String> {
+    let cannot = |e: std::io::Error| format!("cannot open {}: {e}", given.display());
+    let absolute = std::path::absolute(given).map_err(cannot)?;
+    let real = fs::canonicalize(&absolute).map_err(cannot)?;
+    match (absolute.parent(), absolute.file_name()) {
+        (Some(parent), Some(name)) => Ok(fs::canonicalize(parent).map_err(cannot)?.join(name)),
+        _ => Ok(real),
+    }
+}
+
 fn execute(context: tauri::Context, request: &Request, data_dir: &Path) -> Result<Outcome, String> {
-    let folder = fs::canonicalize(&request.folder)
-        .map_err(|e| format!("cannot open {}: {e}", request.folder.display()))?;
+    let folder = theme_folder(&request.folder)?;
     let id = id_of(&folder)?;
     let themes = Themes::new(themes::default_root()?, data_dir);
     let kept = fs::canonicalize(&themes.root)
@@ -922,6 +931,28 @@ mod tests {
         .unwrap();
         assert_eq!(themes.record("riso").map(|r| r.hash), Some(hash));
         assert!(crate::theme_watch::stale(&themes).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_linked_theme_folder_keeps_its_own_name_inside_the_themes_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("themes");
+        let target = dir.path().join("code").join("riso-theme");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&target).unwrap();
+        std::os::unix::fs::symlink(&target, root.join("riso")).unwrap();
+        let folder = theme_folder(&root.join("riso")).unwrap();
+        assert_eq!(id_of(&folder).unwrap(), "riso");
+        assert_eq!(
+            folder.parent(),
+            Some(fs::canonicalize(&root).unwrap().as_path())
+        );
+        assert_eq!(
+            id_of(&theme_folder(&target).unwrap()).unwrap(),
+            "riso-theme"
+        );
+        assert!(theme_folder(&root.join("missing")).is_err());
     }
 
     #[test]

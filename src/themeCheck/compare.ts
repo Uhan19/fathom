@@ -54,10 +54,12 @@ function declaredAbsent(control: string, allow: Allowances): boolean {
   return DECLARED_ABSENCES.some(([option, id]) => allow[option] && control === id);
 }
 
+const inkLost = (before: number | undefined, after: number | undefined) =>
+  before !== undefined && after !== undefined && before >= INK_SEEN && after < INK_GONE;
+
 function controlFinding(base: ControlScan, themed: ControlScan | undefined, allow: Allowances): string | null {
   if (!themed) return declaredAbsent(base.control, allow) ? null : "is missing";
-  if (themed.state === "ok" && base.ink !== undefined && themed.ink !== undefined && base.ink >= INK_SEEN && themed.ink < INK_GONE)
-    return "is painted over: nothing in its box shows, so something covers it";
+  if (themed.state === "ok" && inkLost(base.ink, themed.ink)) return "is painted over: nothing in its box shows, so something covers it";
   if (themed.state === "covered" && themed.cover) return `is covered by ${themed.cover}, so a click does not reach it`;
   if (themed.state !== "ok") return PROBLEMS[themed.state];
   const wanted = normal(expectedLabel(base.text, allow.helper));
@@ -74,14 +76,19 @@ export function compareView(baseline: ViewScan, themed: ViewScan, allow: Allowan
     const problem = controlFinding(base, found.get(base.key), allow);
     if (problem) findings.push({ ...place, control: base.control, problem: `${base.name || base.control} ${problem}` });
   }
-  const nautical = new Map(baseline.texts.map((t) => [t.key, t.ratio]));
+  const nautical = new Map(baseline.texts.map((t) => [t.key, t]));
   for (const text of themed.texts) {
     const words = text.key.slice(text.part.length + 1);
     if (text.unreadable) {
       findings.push({ ...place, part: text.part, problem: `the text "${words}" has the color ${text.unreadable}, which the check cannot read; use an sRGB color` });
       continue;
     }
-    const needed = Math.min(MIN_CONTRAST, nautical.get(text.key) ?? MIN_CONTRAST);
+    const base = nautical.get(text.key);
+    if (inkLost(base?.ink, text.ink)) {
+      findings.push({ ...place, part: text.part, problem: `the text "${words}" does not show: none of its letters are painted` });
+      continue;
+    }
+    const needed = Math.min(MIN_CONTRAST, base?.ratio ?? MIN_CONTRAST);
     if (text.ratio + ROUNDING >= needed) continue;
     findings.push({ ...place, part: text.part, problem: `the text "${words}" has a contrast of ${text.ratio}:1, below ${Math.round(needed * 100) / 100}:1` });
   }

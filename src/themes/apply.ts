@@ -33,44 +33,44 @@ export function rootTokens(look: Look): Record<string, string> {
 }
 
 export async function applyLook(look: Look, doc: Document = document): Promise<void> {
-  const root = doc.documentElement;
+  if (await swapStyles(doc, look.styles, () => markRoot(doc.documentElement, look))) doc.defaultView?.dispatchEvent(new Event(LOOK_EVENT));
+}
+
+function markRoot(root: HTMLElement, look: Look) {
   Object.assign(root.dataset, rootAttributes(look));
   (root.dataset.themeFonts ?? "").split(" ").filter(Boolean).forEach((token) => root.style.removeProperty(token));
   root.dataset.themeFonts = themedTokens(look).join(" ");
   Object.entries(rootTokens(look)).forEach(([token, value]) => root.style.setProperty(token, value));
-  await linkStyles(doc, look.styles);
-  doc.defaultView?.dispatchEvent(new Event(LOOK_EVENT));
 }
 
 const THEME_LINKS = "link[data-theme-link]";
+const loads = new WeakMap<HTMLLinkElement, Promise<void>>();
 let wanted: string | null = null;
 
-function linkStyles(doc: Document, href: string | null): Promise<void> {
-  wanted = href;
-  const links = () => [...doc.querySelectorAll<HTMLLinkElement>(THEME_LINKS)];
-  if (links().some((l) => l.id === LINK_ID && l.getAttribute("href") === href)) {
-    links().filter((l) => l.id !== LINK_ID).forEach((l) => l.remove());
-    return Promise.resolve();
-  }
-  if (!href) {
-    links().forEach((l) => l.remove());
-    return Promise.resolve();
-  }
+function linkTo(doc: Document, href: string): HTMLLinkElement {
   const link = doc.createElement("link");
   link.rel = "stylesheet";
   link.href = href;
   link.dataset.themeLink = "";
-  const loaded = new Promise<void>((resolve) => {
-    link.onload = () => resolve();
-    link.onerror = () => resolve();
-  });
+  loads.set(
+    link,
+    new Promise<void>((resolve) => {
+      link.onload = () => resolve();
+      link.onerror = () => resolve();
+    }),
+  );
   doc.head.append(link);
-  return loaded.then(() => {
-    if (wanted !== href) {
-      link.remove();
-      return;
-    }
-    links().filter((l) => l !== link).forEach((l) => l.remove());
-    link.id = LINK_ID;
-  });
+  return link;
+}
+
+async function swapStyles(doc: Document, href: string | null, mark: () => void): Promise<boolean> {
+  wanted = href;
+  const links = () => [...doc.querySelectorAll<HTMLLinkElement>(THEME_LINKS)];
+  const link = href ? (links().find((l) => l.getAttribute("href") === href) ?? linkTo(doc, href)) : null;
+  if (link) await loads.get(link);
+  if (wanted !== href) return false;
+  mark();
+  links().filter((l) => l !== link).forEach((l) => l.remove());
+  if (link) link.id = LINK_ID;
+  return true;
 }

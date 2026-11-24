@@ -21,6 +21,7 @@ export interface TextScan {
   part: string;
   ratio: number;
   unreadable?: string;
+  ink?: number;
 }
 
 export interface ViewScan {
@@ -85,7 +86,9 @@ function accessibleName(el: Element): string {
   );
 }
 
-const readable = (style: CSSStyleDeclaration) => parseFloat(style.fontSize) >= MIN_FONT_PX && style.visibility === "visible";
+const fillOf = (style: CSSStyleDeclaration) => style.getPropertyValue("-webkit-text-fill-color") || style.color;
+const readable = (style: CSSStyleDeclaration) =>
+  parseFloat(style.fontSize) >= MIN_FONT_PX && style.visibility === "visible" && parseColor(fillOf(style))?.a !== 0;
 
 function pseudoText(el: Element, win: FrameWindow, pseudo: "::before" | "::after"): string {
   const style = win.getComputedStyle(el, pseudo);
@@ -247,9 +250,10 @@ export function scanTexts(scope: Element, win: FrameWindow, probe?: Probe): Text
     if (el.closest(":disabled, [aria-disabled='true']")) continue;
     const part = el.closest("[data-part]")?.getAttribute("data-part") ?? el.tagName.toLowerCase();
     const key = `${part}|${text.slice(0, 40)}`;
-    const color = parseColor(style.color);
+    const fill = fillOf(style);
+    const color = parseColor(fill);
     if (!color) {
-      lowest.set(key, { key, part, ratio: 0, unreadable: style.color });
+      lowest.set(key, { key, part, ratio: 0, unreadable: fill });
       continue;
     }
     const { color: background, underlaid } = backgroundOf(el, win);
@@ -304,20 +308,33 @@ export function paintedContrast(found: Pick<PaintedText, "text" | "background" |
   return ratioOf(seen, painted);
 }
 
+function glyphBox(el: Element, win: FrameWindow): DOMRect | null {
+  const texts = [...el.childNodes].filter((n) => n.nodeType === 3 && clean(n.textContent));
+  if (!texts.length) return null;
+  const range = win.document.createRange();
+  range.setStartBefore(texts[0]);
+  range.setEndAfter(texts[texts.length - 1]);
+  return range.getBoundingClientRect();
+}
+
+const inkIn = (pixels: Pixels, box: DOMRect) => Math.round(spread(luminances(pixels, box)) * 100) / 100;
+
 export function measurePaint(scan: ViewScan, probe: Probe, pixels: Pixels, win: FrameWindow): ViewScan {
   const controls = scan.controls.map((c) => {
     const el = probe.controls.get(c.key);
     const box = el?.getBoundingClientRect();
     const measurable = el && box && c.state === "ok" && within(box, win) && onTop(el, box, win) && showsSomething(el, win);
-    return measurable ? { ...c, ink: Math.round(spread(luminances(pixels, box)) * 100) / 100 } : c;
+    return measurable ? { ...c, ink: inkIn(pixels, box) } : c;
   });
   const texts = scan.texts.map((t) => {
     const found = probe.texts.get(t.key);
     const box = found?.el.getBoundingClientRect();
     if (!found || !box || !within(box, win) || !onTop(found.el, box, win)) return t;
+    const glyphs = glyphBox(found.el, win);
+    const inked = glyphs && within(glyphs, win) ? { ...t, ink: inkIn(pixels, glyphs) } : t;
     const painted = ground(luminances(pixels, box));
-    if (ratioOf(painted, found.background) < OVERLAY_SHIFT) return t;
-    return { ...t, ratio: Math.round(paintedContrast(found, painted) * 100) / 100 };
+    if (ratioOf(painted, found.background) < OVERLAY_SHIFT) return inked;
+    return { ...inked, ratio: Math.round(paintedContrast(found, painted) * 100) / 100 };
   });
   return { ...scan, controls, texts };
 }
