@@ -535,7 +535,7 @@ Fathom asks your login shell for its PATH once at startup and uses it to find he
 - herdr-core session and socket; empty means herdr-core's defaults.
 - Row names.
 - Appearance: the [theme](#themes), a font and a size for the chat, and a font and a size for the board.
-  A theme that sets fonts wins over these menus, which then show "Set by the theme".
+  A theme's fonts win over these menus, and a menu shows "Set by the theme" once the theme sets every font it drives.
   The font menus offer fonts that come with each system: SF Mono, Menlo, Monaco and Courier New for the chat on macOS, and JetBrains Mono (bundled with Fathom), DejaVu Sans Mono, Liberation Mono and Noto Sans Mono on Linux.
   The chat font defaults to SF Mono on macOS and to JetBrains Mono on Linux.
   "Add an installed font…" in either font menu lists every font family installed on the computer (through fontconfig on Linux), each shown in its own face.

@@ -51,7 +51,8 @@ Unknown keys are errors, so a typo never fails silently.
 - `modes` is `["light", "dark"]`, `["light"]` or `["dark"]`.
   With one mode, the dark mode switch hides and its shortcut does nothing.
 - `fonts` are CSS font-family lists.
-  They always win over the fonts picked in Settings, which then show "Set by the theme".
+  They always win over the fonts picked in Settings.
+  A Settings font menu shows "Set by the theme" once the theme sets every font it drives: `body` and `heading` for the board menu, `terminal` for the chat menu.
   `body` and `heading` set the board, `mono` the small monospaced labels, and `terminal` the chat and helper terminals.
   A font file in the theme folder needs an `@font-face` rule in `theme.css` with a relative URL.
 - `text` replaces decorative text, up to 40 characters each:

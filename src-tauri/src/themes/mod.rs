@@ -974,6 +974,13 @@ fn quoted_arguments(args: &str) -> Vec<&str> {
     found
 }
 
+fn starts_identifier(text: &str, at: usize) -> bool {
+    !text[..at]
+        .chars()
+        .next_back()
+        .is_some_and(|c| c.is_alphanumeric() || c == '-' || c == '_')
+}
+
 fn line_at(text: &str, index: usize) -> usize {
     text[..index].matches('\n').count() + 1
 }
@@ -1017,16 +1024,20 @@ fn remote(target: &str) -> bool {
 
 pub fn lint_css(css: &str) -> Vec<(usize, String)> {
     let mut out = Vec::new();
-    let lower = css.to_ascii_lowercase();
+    let without_comments = blank(css, "/*", "*/");
+    let code = blank_strings(&without_comments);
+    let (parsed_code, code_lines) = as_parsed(&code);
     for marker in SCRIPT_MARKERS {
-        if let Some(at) = lower.find(marker) {
+        if let Some((at, _)) = parsed_code
+            .match_indices(marker)
+            .find(|(at, _)| starts_identifier(&parsed_code, *at))
+        {
             out.push((
-                line_at(css, at),
+                code_lines[at],
                 format!("{marker} is a script hook; themes hold data, never code"),
             ));
         }
     }
-    let without_comments = blank(css, "/*", "*/");
     let (parsed, lines) = as_parsed(&without_comments);
     let mut search = 0;
     while let Some(found) = parsed[search..].find(URL_OPEN) {
@@ -1055,7 +1066,6 @@ pub fn lint_css(css: &str) -> Vec<(usize, String)> {
             "@import is not allowed; put every rule in theme.css".to_string(),
         ));
     }
-    let code = blank_strings(&without_comments);
     let mut start = 0;
     for (at, c) in code.char_indices() {
         match c {
@@ -1346,6 +1356,27 @@ body { background: url(data:image/svg+xml,%3Csvg%23x) , url('https://cdn.example
         assert_eq!(
             lint_css("[data-part=\"→→→→\"] { }\n.x { }\n"),
             vec![(2, problem(".x"))]
+        );
+    }
+
+    #[test]
+    fn script_hooks_are_whole_names_outside_comments_and_strings() {
+        let css = r#"/* drag behavior: lift the card */
+[data-part="board-scroll"] { scroll-behavior: smooth; }
+[data-part="chat"] { overscroll-behavior: contain; content: "javascript: is just text"; }
+[data-part="card"] { behavior: url(art/x.htc); }
+[data-part="bar"] { background: url(j\61vascript:alert(1)); }
+"#;
+        let problems = lint_css(css);
+        let hooks: Vec<(usize, &str)> = problems
+            .iter()
+            .filter(|(_, p)| p.contains("script hook"))
+            .map(|(line, p)| (*line, p.split(' ').next().unwrap()))
+            .collect();
+        assert_eq!(
+            hooks,
+            vec![(4, "behavior:"), (5, "javascript:")],
+            "{problems:?}"
         );
     }
 

@@ -151,6 +151,11 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
 
   const previewingRef = useRef(false);
   previewingRef.current = lookPreview !== null;
+  const previewRequest = useRef(0);
+  const endPreview = () => {
+    previewRequest.current += 1;
+    setLookPreview(null);
+  };
 
   useEffect(() => {
     if (themeId === undefined) return;
@@ -171,7 +176,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
 
   useEffect(() => {
     const reset = (e: Event) => {
-      setLookPreview(null);
+      endPreview();
       setLook(NAUTICAL_LOOK);
       setPreview(null);
       setSettingsOpen(false);
@@ -184,17 +189,20 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
 
   const previewLook = (id: string | null) => {
     if (id === null) {
-      setLookPreview(null);
+      endPreview();
       void applyLook(look);
       return;
     }
+    const request = ++previewRequest.current;
+    const current = () => request === previewRequest.current;
     void api
       .activeTheme(id)
       .then(lookOf)
       .catch(() => NAUTICAL_LOOK)
       .then(async (next) => {
+        if (!current()) return;
         await applyLook(next);
-        setLookPreview(next);
+        if (current()) setLookPreview(next);
       });
   };
 
@@ -398,7 +406,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
     setSettings(saved);
     setPreview(null);
     if (lookPreview) setLook(lookPreview);
-    setLookPreview(null);
+    endPreview();
     setSettingsOpen(false);
     void api.readBoard().then(accept).catch((e) => setReadError(errorText(e)));
   };
@@ -705,6 +713,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
           onClose={() => {
             setPreview(null);
             if (lookPreview) previewLook(null);
+            else endPreview();
             setSettingsOpen(false);
           }}
         />

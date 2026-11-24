@@ -79,7 +79,7 @@ export function SettingsDialog({ settings, mac, rowNames, look: theme, onPreview
     const fontKey = surface === "chat" ? "chatFont" : "boardFont";
     const sizeKey = surface === "chat" ? "chatFontSize" : "boardFontSize";
     const title = surface === "chat" ? "Chat" : "Board";
-    const setByTheme = surface === "chat" ? !!theme.fonts.terminal : !!(theme.fonts.body || theme.fonts.heading);
+    const setByTheme = surface === "chat" ? !!theme.fonts.terminal : !!(theme.fonts.body && theme.fonts.heading);
     return (
       <>
         <div className="field-pair" data-part="field-pair">
