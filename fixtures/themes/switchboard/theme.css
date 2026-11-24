@@ -495,7 +495,7 @@ dialog {
   box-shadow: 6px 6px 0 var(--sb-red);
 }
 
-[data-part="bar"] {
+[data-part="card"]:not([data-state~="unseen"]) [data-part="bar"] {
   display: none;
 }
 

@@ -41,6 +41,7 @@ export interface PaintedText {
   text: number;
   background: number;
   underlaid: boolean;
+  byGlyphs: boolean;
 }
 
 export const CONTROLS =
@@ -87,20 +88,31 @@ function accessibleName(el: Element): string {
 }
 
 const fillOf = (style: CSSStyleDeclaration) => style.getPropertyValue("-webkit-text-fill-color") || style.color;
-const readable = (style: CSSStyleDeclaration) =>
-  parseFloat(style.fontSize) >= MIN_FONT_PX && style.visibility === "visible" && parseColor(fillOf(style))?.a !== 0;
+const clipsText = (style: CSSStyleDeclaration) => [style.getPropertyValue("background-clip"), style.getPropertyValue("-webkit-background-clip")].includes("text");
+const stroked = (style: CSSStyleDeclaration) => parseFloat(style.getPropertyValue("-webkit-text-stroke-width")) > 0;
+
+function paintedWithoutFill(style: CSSStyleDeclaration, owner: Element, win: FrameWindow): boolean {
+  if (stroked(style) || clipsText(style)) return true;
+  for (let node: Element | null = owner; node; node = node.parentElement) if (clipsText(win.getComputedStyle(node))) return true;
+  return false;
+}
+
+function readable(style: CSSStyleDeclaration, owner: Element, win: FrameWindow): boolean {
+  if (parseFloat(style.fontSize) < MIN_FONT_PX || style.visibility !== "visible") return false;
+  return parseColor(fillOf(style))?.a !== 0 || paintedWithoutFill(style, owner, win);
+}
 
 function pseudoText(el: Element, win: FrameWindow, pseudo: "::before" | "::after"): string {
   const style = win.getComputedStyle(el, pseudo);
   const quoted = style.content.match(/^"(.*)"$/);
-  return quoted && readable(style) ? quoted[1] : "";
+  return quoted && readable(style, el, win) ? quoted[1] : "";
 }
 
 const overlaps = (a: DOMRect, b: DOMRect) => a.width > 0 && a.height > 0 && a.right > b.left && a.left < b.right && a.bottom > b.top && a.top < b.bottom;
 
 function shownText(node: Text, bounds: DOMRect, win: FrameWindow): boolean {
   const parent = node.parentElement;
-  if (!parent || !readable(win.getComputedStyle(parent))) return false;
+  if (!parent || !readable(win.getComputedStyle(parent), parent, win)) return false;
   const range = win.document.createRange();
   range.selectNodeContents(node);
   return [...range.getClientRects()].some((rect) => overlaps(rect, bounds));
@@ -251,11 +263,13 @@ export function scanTexts(scope: Element, win: FrameWindow, probe?: Probe): Text
     const part = el.closest("[data-part]")?.getAttribute("data-part") ?? el.tagName.toLowerCase();
     const key = `${part}|${text.slice(0, 40)}`;
     const fill = fillOf(style);
-    const color = parseColor(fill);
-    if (!color) {
+    const filled = parseColor(fill);
+    if (!filled) {
       lowest.set(key, { key, part, ratio: 0, unreadable: fill });
       continue;
     }
+    const byGlyphs = filled.a === 0 && paintedWithoutFill(style, el, win);
+    const color = byGlyphs ? (parseColor(style.color) ?? filled) : filled;
     const { color: background, underlaid } = backgroundOf(el, win);
     const faded = { ...color, a: color.a * effectiveOpacity(el, win) };
     const ratio = Math.round(contrast(faded, background) * 100) / 100;
@@ -263,7 +277,7 @@ export function scanTexts(scope: Element, win: FrameWindow, probe?: Probe): Text
     const known = lowest.get(key);
     if (!known || ratio < known.ratio) {
       lowest.set(key, { key, part, ratio });
-      probe?.texts.set(key, { el, text: luminanceOf(over(faded, solid)), background: luminanceOf(solid), underlaid });
+      probe?.texts.set(key, { el, text: luminanceOf(over(faded, solid)), background: luminanceOf(solid), underlaid, byGlyphs });
     }
   }
   return [...lowest.values()];
@@ -331,7 +345,9 @@ export function measurePaint(scan: ViewScan, probe: Probe, pixels: Pixels, win: 
     const box = found?.el.getBoundingClientRect();
     if (!found || !box || !within(box, win) || !onTop(found.el, box, win)) return t;
     const glyphs = glyphBox(found.el, win);
-    const inked = glyphs && within(glyphs, win) ? { ...t, ink: inkIn(pixels, glyphs) } : t;
+    const ink = glyphs && within(glyphs, win) ? inkIn(pixels, glyphs) : undefined;
+    const inked = ink === undefined ? t : { ...t, ink };
+    if (found.byGlyphs) return ink === undefined ? inked : { ...inked, ratio: ink };
     const painted = ground(luminances(pixels, box));
     if (ratioOf(painted, found.background) < OVERLAY_SHIFT) return inked;
     return { ...inked, ratio: Math.round(paintedContrast(found, painted) * 100) / 100 };

@@ -423,7 +423,7 @@ dialog {
   border-left-color: var(--p-amber);
 }
 
-[data-part="bar"] {
+[data-part="card"]:not([data-state~="unseen"]) [data-part="bar"] {
   display: none;
 }
 

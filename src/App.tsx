@@ -45,7 +45,7 @@ import { comboLabel, listenForShortcuts, type ShortcutAction } from "./shortcuts
 import { chatResizer, detailResizer } from "./windowSettings";
 import { isUnseen, leftCard, NO_UPDATES, seenLocally, type CardUpdates } from "./updates";
 import { waitsOf } from "./waits";
-import { applyLook, themedTokens } from "./themes/apply";
+import { applyLook } from "./themes/apply";
 import { LookContext } from "./themes/context";
 import { isSingleMode, lookOf, NAUTICAL_LOOK, shownMode, type Look } from "./themes/look";
 import { previewRequests } from "./themes/previews";
@@ -165,8 +165,11 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
       .catch(() => NAUTICAL_LOOK)
       .then(async (next) => {
         if (!alive) return;
-        if (!previews.open) await applyLook(next);
-        if (alive) setLook(next);
+        const shown = !previews.open;
+        if (shown) await applyLook(next);
+        if (!alive) return;
+        setLook(next);
+        if (shown && !previews.open) setLookPreview(null);
       });
     return () => {
       alive = false;
@@ -188,8 +191,10 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
 
   const previewLook = (id: string | null) => {
     if (id === null) {
-      endPreview();
-      void applyLook(look);
+      previews.end();
+      void applyLook(look).then(() => {
+        if (!previews.open) setLookPreview(null);
+      });
       return;
     }
     const current = previews.start();
@@ -207,11 +212,8 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   useEffect(() => {
     if (!appearance) return;
     const root = document.documentElement.style;
-    const owned = themedTokens(shownLook);
-    Object.entries(boardStyle(appearance))
-      .filter(([name]) => !owned.includes(name))
-      .forEach(([name, value]) => root.setProperty(name, value));
-  }, [appearance, shownLook]);
+    Object.entries(boardStyle(appearance)).forEach(([name, value]) => root.setProperty(name, value));
+  }, [appearance]);
 
   const singleMode = isSingleMode(shownLook);
   const theme = shownMode(shownLook, settings?.theme ?? DEFAULT_THEME);

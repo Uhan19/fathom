@@ -75,7 +75,7 @@ This runs the TypeScript compiler, the vitest suite, `cargo fmt --check`, `cargo
 GitHub Actions runs the same checks on Ubuntu 24.04 for every pull request and every push to `main`.
 
 `scripts/check-fixture-themes.sh` runs the [theme check](#the-theme-check) on the fixture themes in `fixtures/themes`.
-Phosphor, Switchboard, Riso and Plain must pass; the four hostile themes, one that hides everything, one that is white on white, one that lays an opaque layer over the window while letting clicks through and one that relabels a control and clips text with paint-only CSS, must fail without blocking the reset shortcut.
+Phosphor, Switchboard, Riso, Plain and Painted text (gradient and outlined text) must pass; the four hostile themes, one that hides everything, one that is white on white, one that lays an opaque layer over the window while letting clicks through and one that relabels a control and clips text with paint-only CSS, must fail without blocking the reset shortcut.
 The white-on-white one must also be reported for its contrast.
 It builds the debug binary and starts the dev server on port 1420 when none is running.
 It opens windows, so on Linux run it under `xvfb-run -a`, as CI does.
@@ -578,6 +578,7 @@ It compares every control with Nautical's: each must be present, visible, reacha
 Then it drags cards, reorders projects, resizes the panels, switches light and dark, and presses the reset shortcut.
 It prints each problem with the control or part, what failed and a screenshot in the theme's `.shots/check/`, and exits 1 when there is any.
 Fathom runs it whenever a theme in the themes folder changes and uses a theme only once it passes; after a failed change it keeps showing the last version that passed.
+A theme folder that is a symlink to a folder elsewhere is checked under its link name, but edits inside it are not seen; Fathom re-checks it when it starts or when anything else in the themes folder changes.
 On macOS the program is `Fathom.app/Contents/MacOS/fathom`.
 
 ### Theme screenshots

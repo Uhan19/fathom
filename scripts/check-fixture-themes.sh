@@ -6,7 +6,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 fixtures="$root/fixtures/themes"
 binary="$root/src-tauri/target/debug/fathom"
 dev_url="http://localhost:1420/themecheck.html"
-passing=(plain phosphor switchboard riso)
+passing=(plain phosphor switchboard riso painted-text)
 failing=(hostile-hidden hostile-white:contrast hostile-cover hostile-paint:label)
 
 cargo build --manifest-path "$root/src-tauri/Cargo.toml"

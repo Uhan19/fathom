@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rootAttributes, rootTokens, themedTokens } from "./apply";
+import { rootAttributes, rootTokens, themeFonts } from "./apply";
 import { lookOf, NAUTICAL_LOOK } from "./look";
 
 const riso = lookOf({
@@ -20,10 +20,9 @@ describe("applying a look", () => {
       "--row-label-width": "58px",
       "--collapsed-width": "44px",
       "--lane-width": "260px",
-      "--body-font": "Georgia, serif",
     });
-    expect(themedTokens(riso)).toEqual(["--body-font"]);
-    expect(themedTokens(NAUTICAL_LOOK)).toEqual([]);
+    expect(themeFonts(riso)).toEqual({ "--body-font": "Georgia, serif" });
+    expect(themeFonts(NAUTICAL_LOOK)).toEqual({});
   });
 
   it("links the theme's styles and art under its versioned base", () => {
