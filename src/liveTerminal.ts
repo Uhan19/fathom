@@ -2,10 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
-import "@xterm/xterm/css/xterm.css";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { api, type Size, type View } from "./api";
-import { TERMINAL_OPTIONS, TERMINAL_THEMES } from "./terminalOptions";
+import { TERMINAL_OPTIONS, terminalPalette } from "./terminalOptions";
 import { symbolsFontReady } from "./terminalSymbols";
 import type { Theme } from "./theme";
 import { forwardClipboardWrites, isShiftEnter, shiftEnterSequence, trackKittyKeyboard } from "./terminalInput";
@@ -14,6 +13,11 @@ const FALLBACK_SIZE = { cols: 80, rows: 24 };
 const RESIZE_DEBOUNCE_MS = 80;
 const USER_INPUT_WINDOW_MS = 150;
 const USER_INPUT_EVENTS = ["keydown", "paste", "compositionend"] as const;
+
+function pagePalette() {
+  const style = getComputedStyle(document.documentElement);
+  return terminalPalette((name) => style.getPropertyValue(name));
+}
 
 function copyText(text: string) {
   void writeText(text).catch(() => undefined);
@@ -30,8 +34,6 @@ export function useLiveTerminal(view: View, fontFamily: string, fontSize: number
   const selecting = useRef(false);
   const fontRef = useRef({ fontFamily, fontSize });
   fontRef.current = { fontFamily, fontSize };
-  const themeRef = useRef(theme);
-  themeRef.current = theme;
 
   const measure = useCallback((): Size | null => {
     if (!scrollRef.current?.getClientRects().length) return null;
@@ -101,7 +103,7 @@ export function useLiveTerminal(view: View, fontFamily: string, fontSize: number
       const term = new XTerm({
         ...fontRef.current,
         ...TERMINAL_OPTIONS,
-        theme: TERMINAL_THEMES[themeRef.current],
+        theme: pagePalette(),
       });
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
@@ -209,7 +211,7 @@ export function useLiveTerminal(view: View, fontFamily: string, fontSize: number
 
   useEffect(() => {
     const term = xtermRef.current;
-    if (term) term.options.theme = TERMINAL_THEMES[theme];
+    if (term) term.options.theme = pagePalette();
   }, [theme]);
 
   return { hostRef, scrollRef, attach, release, focus, paste, fit: syncSize };

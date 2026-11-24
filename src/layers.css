@@ -1,0 +1,4 @@
+@layer vendor, app;
+
+@import "@xterm/xterm/css/xterm.css" layer(vendor);
+@import "./styles.css" layer(app);
