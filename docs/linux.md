@@ -182,11 +182,11 @@ In the chat panel, paste with Ctrl+Shift+V or Shift+Insert; Ctrl+V reaches the p
    gh auth login
    ```
 
-2. Clone Firstmate where Fathom looks for it, and select the hc backend so crewmates run where Fathom can see them (Firstmate `README.md` "Quick Start", Firstmate `docs/configuration.md` "Backend selection order"):
+2. Clone Firstmate where Fathom looks for it, select the hc backend so crewmates run where Fathom can see them, and create the `data` folder for the task list, which a fresh clone lacks because it is gitignored (Firstmate `README.md` "Quick Start", Firstmate `docs/configuration.md` "Backend selection order"):
 
    ```sh
    git clone https://github.com/kunchenguid/firstmate ~/Documents/firstmate
-   mkdir -p ~/Documents/firstmate/config
+   mkdir -p ~/Documents/firstmate/config ~/Documents/firstmate/data
    echo hc > ~/Documents/firstmate/config/backend
    ```
 

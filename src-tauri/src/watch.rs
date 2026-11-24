@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
@@ -6,6 +7,7 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use crate::waits::WAITS_FILE;
 
 pub const TASK_LIST: &str = "backlog.md";
+const DATA_DIR: &str = "data";
 const STATE_DIR: &str = "state";
 const META_EXTENSION: &str = "meta";
 const STATUS_EXTENSION: &str = "status";
@@ -21,9 +23,45 @@ pub enum StateChange {
 
 pub fn watch_task_list(
     home: &Path,
-    on_change: impl Fn() + Send + 'static,
+    on_change: impl Fn() + Send + Sync + 'static,
 ) -> Result<RecommendedWatcher, String> {
-    let data = home.join("data");
+    let data = home.join(DATA_DIR);
+    let on_change: Arc<dyn Fn() + Send + Sync> = Arc::new(on_change);
+    if data.is_dir() {
+        return watch_data(&data, on_change);
+    }
+    let mut armed: Option<RecommendedWatcher> = None;
+    let target = data.clone();
+    let mut watcher = notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
+        let Ok(event) = result else { return };
+        if armed.is_some()
+            || !event
+                .paths
+                .iter()
+                .any(|p| p.file_name().is_some_and(|n| n == DATA_DIR))
+            || !target.is_dir()
+        {
+            return;
+        }
+        match watch_data(&target, Arc::clone(&on_change)) {
+            Ok(watcher) => {
+                armed = Some(watcher);
+                on_change();
+            }
+            Err(error) => eprintln!("fathom: {error}"),
+        }
+    })
+    .map_err(|e| format!("cannot start the file watcher: {e}"))?;
+    watcher
+        .watch(home, RecursiveMode::NonRecursive)
+        .map_err(|e| format!("cannot watch {}: {e}", home.display()))?;
+    Ok(watcher)
+}
+
+fn watch_data(
+    data: &Path,
+    on_change: Arc<dyn Fn() + Send + Sync>,
+) -> Result<RecommendedWatcher, String> {
     let mut watcher = notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
         if let Ok(event) = result
             && event.paths.iter().any(|p| {
@@ -36,7 +74,7 @@ pub fn watch_task_list(
     })
     .map_err(|e| format!("cannot start the file watcher: {e}"))?;
     watcher
-        .watch(&data, RecursiveMode::NonRecursive)
+        .watch(data, RecursiveMode::NonRecursive)
         .map_err(|e| format!("cannot watch {}: {e}", data.display()))?;
     Ok(watcher)
 }
@@ -125,6 +163,26 @@ mod tests {
         assert!(rx.recv_timeout(Duration::from_secs(5)).is_ok());
         while rx.recv_timeout(Duration::from_millis(300)).is_ok() {}
         std::fs::write(data.join(WAITS_FILE), "{}").unwrap();
+        assert!(rx.recv_timeout(Duration::from_secs(5)).is_ok());
+    }
+
+    #[test]
+    fn rearms_on_the_data_folder_once_a_fresh_home_creates_it() {
+        let home = tempfile::tempdir().unwrap();
+        let data = home.path().join("data");
+        let (tx, rx) = mpsc::channel();
+        let _watcher = watch_task_list(home.path(), move || {
+            let _ = tx.send(());
+        })
+        .unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        while rx.try_recv().is_ok() {}
+        std::fs::write(home.path().join("README.md"), "noise").unwrap();
+        assert!(rx.recv_timeout(Duration::from_millis(800)).is_err());
+        std::fs::create_dir(&data).unwrap();
+        assert!(rx.recv_timeout(Duration::from_secs(5)).is_ok());
+        while rx.recv_timeout(Duration::from_millis(300)).is_ok() {}
+        std::fs::write(data.join(TASK_LIST), "first").unwrap();
         assert!(rx.recv_timeout(Duration::from_secs(5)).is_ok());
     }
 

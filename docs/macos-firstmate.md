@@ -169,11 +169,12 @@ Clone it to `~/Documents/firstmate` so Fathom finds it without any setting.
    git clone https://github.com/kunchenguid/firstmate ~/Documents/firstmate
    ```
 
-2. Set the runtime backend to hc, so crewmates run in herdr-core terminals Fathom can show.
+2. Set the runtime backend to hc, so crewmates run in herdr-core terminals Fathom can show, and create the `data` folder for the task list.
    `config/backend` is a local, gitignored file whose first line selects the backend (Firstmate `docs/configuration.md`, "Backend selection order").
+   `data/` is gitignored too, so a fresh clone has none, and until it exists `bin/fm-tasks-axi.sh` refuses to list tasks.
 
    ```sh
-   mkdir -p ~/Documents/firstmate/config
+   mkdir -p ~/Documents/firstmate/config ~/Documents/firstmate/data
    echo hc > ~/Documents/firstmate/config/backend
    ```
 
@@ -261,7 +262,7 @@ Fathom has no setup wizard; it opens straight to the board.
 6. Claude Code may ask whether to trust the Firstmate folder; answer in the panel.
    The first mate starts and reports its state.
 7. Give it a small task, for example a scout task on a public repository.
-   The card appears on the board when Firstmate writes it to `data/backlog.md`, which Fathom watches (`src-tauri/src/watch.rs:6`).
+   The card appears on the board when Firstmate writes it to `data/backlog.md`, which Fathom watches (`src-tauri/src/watch.rs:9`).
 8. When the first mate starts a crewmate on hc, a sailor appears on that card.
    Its visor blinks while the crewmate works.
    Click it to watch the crewmate's terminal; Escape closes the view and leaves the crewmate running (README "Crewmate indicator").
@@ -288,7 +289,7 @@ Fathom has no setup wizard; it opens straight to the board.
 | `herdr-core` (or `hc`) | Every terminal and every sailor | **herdr-core is not installed or not on PATH. Fathom opens and shows terminals through herdr-core (hc).** (`src/agents.ts:48`) |
 | `claude` | Firstmate's chat terminal and Bosun | **Claude Code is not installed or not on PATH. Fathom looked for the claude command.**, also for the Firstmate choice, because Firstmate runs as `claude` (`src/agents.ts:11`, `src/agents.ts:48`) and the install prompt in the Bosun drawer (`src/components/BosunDrawer.tsx:301`) |
 | `tasks-axi` | Reading the board, through `bin/fm-tasks-axi.sh` | The board shows a read error (untested exact text) |
-| `bin/fm-tasks-axi.sh` in the home | Reading the board | **`<path>` not found; check the Firstmate home setting** (`src-tauri/src/tasks.rs:137`) |
+| `bin/fm-tasks-axi.sh` in the home | Reading the board | **`<path>` not found; check the Firstmate home setting** (`src-tauri/src/tasks.rs:152`) |
 
 ## 10. It is working when you see
 

@@ -240,6 +240,8 @@ With the home left empty it reads its own backlog; see [Fathom's own backlog](#f
   It never parses `data/backlog.md`.
 - Fathom never writes files in Firstmate's home itself.
   The only thing it sends is a move request, through `bin/fm-inbox.sh note`.
+- A home with no `data/` folder yet, such as a fresh clone, holds no tasks, so its board is empty instead of showing a read error.
+  Fathom does not create the folder; it watches the home until Firstmate creates `data/`, then re-reads and watches the task list as usual.
 - It watches the task list file and `data/waits.json` and listens to herdr-core events; any of them triggers a re-read.
   Firstmate's tasks need no polling loop; only Fathom's own database is polled, as described in [Live refresh](#live-refresh).
 - On open it paints the snapshot cache, then refreshes.

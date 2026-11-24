@@ -7,6 +7,7 @@ use crate::shell_path;
 use crate::toon::{self, Record};
 
 const WRAPPER: &str = "bin/fm-tasks-axi.sh";
+const DATA_DIR: &str = "data";
 const LIST_FIELDS: &str = "hold_kind,hold_until,hold_reason,blocked_by,links,priority,closed";
 const TRUNCATION_MARK: &str = "\n... (truncated";
 const ENV_TO_CLEAR: [&str; 6] = [
@@ -112,6 +113,11 @@ pub fn row_for(state: &str, hold_kind: &str, hold_until: &str) -> Row {
 }
 
 pub fn read_board(home: &Path) -> Result<Vec<Card>, String> {
+    // A fresh Firstmate clone has no data/ until its first task, and the wrapper
+    // refuses such a home; it holds no tasks yet, so its board is empty.
+    if wrapper_path(home).is_file() && lacks_data(home) {
+        return Ok(vec![]);
+    }
     let text = run(home, &["list", "--fields", LIST_FIELDS])?;
     Ok(toon::parse_list(&text)?.iter().map(card_from).collect())
 }
@@ -126,6 +132,13 @@ pub fn read_detail(home: &Path, id: &str) -> Result<Detail, String> {
         priority: field(&record, "priority"),
         deps: split_list(&field(&record, "deps")),
     })
+}
+
+fn lacks_data(home: &Path) -> bool {
+    matches!(
+        home.join(DATA_DIR).symlink_metadata(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound
+    )
 }
 
 pub fn wrapper_path(home: &Path) -> PathBuf {

@@ -229,6 +229,7 @@ esac
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path().join("home");
         std::fs::create_dir_all(home.join("bin")).unwrap();
+        std::fs::create_dir_all(home.join("data")).unwrap();
         crate::test_support::write_script(&home.join("bin/fm-tasks-axi.sh"), FAKE_TASKS);
         let db = Mutex::new(Db::open(dir.path()).unwrap());
         let source = Source::of(&home.display().to_string());
@@ -239,6 +240,35 @@ esac
         let numbers: Vec<(&str, Option<i64>)> =
             cards.iter().map(|c| (c.id.as_str(), c.number)).collect();
         assert_eq!(numbers, [("chart-reef", Some(2)), ("count-buoys", Some(1))]);
+    }
+
+    // Firstmate's wrapper refuses a home whose data/ is absent, as on a fresh clone.
+    const REFUSES_WITHOUT_DATA: &str = r#"#!/bin/sh
+[ -d "$FM_HOME/data" ] || { printf 'fm-tasks-axi: data directory cannot be resolved: %s\n' "$FM_HOME/data" >&2; exit 2; }
+printf 'tasks[0]{id,state,kind,repo,title}:\n'
+"#;
+
+    #[test]
+    fn a_firstmate_home_without_a_data_folder_reads_as_an_empty_board() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        std::fs::create_dir_all(home.join("bin")).unwrap();
+        crate::test_support::write_script(&home.join("bin/fm-tasks-axi.sh"), REFUSES_WITHOUT_DATA);
+        let db = Mutex::new(Db::open(dir.path()).unwrap());
+        let source = Source::of(&home.display().to_string());
+
+        assert_eq!(source.read_cards(&db).unwrap(), vec![]);
+        assert!(
+            !home.join("data").exists(),
+            "Fathom never writes into the home"
+        );
+
+        let not_a_home = Source::of(&dir.path().join("elsewhere").display().to_string());
+        let error = not_a_home.read_cards(&db).unwrap_err();
+        assert!(
+            error.contains("check the Firstmate home setting"),
+            "{error}"
+        );
     }
 
     #[test]
