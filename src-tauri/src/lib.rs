@@ -13,9 +13,12 @@ mod requests;
 mod settings;
 mod shell_path;
 mod shell_tabs;
+mod snapshot;
 mod source;
 mod state;
 mod tasks;
+mod theme_check;
+mod theme_watch;
 mod themes;
 #[cfg(test)]
 mod test_support;
@@ -32,6 +35,7 @@ use std::time::Instant;
 use tauri::{Manager, RunEvent};
 
 const EXPORT_FLAG: &str = "--export";
+const DEFAULT_THEME_FLAG: &str = "--default-theme";
 const MAC_DATA_DIR: &str = "Library/Application Support";
 const LINUX_DATA_DIR: &str = ".local/share";
 
@@ -39,6 +43,24 @@ pub fn run() {
     let started = Instant::now();
     let context = tauri::generate_context!();
     let identifier = context.config().identifier.clone();
+
+    let args: Vec<String> = std::env::args().collect();
+    if let Some(request) = theme_check::parse(&args) {
+        let code = match request {
+            Ok(request) => match store_dir(&identifier, &args) {
+                Ok(dir) => theme_check::run_cli(context, request, &dir),
+                Err(error) => {
+                    eprintln!("fathom: {error}");
+                    2
+                }
+            },
+            Err(usage) => {
+                eprintln!("{usage}");
+                2
+            }
+        };
+        std::process::exit(code);
+    }
 
     if let Some(code) = run_helper_asking_flag(&identifier)
         .or_else(|| run_mcp_flag(&identifier))
@@ -51,10 +73,29 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .register_asynchronous_uri_scheme_protocol(themes::scheme::SCHEME, |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let path = request.uri().path().to_string();
+            std::thread::spawn(move || {
+                let state = app.try_state::<std::sync::Arc<state::AppState>>();
+                let asset = themes::scheme::serve(&path, |id| {
+                    let state = state.as_ref()?;
+                    state.themes.active(id)?;
+                    Some(state.themes.good_copy(id))
+                });
+                responder.respond(asset.into_response());
+            });
+        })
         .setup(move |app| {
             let data_dir = app.path().app_data_dir()?;
             let log_dir = app.path().app_log_dir()?;
             let db = db::Db::open(&data_dir)?;
+            if wants_default_theme(&std::env::args().collect::<Vec<_>>()) {
+                settings::update(&db, |s| {
+                    s.theme_id = themes::NAUTICAL.to_string();
+                    Ok(())
+                })?;
+            }
             let state = state::AppState::start(app.handle(), db, log_dir, started)?;
             app.manage(state);
             app.manage(std::sync::Arc::new(pulls::PrCache::default()));
@@ -116,6 +157,10 @@ pub fn run() {
             commands::attachable_terminals,
             commands::launcher_folders,
             commands::remember_column_folder,
+            commands::active_theme,
+            commands::list_themes,
+            commands::duplicate_nautical,
+            commands::reveal_themes_folder,
         ])
         .build(context)
         .expect("error while building Fathom");
@@ -128,6 +173,10 @@ pub fn run() {
             state.herdr.stop_events();
         }
     });
+}
+
+fn wants_default_theme(args: &[String]) -> bool {
+    args.iter().any(|a| a == DEFAULT_THEME_FLAG)
 }
 
 fn default_data_dir(identifier: &str) -> Result<PathBuf, String> {
@@ -149,6 +198,15 @@ fn data_root(os: &str, home: Option<PathBuf>, xdg_data_home: Option<OsString>) -
             .or_else(|| home.map(|home| home.join(LINUX_DATA_DIR))),
         _ => None,
     }
+}
+
+fn store_dir(identifier: &str, args: &[String]) -> Result<PathBuf, String> {
+    let default = default_data_dir(identifier)?.join(db::FILE_NAME);
+    let store = mcp::store_path(args, mcp::db_env(), default)?;
+    store
+        .parent()
+        .map(PathBuf::from)
+        .ok_or_else(|| format!("{} has no folder", store.display()))
 }
 
 fn run_mcp_flag(identifier: &str) -> Option<i32> {
@@ -236,6 +294,13 @@ mod tests {
             Some(PathBuf::from("/home/sailor/.local/share"))
         );
         assert_eq!(data_root("linux", None, None), None);
+    }
+
+    #[test]
+    fn the_default_theme_flag_is_read_from_the_arguments() {
+        let args = |words: &[&str]| words.iter().map(|w| w.to_string()).collect::<Vec<_>>();
+        assert!(wants_default_theme(&args(&["fathom", "--default-theme"])));
+        assert!(!wants_default_theme(&args(&["fathom"])));
     }
 
     #[test]

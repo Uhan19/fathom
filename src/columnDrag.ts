@@ -1,7 +1,7 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import type { Column } from "./api";
 import { gapX, landingIndex, pickGap, type HeadBox } from "./columnOrder";
-import { scrollStep, START_DISTANCE } from "./drag";
+import { scrollStep, START_DISTANCE, type Axis } from "./drag";
 
 const STAYS_PUT = "input, .col-handle";
 
@@ -13,10 +13,10 @@ export interface ColumnDrag {
   offsetY: number;
   width: number;
   index: number | null;
-  slotX: number | null;
+  slot: number | null;
 }
 
-export function useColumnDrag(scroller: RefObject<HTMLElement | null>, onDrop: (column: Column, index: number) => void) {
+export function useColumnDrag(scroller: RefObject<HTMLElement | null>, onDrop: (column: Column, index: number) => void, axis: Axis = "x") {
   const [drag, setDrag] = useState<ColumnDrag | null>(null);
   const dropRef = useRef(onDrop);
   dropRef.current = onDrop;
@@ -32,17 +32,18 @@ export function useColumnDrag(scroller: RefObject<HTMLElement | null>, onDrop: (
 
     const update = () => {
       if (!current) return;
-      const landing = scroller.current ? measure(scroller.current, column.id, pointer.x) : null;
+      const landing = scroller.current ? measure(scroller.current, column.id, pointer, axis) : null;
       const index = landing?.index ?? null;
-      const slotX = landing?.slotX ?? null;
-      if (current.x === pointer.x && current.y === pointer.y && current.index === index && current.slotX === slotX) return;
-      current = { ...current, x: pointer.x, y: pointer.y, index, slotX };
+      const slot = landing?.slot ?? null;
+      if (current.x === pointer.x && current.y === pointer.y && current.index === index && current.slot === slot) return;
+      current = { ...current, x: pointer.x, y: pointer.y, index, slot };
       setDrag(current);
     };
 
     const everyFrame = () => {
-      const step = scrollStep(scroller.current, { x: pointer.x, y: rect.top + rect.height / 2 });
-      if (step?.x) scroller.current?.scrollBy(step.x, 0);
+      const along = axis === "x" ? { x: pointer.x, y: rect.top + rect.height / 2 } : { x: rect.left + rect.width / 2, y: pointer.y };
+      const step = scrollStep(scroller.current, along);
+      if (step && (axis === "x" ? step.x : step.y)) scroller.current?.scrollBy(axis === "x" ? step.x : 0, axis === "y" ? step.y : 0);
       update();
       frame = requestAnimationFrame(everyFrame);
     };
@@ -59,7 +60,7 @@ export function useColumnDrag(scroller: RefObject<HTMLElement | null>, onDrop: (
           offsetY: Math.min(start.y - rect.top, rect.height),
           width: rect.width,
           index: null,
-          slotX: null,
+          slot: null,
         };
         window.getSelection()?.removeAllRanges();
         document.body.classList.add("moving-column");
@@ -100,20 +101,22 @@ export function useColumnDrag(scroller: RefObject<HTMLElement | null>, onDrop: (
   return { drag, begin };
 }
 
-function measure(scroller: HTMLElement, id: number, x: number): { index: number | null; slotX: number | null } {
-  const heads: HeadBox[] = [...scroller.querySelectorAll<HTMLElement>(".column-head[data-column]")].map((el) => {
-    const box = el.getBoundingClientRect();
-    return { id: Number(el.dataset.column), left: box.left, right: box.right };
-  });
-  const gap = pickGap(heads, x);
+export function headBoxes(boxes: { id: number; box: Pick<DOMRect, "left" | "right" | "top" | "bottom"> }[], axis: Axis): HeadBox[] {
+  return boxes.map(({ id, box }) => (axis === "x" ? { id, left: box.left, right: box.right } : { id, left: box.top, right: box.bottom }));
+}
+
+function measure(scroller: HTMLElement, id: number, pointer: { x: number; y: number }, axis: Axis): { index: number | null; slot: number | null } {
+  const boxes = [...scroller.querySelectorAll<HTMLElement>(".column-head[data-column]")].map((el) => ({ id: Number(el.dataset.column), box: el.getBoundingClientRect() }));
+  const heads = headBoxes(boxes, axis);
+  const gap = pickGap(heads, axis === "x" ? pointer.x : pointer.y);
   const index = landingIndex(
     heads.map((h) => h.id),
     id,
     gap,
   );
-  const board = scroller.querySelector<HTMLElement>(".board");
+  const board = scroller.querySelector<HTMLElement>(".board")?.getBoundingClientRect();
   const at = gapX(heads, gap);
-  return { index, slotX: index === null || at === null || !board ? null : at - board.getBoundingClientRect().left };
+  return { index, slot: index === null || at === null || !board ? null : at - (axis === "x" ? board.left : board.top) };
 }
 
 function swallowNextClick() {

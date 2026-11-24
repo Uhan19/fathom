@@ -278,6 +278,7 @@ pub struct Summary {
     pub modes: Vec<Mode>,
     pub status: Status,
     pub problems: usize,
+    pub usable: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub folder: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -407,6 +408,7 @@ impl Themes {
                 .unwrap_or_else(both_modes),
             status,
             problems: checked.map(|r| r.findings.len()).unwrap_or(0),
+            usable: good.is_some(),
             folder: Some(folder.display().to_string()),
             cloned_from: manifest.and_then(|m| m.cloned_from),
         }
@@ -524,6 +526,7 @@ fn nautical_summary() -> Summary {
         modes: both_modes(),
         status: Status::BuiltIn,
         problems: 0,
+        usable: true,
         folder: None,
         cloned_from: None,
     }

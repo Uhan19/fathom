@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
+import { useEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ROW_ORDER, type AgentFilter, type Card, type Column, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type SourceKind, type Wait, type Worker } from "../api";
 import {
   boardMinWidth,
@@ -9,6 +9,8 @@ import {
   groupCards,
   headTemplate,
   insertAmongShown,
+  laneTemplate,
+  type Geometry,
   isUnnamed,
   outcomeTag,
   renamedColumn,
@@ -26,6 +28,7 @@ import type { DropTarget } from "../dropTarget";
 import { startDrag } from "../drag";
 import { tagText, waitsOf, waitTitle } from "../waits";
 import { states } from "../parts";
+import { useLook } from "../themes/context";
 import { ChevronDown, ChevronLeft, ChevronRight, HandoffIcon, Plus, Sailor, Trash } from "./Icons";
 
 interface BoardProps {
@@ -67,7 +70,16 @@ export function Board(props: BoardProps) {
   const focusCells = focused ? keepCards(allCells, (card) => isFocused(card, focus)) : allCells;
   const cells = agentFilter === "all" ? focusCells : keepCards(focusCells, (card) => shownByAgent(workers[card.id], agentFilter));
   const shown = focused ? sized.filter((c) => cellCount(cells, c.id) > 0) : sized;
-  const template = columnTemplate(shown);
+  const look = useLook();
+  const lanes = look.layout.board === "lanes";
+  const geometry: Geometry = { rowLabel: look.layout.rowLabelWidth, collapsed: look.layout.collapsedWidth, lane: look.layout.laneWidth };
+  const boardTokens = {
+    "--board-min-width": `${boardMinWidth(shown, geometry)}px`,
+    "--head-template": headTemplate(shown, geometry),
+    "--row-template": columnTemplate(shown, geometry),
+    "--lane-template": laneTemplate(collapsedRows, geometry),
+    "--board-columns": String(shown.length + (props.onColumnAdd ? 1 : 0)),
+  } as CSSProperties;
   const scroller = useRef<HTMLDivElement>(null);
 
   const idsIn = (from: typeof cells, column: number, row: RowKey) => (from.get(column)?.get(row) ?? []).map((c) => c.id);
@@ -85,7 +97,7 @@ export function Board(props: BoardProps) {
       order: insertAmongShown(idsIn(allCells, target.column, target.row), idsAt(target.column, target.row), card.id, target.index),
     });
   });
-  const columnDrag = useColumnDrag(scroller, (column, index) => props.onColumnMove(column.id, index, shown));
+  const columnDrag = useColumnDrag(scroller, (column, index) => props.onColumnMove(column.id, index, shown), lanes ? "y" : "x");
   const liftedColumn = columnDrag.drag?.column.id;
   const headClass = (column: Column, unseen = false) =>
     `column-head${column.collapsed ? " collapsed" : ""}${unseen ? " unseen" : ""}${column.id === liftedColumn ? " column-lifted" : ""}`;
@@ -141,9 +153,9 @@ export function Board(props: BoardProps) {
 
   return (
     <div className="board-scroll" data-part="board-scroll" ref={scroller}>
-      <div className="board" data-part="board" style={{ minWidth: boardMinWidth(shown) }}>
-        <div className="column-heads" data-part="column-heads" style={{ gridTemplateColumns: headTemplate(shown) }}>
-          <span className="column-heads-label" data-part="column-heads-label">Projects →</span>
+      <div className="board" data-part="board" style={boardTokens}>
+        <div className="column-heads" data-part="column-heads">
+          <span className="column-heads-label" data-part="column-heads-label">{look.text.projects}</span>
           {shown.map((column) => {
             const total = cellCount(cells, column.id);
             const unseen = column.collapsed && columnHasUnseen(cells, column.id, updates);
@@ -189,14 +201,16 @@ export function Board(props: BoardProps) {
                 >
                   <ChevronLeft />
                 </button>
-                <div
-                  className="col-handle"
-                  data-part="col-handle"
-                  data-control="column-resize"
-                  role="separator"
-                  aria-label={`Resize ${column.name}`}
-                  onPointerDown={(e) => resize(e, column)}
-                />
+                {!lanes && (
+                  <div
+                    className="col-handle"
+                    data-part="col-handle"
+                    data-control="column-resize"
+                    role="separator"
+                    aria-label={`Resize ${column.name}`}
+                    onPointerDown={(e) => resize(e, column)}
+                  />
+                )}
               </div>
             );
           })}
@@ -218,7 +232,6 @@ export function Board(props: BoardProps) {
               data-state={states({ collapsed: folded, unseen, fill })}
               data-row={row}
               aria-label={name}
-              style={{ gridTemplateColumns: template }}
             >
               <h2 className="row-name" data-part="row-name">
                 <button
@@ -280,8 +293,8 @@ export function Board(props: BoardProps) {
             </section>
           );
         })}
-        {columnDrag.drag?.slotX != null && (
-          <div className="drop-slot column-slot" data-part="column-slot" style={{ left: columnDrag.drag.slotX }} aria-hidden="true" />
+        {columnDrag.drag?.slot != null && (
+          <div className="drop-slot column-slot" data-part="column-slot" style={lanes ? { top: columnDrag.drag.slot } : { left: columnDrag.drag.slot }} aria-hidden="true" />
         )}
       </div>
       {drag && (

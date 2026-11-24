@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useLook } from "../themes/context";
 
 export function ChevronLeft() {
   return (
@@ -68,6 +69,14 @@ export function Trash() {
 const SAILOR_SIZE = 32;
 
 export function Sailor({ size = SAILOR_SIZE }: { size?: number }) {
+  const art = useLook().art;
+  if (art.sailor)
+    return (
+      <span className="sailor-art" data-part="sailor-art" style={{ width: size, height: size }} aria-hidden="true">
+        <img src={art.sailor} width={size} height={size} alt="" />
+        {art.sailorActive && <img className="sailor-visor" data-part="sailor-visor" src={art.sailorActive} width={size} height={size} alt="" />}
+      </span>
+    );
   return (
     <svg data-part="sailor-art" width={size} height={size} viewBox="0 0 30 30" overflow="visible" aria-hidden="true">
       <path d="M2 30c0-3.2 2.2-5.4 5.4-6h15.2c3.2.6 5.4 2.8 5.4 6z" fill="var(--sailor-coat)" />

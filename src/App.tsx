@@ -20,8 +20,8 @@ import {
   type WindowChange,
   type Worker,
 } from "./api";
-import { appearanceOf, boardStyle, chatFontStack, type Appearance } from "./appearance";
-import { oneColumnWidth, placeLocally, rowCounts, shownRequest } from "./board";
+import { appearanceOf, boardStyle, terminalFontStack, type Appearance } from "./appearance";
+import { oneColumnWidth, oneLaneWidth, placeLocally, rowCounts, shownRequest } from "./board";
 import { emptyBoardText } from "./source";
 import { moveTo } from "./columnOrder";
 import { startDrag } from "./drag";
@@ -45,6 +45,11 @@ import { comboLabel, listenForShortcuts, type ShortcutAction } from "./shortcuts
 import { chatResizer, detailResizer } from "./windowSettings";
 import { isUnseen, leftCard, NO_UPDATES, seenLocally, type CardUpdates } from "./updates";
 import { waitsOf } from "./waits";
+import { applyLook, themedTokens } from "./themes/apply";
+import { LookContext } from "./themes/context";
+import { isSingleMode, lookOf, NAUTICAL_LOOK, shownMode, type Look } from "./themes/look";
+import { RESET_EVENT } from "./themes/reset";
+import { useOverlayDetail } from "./overlayDetail";
 import { states } from "./parts";
 
 const NO_HELPER: HelperStatus = { terminal: null, status: "", asking: false };
@@ -59,7 +64,7 @@ const SHORTCUT = shortcutLabel(MAC);
 
 const withShortcut = (text: string, combo: string | undefined) => (combo ? `${text} (${comboLabel(combo, MAC)})` : text);
 
-export default function App() {
+export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Look }) {
   const [view, setView] = useState<BoardView | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -81,6 +86,9 @@ export default function App() {
   const [bosunHeight, setBosunHeight] = useState(DRAWER_HEIGHT.initial);
   const [activeTabName, setActiveTabName] = useState<string | null>(null);
   const [unfolded, setUnfolded] = useState<Folded | null>(null);
+  const [look, setLook] = useState<Look>(initialLook);
+  const [lookPreview, setLookPreview] = useState<Look | null>(null);
+  const [themesChanged, setThemesChanged] = useState(0);
   const launchLogged = useRef(false);
   const shortcutActions = useRef<Record<ShortcutAction, () => void> | null>(null);
   const mainRef = useRef<HTMLElement>(null);
@@ -112,6 +120,7 @@ export default function App() {
       events.updates((u) => alive && setUpdates(u)),
       events.settings((s) => alive && setSettings(s)),
       events.helper((h) => alive && setHelper(h)),
+      events.themes(() => alive && setThemesChanged((n) => n + 1)),
     ];
     api
       .cachedBoard()
@@ -137,20 +146,78 @@ export default function App() {
   }, [accept]);
 
   const appearance = useMemo(() => preview ?? (settings ? appearanceOf(settings) : null), [preview, settings]);
+  const shownLook = lookPreview ?? look;
+  const themeId = settings?.themeId;
+
+  useEffect(() => {
+    if (themeId === undefined) return;
+    let alive = true;
+    void api
+      .activeTheme()
+      .then(lookOf)
+      .catch(() => NAUTICAL_LOOK)
+      .then(async (next) => {
+        if (!alive) return;
+        await applyLook(next);
+        if (alive) setLook(next);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [themeId, themesChanged]);
+
+  useEffect(() => {
+    const reset = (e: Event) => {
+      setLookPreview(null);
+      setLook(NAUTICAL_LOOK);
+      const saved = (e as CustomEvent<Settings>).detail;
+      if (saved) setSettings(saved);
+    };
+    window.addEventListener(RESET_EVENT, reset);
+    return () => window.removeEventListener(RESET_EVENT, reset);
+  }, []);
+
+  const previewLook = (id: string | null) => {
+    if (id === null) {
+      setLookPreview(null);
+      void applyLook(look);
+      return;
+    }
+    void api
+      .activeTheme(id)
+      .then(lookOf)
+      .catch(() => NAUTICAL_LOOK)
+      .then(async (next) => {
+        await applyLook(next);
+        setLookPreview(next);
+      });
+  };
 
   useEffect(() => {
     if (!appearance) return;
     const root = document.documentElement.style;
-    Object.entries(boardStyle(appearance)).forEach(([name, value]) => root.setProperty(name, value));
-  }, [appearance]);
+    const owned = themedTokens(shownLook);
+    Object.entries(boardStyle(appearance))
+      .filter(([name]) => !owned.includes(name))
+      .forEach(([name, value]) => root.setProperty(name, value));
+  }, [appearance, shownLook]);
 
-  const theme = settings?.theme ?? DEFAULT_THEME;
+  const singleMode = isSingleMode(shownLook);
+  const theme = shownMode(shownLook, settings?.theme ?? DEFAULT_THEME);
+  const chatFont = (from: Appearance) => terminalFontStack(from, shownLook.fonts.terminal);
+  const overlayDetail = shownLook.layout.detail === "overlay";
   const chatOpen = settings?.chatOpen ?? true;
   const chatWidth = chatDrag ?? settings?.chatWidth ?? 0;
   const detailWidth = detailDrag ?? settings?.detailWidth ?? 0;
   const projectFilter = settings?.projectFilter ?? [];
   const agentFilter = settings?.agentFilter ?? "all";
   const focus = settings?.focus ?? [];
+
+  const oneVisibleWidth = () => {
+    const { rowLabelWidth: rowLabel, collapsedWidth: collapsed, laneWidth: lane, board } = shownLook.layout;
+    const geometry = { rowLabel, collapsed, lane };
+    return board === "lanes" ? oneLaneWidth(geometry) : oneColumnWidth(columns, geometry);
+  };
 
   const boardRoom = () => {
     const main = mainRef.current;
@@ -160,7 +227,7 @@ export default function App() {
     const scrollbar = scroll ? scroll.getBoundingClientRect().width - scroll.clientWidth : 0;
     return {
       shown: board.getBoundingClientRect().width - (main.scrollWidth - main.clientWidth),
-      min: oneColumnWidth(columns) + scrollbar,
+      min: oneVisibleWidth() + scrollbar,
     };
   };
 
@@ -189,7 +256,9 @@ export default function App() {
 
   shortcutActions.current = {
     toggleChat: () => changeWindow({ chatOpen: !chatOpen }),
-    toggleTheme: () => changeWindow({ theme: otherTheme(theme) }),
+    toggleTheme: () => {
+      if (!singleMode) changeWindow({ theme: otherTheme(theme) });
+    },
     openSettings: () => setSettingsOpen(true),
   };
 
@@ -323,6 +392,8 @@ export default function App() {
   const onSettingsSaved = (saved: Settings) => {
     setSettings(saved);
     setPreview(null);
+    if (lookPreview) setLook(lookPreview);
+    setLookPreview(null);
     setSettingsOpen(false);
     void api.readBoard().then(accept).catch((e) => setReadError(errorText(e)));
   };
@@ -345,20 +416,25 @@ export default function App() {
   const chatSource = view?.source ?? (settings?.home.trim() ? "firstmate" : "fathom");
   const chatAgent = initialAgent(chatSource, pickedAgent ?? settings?.chatAgent ?? null);
   const chatName = chatTitle(chatSource, chatTerminal, chatAgent);
+  const detailAsOverlay = detailShown && overlayDetail;
+  const appRef = useRef<HTMLDivElement>(null);
+  useOverlayDetail(appRef, detailAsOverlay, () => openCard(null));
+  const chatSide = shownLook.layout.chatSide === "left" ? 1 : -1;
 
   return (
-    <div className="app" data-part="app">
+    <LookContext.Provider value={shownLook}>
+    <div className="app" data-part="app" ref={appRef}>
       <header className="top" data-part="header">
         <Brand />
         <span className="count" data-part="count" data-kind="surface">
           <span className="count-label" data-part="count-label">
-            <span className="count-lead" data-part="count-lead">At the </span>surface
+            <span className="count-lead" data-part="count-lead">{shownLook.text.surfaceLead}</span>surface
           </span>
           <b className="count-surface" data-part="count-value">{counts.surface}</b>
         </span>
         <span className="count" data-part="count" data-kind="shallows">
           <span className="count-label" data-part="count-label">
-            <span className="count-lead" data-part="count-lead">In the </span>shallows
+            <span className="count-lead" data-part="count-lead">{shownLook.text.shallowsLead}</span>shallows
           </span>
           <b className="count-shallows" data-part="count-value">{counts.shallows}</b>
         </span>
@@ -381,14 +457,16 @@ export default function App() {
               onChange={expandAll}
             />
           )}
-          <Switch
-            control="toggle-dark-mode"
-            label="Dark mode"
-            checked={theme === "dark"}
-            disabled={!settings}
-            title={withShortcut("Switch light and dark", shortcuts?.toggleTheme)}
-            onChange={(dark) => changeWindow({ theme: dark ? "dark" : "light" })}
-          />
+          {!singleMode && (
+            <Switch
+              control="toggle-dark-mode"
+              label="Dark mode"
+              checked={theme === "dark"}
+              disabled={!settings}
+              title={withShortcut("Switch light and dark", shortcuts?.toggleTheme)}
+              onChange={(dark) => changeWindow({ theme: dark ? "dark" : "light" })}
+            />
+          )}
         </div>
         <button
           className="btn btn-header"
@@ -489,7 +567,7 @@ export default function App() {
               helperStarted={settings.helperStarted}
               mac={MAC}
               shortcut={SHORTCUT}
-              fontFamily={chatFontStack(appearance ?? appearanceOf(settings))}
+              fontFamily={chatFont(appearance ?? appearanceOf(settings))}
               fontSize={(appearance ?? settings).chatFontSize}
               theme={theme}
               connectionKey={connectionKey}
@@ -500,6 +578,9 @@ export default function App() {
         </div>
         {detailShown && (
           <>
+            {detailAsOverlay ? (
+              <div className="detail-scrim" data-part="detail-scrim" data-control="close-detail-scrim" aria-hidden="true" onClick={() => openCard(null)} />
+            ) : (
             <div
               className="panel-handle"
               data-part="panel-handle"
@@ -520,7 +601,9 @@ export default function App() {
             >
               <span />
             </div>
+            )}
             <CardDetail
+              overlay={detailAsOverlay}
               card={selected}
               source={view?.source ?? "firstmate"}
               rowNames={rowNames}
@@ -530,7 +613,7 @@ export default function App() {
               width={detailWidth}
               chatTerminal={chatTerminal}
               worker={workerByTask[selected.id] ?? null}
-              fontFamily={chatFontStack(appearance)}
+              fontFamily={chatFont(appearance)}
               fontSize={appearance.chatFontSize}
               theme={theme}
               linking={linking}
@@ -551,16 +634,16 @@ export default function App() {
               role="separator"
               aria-label="Resize chat"
               onPointerDown={(e) => {
-                const widths = chatResizer({ chat: chatWidth, detail: detailShown ? detailWidth : null }, boardRoom());
+                const widths = chatResizer({ chat: chatWidth, detail: detailShown && !overlayDetail ? detailWidth : null }, boardRoom());
                 startDrag(
                   e,
                   (dx) => {
-                    const next = widths(-dx);
+                    const next = widths(chatSide * dx);
                     setChatDrag(next.chat);
                     setDetailDrag(next.detail);
                   },
                   (dx) => {
-                    const next = widths(-dx);
+                    const next = widths(chatSide * dx);
                     setChatDrag(null);
                     setDetailDrag(null);
                     changeWindow(next.detail === null ? { chatWidth: next.chat } : { chatWidth: next.chat, detailWidth: next.detail });
@@ -577,7 +660,7 @@ export default function App() {
               agent={chatAgent}
               agentFolder={chatAgent === "firstmate" ? settings.home : settings.agentFolder}
               onAgent={setPickedAgent}
-              fontFamily={chatFontStack(appearance ?? appearanceOf(settings))}
+              fontFamily={chatFont(appearance ?? appearanceOf(settings))}
               fontSize={(appearance ?? settings).chatFontSize}
               theme={theme}
               connectionKey={connectionKey}
@@ -599,7 +682,7 @@ export default function App() {
           watched={watched}
           source={chatSource}
           status={watchedWorker?.status ?? null}
-          fontFamily={chatFontStack(appearance ?? appearanceOf(settings))}
+          fontFamily={chatFont(appearance ?? appearanceOf(settings))}
           fontSize={(appearance ?? settings).chatFontSize}
           theme={theme}
           onClose={() => setWatched(null)}
@@ -610,14 +693,18 @@ export default function App() {
           settings={settings}
           mac={MAC}
           rowNames={rowNames}
+          look={shownLook}
           onPreview={setPreview}
+          onPreviewTheme={previewLook}
           onSaved={onSettingsSaved}
           onClose={() => {
             setPreview(null);
+            if (lookPreview) previewLook(null);
             setSettingsOpen(false);
           }}
         />
       )}
     </div>
+    </LookContext.Provider>
   );
 }

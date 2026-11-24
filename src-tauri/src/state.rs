@@ -21,6 +21,8 @@ use crate::shell_path;
 use crate::shell_tabs::{self, LauncherFolders};
 use crate::source::{Source, SourceKind};
 use crate::tasks::Card;
+use crate::theme_watch;
+use crate::themes::{self, Themes};
 use crate::updates::{self, CardUpdates};
 use crate::waits::Waits;
 use crate::watch::{self, StateChange};
@@ -116,6 +118,8 @@ pub struct AppState {
     published_updates: Mutex<Option<CardUpdates>>,
     published_helper: Mutex<HelperStatus>,
     watchers: Mutex<Vec<RecommendedWatcher>>,
+    theme_watcher: Mutex<Option<RecommendedWatcher>>,
+    pub themes: Themes,
     started: Instant,
     launch_logged: AtomicBool,
     log_dir: PathBuf,
@@ -143,6 +147,16 @@ impl AppState {
         started: Instant,
     ) -> Result<Arc<AppState>, String> {
         let settings = settings::load(&db)?;
+        let data_dir = db
+            .path()
+            .parent()
+            .map(PathBuf::from)
+            .ok_or("the database has no folder")?;
+        let themes = Themes::new(
+            themes::default_root().unwrap_or_else(|_| data_dir.join("theme-folders")),
+            &data_dir,
+        );
+        let db_file = db.path().to_path_buf();
         let (refresh, requests) = mpsc::channel();
         let (workers_tick, worker_ticks) = mpsc::channel();
         let (updates_tick, update_ticks) = mpsc::channel();
@@ -178,6 +192,8 @@ impl AppState {
             published_updates: Mutex::new(None),
             published_helper: Mutex::default(),
             watchers: Mutex::new(Vec::new()),
+            theme_watcher: Mutex::new(None),
+            themes,
             started,
             launch_logged: AtomicBool::new(false),
             log_dir,
@@ -187,6 +203,7 @@ impl AppState {
         spawn_updates_publisher(app.clone(), Arc::clone(&state), update_ticks);
         state.restart_watcher();
         state.watch_store(app.clone());
+        state.watch_themes(app.clone(), db_file);
         state.herdr.start_events();
         Ok(state)
     }
@@ -261,12 +278,18 @@ impl AppState {
     }
 
     pub fn save_settings(&self, next: Settings) -> Result<Settings, String> {
+        if next.theme_id != self.settings.lock().unwrap().theme_id {
+            self.themes.can_use(&next.theme_id)?;
+        }
         let saved = settings::store(&self.db.lock().unwrap(), &next)?;
         self.adopt_settings(saved.clone());
         Ok(saved)
     }
 
     pub fn change_window(&self, change: &WindowChange) -> Result<Settings, String> {
+        if let Some(id) = &change.theme_id {
+            self.themes.can_use(id)?;
+        }
         let saved = settings::change_window(&self.db.lock().unwrap(), change)?;
         self.adopt_settings(saved.clone());
         Ok(saved)
@@ -468,6 +491,24 @@ impl AppState {
                 Ok(watcher) => watchers.push(watcher),
                 Err(error) => eprintln!("fathom: {error}"),
             }
+        }
+    }
+
+    fn watch_themes(&self, app: AppHandle, db_file: PathBuf) {
+        if let Err(error) = self.themes.write_guide() {
+            eprintln!("fathom: {error}");
+            return;
+        }
+        let program = match std::env::current_exe() {
+            Ok(program) => program,
+            Err(error) => {
+                eprintln!("fathom: cannot find Fathom's own program to check themes: {error}");
+                return;
+            }
+        };
+        match theme_watch::start(app, self.themes.clone(), program, db_file) {
+            Ok(watcher) => *self.theme_watcher.lock().unwrap() = Some(watcher),
+            Err(error) => eprintln!("fathom: {error}"),
         }
     }
 

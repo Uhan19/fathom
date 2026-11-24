@@ -72,6 +72,36 @@ describe("pickTarget", () => {
   });
 });
 
+describe("pickTarget in lanes", () => {
+  const lane = (column: number, top: number, left: number, cardMiddles: number[] = []): CellBox => ({
+    column,
+    left,
+    right: left + 260,
+    top,
+    bottom: top + 120,
+    collapsed: false,
+    cardMiddles,
+  });
+  const LANES: RowBox[] = [
+    row("surface", 0, 800, [lane(ATLAS, 60, 160), lane(HARBOR, 190, 160)]),
+    row("shallows", 0, 800, [lane(ATLAS, 60, 430), lane(HARBOR, 190, 430, [240])]),
+    row("deep", 0, 800, [lane(ATLAS, 60, 700), lane(HARBOR, 190, 700)]),
+  ];
+
+  it("picks the stage by x and the project by y when every lane spans the board", () => {
+    expect(pickTarget(LANES, 820, 250)).toEqual({ column: HARBOR, row: "deep", index: 0 });
+    expect(pickTarget(LANES, 300, 100)).toEqual({ column: ATLAS, row: "surface", index: 0 });
+    expect(pickTarget(LANES, 500, 260)).toEqual({ column: HARBOR, row: "shallows", index: 1 });
+  });
+
+  it("splits the gap between two lanes and two projects by distance", () => {
+    expect(pickTarget(LANES, 424, 100)?.row).toBe("surface");
+    expect(pickTarget(LANES, 426, 100)?.row).toBe("shallows");
+    expect(pickTarget(LANES, 300, 182)?.column).toBe(ATLAS);
+    expect(pickTarget(LANES, 300, 188)?.column).toBe(HARBOR);
+  });
+});
+
 describe("sameTarget", () => {
   it("compares by place, not identity", () => {
     expect(sameTarget({ column: 1, row: "deep", index: 1 }, { column: 1, row: "deep", index: 1 })).toBe(true);

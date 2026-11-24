@@ -18,12 +18,16 @@ import { AppVersion } from "./AppVersion";
 import { Close } from "./Icons";
 import { ShortcutsSection } from "./ShortcutsSection";
 import { withLatestWindow } from "../windowSettings";
+import type { Look } from "../themes/look";
+import { ThemePicker } from "./ThemePicker";
 
 interface SettingsDialogProps {
   settings: Settings;
   mac: boolean;
   rowNames: Record<RowKey, string>;
+  look: Look;
   onPreview: (appearance: Appearance) => void;
+  onPreviewTheme: (id: string | null) => void;
   onSaved: (settings: Settings) => void;
   onClose: () => void;
 }
@@ -36,7 +40,7 @@ const DEFAULT_ROW_NAMES: Record<RowKey, string> = {
   landed: "Landed",
 };
 
-export function SettingsDialog({ settings, mac, rowNames, onPreview, onSaved, onClose }: SettingsDialogProps) {
+export function SettingsDialog({ settings, mac, rowNames, look: theme, onPreview, onPreviewTheme, onSaved, onClose }: SettingsDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const homeRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(settings);
@@ -74,6 +78,7 @@ export function SettingsDialog({ settings, mac, rowNames, onPreview, onSaved, on
     const fontKey = surface === "chat" ? "chatFont" : "boardFont";
     const sizeKey = surface === "chat" ? "chatFontSize" : "boardFontSize";
     const title = surface === "chat" ? "Chat" : "Board";
+    const setByTheme = surface === "chat" ? !!theme.fonts.terminal : !!(theme.fonts.body || theme.fonts.heading);
     return (
       <>
         <div className="field-pair" data-part="field-pair">
@@ -82,6 +87,7 @@ export function SettingsDialog({ settings, mac, rowNames, onPreview, onSaved, on
             label={`${title} font`}
             fonts={surfaceFonts(appearance, surface)}
             value={draft[fontKey]}
+            setByTheme={setByTheme}
             onChange={(v) => look(fontKey, v)}
             onAdd={() => setPicking(surface)}
           />
@@ -214,6 +220,14 @@ export function SettingsDialog({ settings, mac, rowNames, onPreview, onSaved, on
           </fieldset>
           <fieldset data-part="settings-section" data-kind="appearance">
             <legend data-part="settings-legend">Appearance</legend>
+            <ThemePicker
+              value={draft.themeId}
+              mac={mac}
+              onChange={(themeId) => {
+                setDraft({ ...draft, themeId });
+                onPreviewTheme(themeId === settings.themeId ? null : themeId);
+              }}
+            />
             {fontRow("chat")}
             {fontRow("board")}
             <small className="field-note" data-part="field-note">Changes show at once; Save keeps them, Cancel puts them back.</small>
@@ -281,7 +295,19 @@ interface SelectProps<T> {
 
 const ADD_FONT_OPTION = "add-font";
 
-function FontSelect({ control, label, fonts, value, onChange, onAdd }: SelectProps<string> & { fonts: FontChoice[]; onAdd: () => void }) {
+const SET_BY_THEME = "Set by the theme";
+
+function FontSelect({ control, label, fonts, value, setByTheme, onChange, onAdd }: SelectProps<string> & { fonts: FontChoice[]; setByTheme: boolean; onAdd: () => void }) {
+  if (setByTheme) {
+    return (
+      <label className="field" data-part="field">
+        <span>{label}</span>
+        <select className="text-input" data-part="text-input" data-control={control} value={SET_BY_THEME} disabled>
+          <option value={SET_BY_THEME}>{SET_BY_THEME}</option>
+        </select>
+      </label>
+    );
+  }
   const option = (font: FontChoice) => (
     <option key={font.key} value={font.key}>
       {font.name}

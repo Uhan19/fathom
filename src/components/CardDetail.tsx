@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { api, errorText, type Card, type CardContext, type Detail, type FileEntry, type MoveRequest, type Person, type RowKey, type SourceKind, type Terminal, type Wait, type Worker } from "../api";
 import { cardMessage, holdHeading } from "../board";
 import { cardLinkSources, findLinks, findPaths, RECORDED_PR, topLinks, type Linking, type Source } from "../links";
@@ -25,6 +25,7 @@ interface CardDetailProps {
   waits: Wait[];
   people: Record<string, Person>;
   width: number;
+  overlay?: boolean;
   chatTerminal: Terminal | null;
   worker: Worker | null;
   fontFamily: string;
@@ -137,7 +138,7 @@ function cardSources(card: Card, body: string, context: CardContext): Source[] {
 }
 
 export function CardDetail(props: CardDetailProps) {
-  const { card, source, rowNames, request, waits, people, width, chatTerminal, worker, fontFamily, fontSize, theme, linking, mark, onClose, onOpenCard, onResend, onDismiss } =
+  const { card, source, rowNames, request, waits, people, width, overlay, chatTerminal, worker, fontFamily, fontSize, theme, linking, mark, onClose, onOpenCard, onResend, onDismiss } =
     props;
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -257,7 +258,14 @@ export function CardDetail(props: CardDetailProps) {
   };
 
   return (
-    <section className="detail" data-part="detail" style={{ width }} aria-label={`Card: ${shown.title}`}>
+    <section
+      className="detail"
+      data-part="detail"
+      style={{ "--detail-width": `${width}px` } as CSSProperties}
+      role={overlay ? "dialog" : undefined}
+      aria-modal={overlay ? true : undefined}
+      aria-label={`Card: ${shown.title}`}
+    >
       <div className="detail-head" data-part="detail-head">
         <div className="detail-title-row" data-part="detail-title-row">
           <h2 className="detail-title" data-part="detail-title">

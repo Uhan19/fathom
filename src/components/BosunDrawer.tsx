@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { launchErrorText } from "../agents";
+import { useLook } from "../themes/context";
 import { api, errorText, events, type HelperStatus, type SignIn, type Terminal } from "../api";
 import {
-  BOARD_ABOVE_DRAWER,
-  BOSUN,
   BREW_COMMAND,
   DRAWER_HEIGHT,
   EXAMPLE_REQUESTS,
@@ -24,7 +23,6 @@ import { ChevronDown, ChevronUp } from "./Icons";
 
 const CLAUDE = "claude";
 const COPIED_MS = 1500;
-const MAX_HEIGHT = `calc(100% - ${BOARD_ABOVE_DRAWER}px)`;
 
 interface BosunDrawerProps {
   open: boolean;
@@ -45,6 +43,7 @@ const missesClaude = (error: unknown) =>
   typeof error === "object" && error !== null && "kind" in error && error.kind === "missing" && "tool" in error && error.tool === CLAUDE;
 
 export function BosunDrawer(props: BosunDrawerProps) {
+  const name = useLook().text.helper;
   const { open, helper, helperStarted, fontFamily, fontSize, theme, connectionKey } = props;
   const [phase, setPhase] = useState<BosunPhase>({ kind: "finding" });
   const { hostRef, scrollRef, attach: attachLive, release, focus } = useLiveTerminal("helper", fontFamily, fontSize, theme);
@@ -152,7 +151,7 @@ export function BosunDrawer(props: BosunDrawerProps) {
     if (open && phase.kind === "running") focus();
   }, [open, phase.kind, focus]);
 
-  const hint = hintOf(state);
+  const hint = hintOf(state, name);
   const running = phase.kind === "running";
   const shownTerminal = phase.kind === "running" || phase.kind === "stopped";
 
@@ -163,15 +162,15 @@ export function BosunDrawer(props: BosunDrawerProps) {
         className={`bosun${open ? "" : " closed"}`}
         data-part="bosun"
         data-state={states({ closed: !open })}
-        style={{ height: props.height, maxHeight: MAX_HEIGHT }}
-        aria-label={BOSUN}
+        style={{ "--helper-height": `${props.height}px` } as CSSProperties}
+        aria-label={name}
       >
         <div
           className="bosun-handle"
           data-part="bosun-handle"
           data-control="resize-helper"
           role="separator"
-          aria-label="Resize Bosun"
+          aria-label={`Resize ${name}`}
           onPointerDown={(e) => {
             const column = drawerRef.current?.parentElement;
             const height = resizer(props.height, column ? drawerRoom(column.clientHeight) : props.height, DRAWER_HEIGHT);
@@ -182,8 +181,8 @@ export function BosunDrawer(props: BosunDrawerProps) {
         </div>
         <header className="bosun-head" data-part="bosun-head">
           <span className={`bosun-dot ${dotOf(state)}`} data-part="bosun-dot" data-state={dotOf(state)} aria-hidden="true" />
-          <span className="bosun-title" data-part="bosun-title">{BOSUN}</span>
-          <span className="bosun-summary" data-part="bosun-summary">{summaryOf(state)}</span>
+          <span className="bosun-title" data-part="bosun-title">{name}</span>
+          <span className="bosun-summary" data-part="bosun-summary">{summaryOf(state, name)}</span>
           <span className="spacer" data-part="spacer" />
           {running && (
             <>
@@ -195,7 +194,7 @@ export function BosunDrawer(props: BosunDrawerProps) {
               </button>
             </>
           )}
-          <button className="ico" data-part="icon-button" data-control="helper-close" onClick={props.onToggle} aria-label={`Close ${BOSUN}`} title={`Close ${BOSUN} (${props.shortcut})`}>
+          <button className="ico" data-part="icon-button" data-control="helper-close" onClick={props.onToggle} aria-label={`Close ${name}`} title={`Close ${name} (${props.shortcut})`}>
             <ChevronDown />
           </button>
         </header>
@@ -218,11 +217,11 @@ export function BosunDrawer(props: BosunDrawerProps) {
         </div>
       </section>
       {!open && (
-        <button className="bosun-rail" data-part="bosun-rail" data-control="helper-open" onClick={props.onToggle} aria-label={`Open ${BOSUN}`} title={`Open ${BOSUN} (${props.shortcut})`}>
+        <button className="bosun-rail" data-part="bosun-rail" data-control="helper-open" onClick={props.onToggle} aria-label={`Open ${name}`} title={`Open ${name} (${props.shortcut})`}>
           <ChevronUp />
           <span className={`bosun-dot ${dotOf(state)}`} data-part="bosun-dot" data-state={dotOf(state)} aria-hidden="true" />
-          <span className="bosun-title" data-part="bosun-title">{BOSUN}</span>
-          <span className="bosun-summary" data-part="bosun-summary">{summaryOf(state)}</span>
+          <span className="bosun-title" data-part="bosun-title">{name}</span>
+          <span className="bosun-summary" data-part="bosun-summary">{summaryOf(state, name)}</span>
           <span className="spacer" data-part="spacer" />
           <kbd>{props.shortcut}</kbd>
         </button>
@@ -239,12 +238,13 @@ interface ScreenProps {
 }
 
 function Screen({ phase, mac, onStart, onFind }: ScreenProps) {
+  const name = useLook().text.helper;
   switch (phase.kind) {
     case "finding":
-      return <p className="chat-status" data-part="chat-status">Looking for {BOSUN}…</p>;
+      return <p className="chat-status" data-part="chat-status">Looking for {name}…</p>;
     case "dormant":
     case "starting":
-      return <p className="chat-status" data-part="chat-status">Starting {BOSUN}…</p>;
+      return <p className="chat-status" data-part="chat-status">Starting {name}…</p>;
     case "notStarted":
       return <Intro onStart={onStart} />;
     case "missing":
@@ -261,7 +261,7 @@ function Screen({ phase, mac, onStart, onFind }: ScreenProps) {
     case "stopped":
       return (
         <div className="chat-ended" data-part="chat-ended">
-          <span>{BOSUN} stopped.</span>
+          <span>{name} stopped.</span>
           <button className="mini" data-part="mini-button" data-control="helper-start-again" onClick={onStart}>
             Start again
           </button>
@@ -273,17 +273,18 @@ function Screen({ phase, mac, onStart, onFind }: ScreenProps) {
 }
 
 function Intro({ onStart }: { onStart: () => void }) {
+  const name = useLook().text.helper;
   return (
     <div className="bosun-screen" data-part="bosun-screen">
       <div className="bosun-about" data-part="bosun-about">
         <p>
-          {BOSUN} changes Fathom when you ask in plain words: columns, rows, which projects show, the theme, fonts and panels. It runs Claude Code
+          {name} changes Fathom when you ask in plain words: columns, rows, which projects show, the theme, fonts and panels. It runs Claude Code
           with only Fathom's own tools and asks before risky changes.
         </p>
         <button className="btn btn-dark" data-part="button" data-kind="dark" data-control="helper-start" onClick={onStart}>
-          Start {BOSUN}
+          Start {name}
         </button>
-        <p className="muted" data-part="muted">{BOSUN} keeps running when Fathom quits, and Fathom finds it again next time.</p>
+        <p className="muted" data-part="muted">{name} keeps running when Fathom quits, and Fathom finds it again next time.</p>
       </div>
       <div className="bosun-examples" data-part="bosun-examples">
         <span className="sech" data-part="sech">Try asking</span>
@@ -298,6 +299,7 @@ function Intro({ onStart }: { onStart: () => void }) {
 }
 
 function Install({ mac, onCheck }: { mac: boolean; onCheck: () => void }) {
+  const name = useLook().text.helper;
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -311,7 +313,7 @@ function Install({ mac, onCheck }: { mac: boolean; onCheck: () => void }) {
   return (
     <div className="bosun-screen" data-part="bosun-screen">
       <div className="bosun-about" data-part="bosun-about">
-        <p>{BOSUN} runs on Claude Code, which is not installed or not on your PATH. Install it in a terminal, then check again.</p>
+        <p>{name} runs on Claude Code, which is not installed or not on your PATH. Install it in a terminal, then check again.</p>
         <div className="bosun-command" data-part="bosun-command">
           <code>{INSTALL_COMMAND}</code>
           <button className="mini" data-part="mini-button" data-control="helper-copy-install" onClick={copy}>

@@ -1,0 +1,14 @@
+{
+  "fathomTheme": 1,
+  "name": "Riso",
+  "modes": ["light", "dark"],
+  "fonts": {
+    "body": "\"Iowan Old Style\", \"Palatino Linotype\", Palatino, Georgia, serif",
+    "heading": "\"Iowan Old Style\", \"Palatino Linotype\", Palatino, Georgia, serif",
+    "mono": "\"Courier New\", Courier, ui-monospace, monospace",
+    "terminal": "\"Courier New\", Courier, ui-monospace, monospace"
+  },
+  "text": { "brand": "The Paper Atlas", "helper": "Scribe", "projects": "Index →" },
+  "art": { "brandMark": "art/mark.svg", "sailor": "art/scribe.svg", "sailorActive": "art/scribe-active.svg" },
+  "layout": { "detail": "overlay", "rowLabelWidth": 58 }
+}

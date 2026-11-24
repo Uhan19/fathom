@@ -1,4 +1,8 @@
+import { useLook } from "../themes/context";
+
 export function BrandMark() {
+  const art = useLook().art.brandMark;
+  if (art) return <img className="brand-mark" data-part="brand-mark" src={art} alt="" aria-hidden="true" />;
   return (
     <svg className="brand-mark" data-part="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
       <path d="M50.38 13.62 A26 26 0 0 0 13.62 50.38 Z" fill="var(--logo-face)" />
@@ -9,11 +13,12 @@ export function BrandMark() {
 }
 
 export function Brand() {
+  const brand = useLook().text.brand;
   return (
     <div className="brand" data-part="brand">
       <BrandMark />
       <span className="brand-name" data-part="brand-name" role="img" aria-label="Fathom">
-        <span aria-hidden="true">FATHOM</span>
+        <span aria-hidden="true">{brand}</span>
       </span>
     </div>
   );

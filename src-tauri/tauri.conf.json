@@ -21,7 +21,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline' fathom-theme: http://fathom-theme.localhost; font-src 'self' fathom-theme: http://fathom-theme.localhost; img-src 'self' data: fathom-theme: http://fathom-theme.localhost; connect-src ipc: http://ipc.localhost"
     }
   },
   "bundle": {

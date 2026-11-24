@@ -4,7 +4,7 @@ export const START_DISTANCE = 5;
 const EDGE = 56;
 const MAX_SCROLL_STEP = 18;
 
-type Axis = "x" | "y";
+export type Axis = "x" | "y";
 
 const along = (e: { clientX: number; clientY: number }, axis: Axis) => (axis === "x" ? e.clientX : e.clientY);
 

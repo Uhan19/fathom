@@ -23,6 +23,7 @@ use crate::state::{
     now_ms,
 };
 use crate::tasks::{Detail, Row};
+use crate::themes::{self, Manifest, Summary};
 use crate::updates::CardUpdates;
 use crate::workers::Worker;
 
@@ -441,4 +442,54 @@ pub async fn send_to_terminal(
 ) -> Result<(), String> {
     let state = Arc::clone(&state);
     blocking(move || state.herdr.send(&terminal, &text)).await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveTheme {
+    id: String,
+    version: String,
+    base: String,
+    manifest: Manifest,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThemeList {
+    folder: String,
+    themes: Vec<Summary>,
+}
+
+pub fn theme_base(id: &str) -> String {
+    format!("{}://localhost/{id}/", themes::scheme::SCHEME)
+}
+
+#[tauri::command]
+pub fn active_theme(state: AppStateRef, id: Option<String>) -> Option<ActiveTheme> {
+    let id = id.unwrap_or_else(|| state.settings.lock().unwrap().theme_id.clone());
+    state.themes.active(&id).map(|active| ActiveTheme {
+        base: theme_base(&active.id),
+        id: active.id,
+        version: active.version,
+        manifest: active.manifest,
+    })
+}
+
+#[tauri::command]
+pub fn list_themes(state: AppStateRef) -> ThemeList {
+    ThemeList {
+        folder: state.themes.root.display().to_string(),
+        themes: state.themes.list(),
+    }
+}
+
+#[tauri::command]
+pub fn duplicate_nautical(state: AppStateRef, name: String) -> Result<String, String> {
+    themes::duplicate_nautical(&state.themes, &name)
+}
+
+#[tauri::command]
+pub fn reveal_themes_folder(state: AppStateRef) -> Result<(), String> {
+    state.themes.write_guide()?;
+    tauri_plugin_opener::open_path(&state.themes.root, None::<&str>).map_err(|e| e.to_string())
 }

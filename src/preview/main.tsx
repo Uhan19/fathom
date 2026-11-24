@@ -1,6 +1,7 @@
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import type { AgentKey } from "../agents";
+import { NAUTICAL_ID, type ActiveTheme, type ThemeManifest, type ThemeSummary } from "../themes/contract";
 import { ROW_ORDER, type AgentFilter, type BoardView, type Card, type CardPlace, type Column, type FileEntry, type HelperStatus, type Layout, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type Settings, type ShellTab, type Terminal, type WindowChange } from "../api";
 import { presetFonts } from "../appearance";
 import { version as appVersion } from "../../src-tauri/tauri.conf.json";
@@ -36,6 +37,18 @@ import {
 import { FIXTURE_NOTES, fixtureContext, fixtureFiles, fixtureImages, fixturePreview, fixturePrStatus } from "./detailFixture";
 
 const params = new URLSearchParams(location.search);
+const FIXTURE_THEMES = ["phosphor", "switchboard", "riso"];
+const FIXTURE_THEME_BASE = "/fixtures/themes/";
+const PREVIEW_THEMES_FOLDER = "/home/demo/.config/fathom/themes";
+const checkedTheme = (window.parent !== window ? (window.parent as unknown as { fathomCheckTheme?: ActiveTheme }).fathomCheckTheme : undefined) ?? null;
+
+const fixtureTheme = async (id: string | null): Promise<ActiveTheme | null> => {
+  if (checkedTheme && (id === null || id === checkedTheme.id)) return checkedTheme;
+  if (!id || id === NAUTICAL_ID) return null;
+  const base = `${FIXTURE_THEME_BASE}${id}/`;
+  const manifest = (await (await fetch(`${base}theme.json`)).json()) as ThemeManifest;
+  return { id, version: "preview", base, manifest };
+};
 const noLabel = params.has("nolabel");
 const failing = params.has("error");
 const empty = params.has("empty");
@@ -100,6 +113,7 @@ let settings: Settings = {
   agentFolder: "/home/demo",
   chatAgent: rememberedAgent,
   theme: params.get("theme") === "dark" ? "dark" : "light",
+  themeId: checkedTheme?.id ?? params.get("look") ?? NAUTICAL_ID,
   chatOpen: !params.has("nochat"),
   chatWidth: Number(params.get("chatwidth")) || 600,
   detailWidth: Number(params.get("detailwidth")) || 460,
@@ -375,6 +389,20 @@ mockIPC(
         return null;
       case "get_settings":
         return settings;
+      case "active_theme":
+        return fixtureTheme((args.id as string | null) ?? settings.themeId);
+      case "list_themes":
+        return {
+          folder: PREVIEW_THEMES_FOLDER,
+          themes: [
+            { id: NAUTICAL_ID, name: "Nautical", modes: ["light", "dark"], status: "builtIn", problems: 0, usable: true },
+            ...FIXTURE_THEMES.map((id): ThemeSummary => ({ id, name: id[0].toUpperCase() + id.slice(1), modes: ["light", "dark"], status: "ready", problems: 0, usable: true, folder: `${PREVIEW_THEMES_FOLDER}/${id}` })),
+          ],
+        };
+      case "duplicate_nautical":
+        return "nautical-copy";
+      case "reveal_themes_folder":
+        return null;
       case "save_settings":
         settings = args.settings as Settings;
         return settings;

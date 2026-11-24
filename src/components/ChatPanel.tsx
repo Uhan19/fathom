@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { chatTitle, findingText, launchErrorText, type AgentKey } from "../agents";
 import { api, errorText, events, type ShellTab, type SourceKind, type Terminal } from "../api";
 import { droppedPathsText } from "../fileDrop";
@@ -201,7 +201,7 @@ export function ChatPanel(props: ChatPanelProps) {
   const title = chatTitle(source, shown, agent);
 
   return (
-    <aside ref={panelRef} className="chat" data-part="chat" style={{ width }} aria-label={`${title} chat`}>
+    <aside ref={panelRef} className="chat" data-part="chat" style={{ "--chat-width": `${width}px` } as CSSProperties} aria-label={`${title} chat`}>
       <TabStrip
         title={title}
         chip={attachedName}
