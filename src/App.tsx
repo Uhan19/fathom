@@ -435,7 +435,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   return (
     <LookContext.Provider value={shownLook}>
     <div className="app" data-part="app" ref={appRef}>
-      <header className="top" data-part="header">
+      <header className="top" data-part="header" inert={detailAsOverlay}>
         <Brand />
         <span className="count" data-part="count" data-kind="surface">
           <span className="count-label" data-part="count-label">
@@ -492,22 +492,22 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
         </button>
       </header>
       {readError && (
-        <div className="banner" data-part="banner" role="status">
+        <div className="banner" data-part="banner" role="status" inert={detailAsOverlay}>
           Could not read tasks: {readError}
         </div>
       )}
       {moveError && (
-        <div className="banner" data-part="banner" role="status">
+        <div className="banner" data-part="banner" role="status" inert={detailAsOverlay}>
           Could not save the move: {moveError}
         </div>
       )}
       {columnError && (
-        <div className="banner" data-part="banner" role="status">
+        <div className="banner" data-part="banner" role="status" inert={detailAsOverlay}>
           Could not change the columns: {columnError}
         </div>
       )}
       <main className="main" data-part="main" ref={mainRef}>
-        <div className="board-column" data-part="board-column" ref={boardColumnRef}>
+        <div className="board-column" data-part="board-column" ref={boardColumnRef} inert={detailAsOverlay}>
           {(focus.length > 0 || projectFilter.length > 0 || agentFilter !== "all") && (
             <div className="filter-strip" data-part="filter-strip" role="status">
               {focus.length > 0 && (
@@ -637,7 +637,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
           </>
         )}
         {settings && (
-          <div className={chatOpen ? "chat-wrap" : "chat-wrap closed"} data-part="chat-wrap" data-state={states({ closed: !chatOpen })}>
+          <div className={chatOpen ? "chat-wrap" : "chat-wrap closed"} data-part="chat-wrap" data-state={states({ closed: !chatOpen })} inert={detailAsOverlay}>
             <div
               className="panel-handle"
               data-part="panel-handle"
@@ -685,7 +685,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
             />
           </div>
         )}
-        {settings && !chatOpen && <ChatRail name={activeTabName ?? chatName} title={withShortcut("Show chat", shortcuts?.toggleChat)} onOpen={() => changeWindow({ chatOpen: true })} />}
+        {settings && !chatOpen && <ChatRail name={activeTabName ?? chatName} title={withShortcut("Show chat", shortcuts?.toggleChat)} inert={detailAsOverlay} onOpen={() => changeWindow({ chatOpen: true })} />}
       </main>
       {watched && settings && (
         <WorkerTerminal

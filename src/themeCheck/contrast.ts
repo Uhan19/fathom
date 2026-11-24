@@ -5,8 +5,6 @@ export interface Rgba {
   a: number;
 }
 
-export const MIN_CONTRAST = 3;
-
 const CHANNELS = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([\d.]+%?))?\s*\)$/;
 
 export function parseColor(text: string): Rgba | null {

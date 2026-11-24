@@ -77,7 +77,7 @@ describe("tab strip", () => {
 
 describe("hidden panel rail", () => {
   it("shows the active tab name", () => {
-    const html = renderToStaticMarkup(createElement(ChatRail, { name: "zsh · atlas-api", title: "Show chat (⌘B)", onOpen: ignore }));
+    const html = renderToStaticMarkup(createElement(ChatRail, { name: "zsh · atlas-api", title: "Show chat (⌘B)", inert: false, onOpen: ignore }));
     expect(html).toContain('<span class="vname" data-part="chat-rail-name">zsh · atlas-api</span>');
     expect(html).toContain('aria-label="Show chat: zsh · atlas-api"');
     expect(html).toContain('title="Show chat (⌘B)"');

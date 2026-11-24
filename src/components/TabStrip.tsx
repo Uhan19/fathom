@@ -122,9 +122,9 @@ export function TabStrip({ title, chip, canChange, tabs, active, launcherOpen, s
   );
 }
 
-export function ChatRail({ name, title, onOpen }: { name: string; title: string; onOpen: () => void }) {
+export function ChatRail({ name, title, inert, onOpen }: { name: string; title: string; inert: boolean; onOpen: () => void }) {
   return (
-    <button className="chat-rail" data-part="chat-rail" data-control="chat-show" onClick={onOpen} aria-label={`Show chat: ${name}`} title={title}>
+    <button className="chat-rail" data-part="chat-rail" data-control="chat-show" onClick={onOpen} aria-label={`Show chat: ${name}`} title={title} inert={inert}>
       <span className="chat-rail-caret" data-part="chat-rail-caret">
         <ChevronLeft />
       </span>
