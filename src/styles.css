@@ -3749,10 +3749,18 @@ button.md-image {
 
 .settings-foot {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
   padding: 12px 18px 14px;
   border-top: 1px solid var(--line);
+}
+
+.app-version {
+  margin-right: auto;
+  font-family: var(--mono);
+  font-size: calc(12px * var(--board-scale));
+  color: var(--muted);
 }
 
 /* Confirm */

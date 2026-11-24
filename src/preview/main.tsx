@@ -3,6 +3,7 @@ import { emit } from "@tauri-apps/api/event";
 import type { AgentKey } from "../agents";
 import { ROW_ORDER, type AgentFilter, type BoardView, type Card, type CardPlace, type Column, type FileEntry, type HelperStatus, type Layout, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type Settings, type ShellTab, type Terminal, type WindowChange } from "../api";
 import { presetFonts } from "../appearance";
+import { version as appVersion } from "../../src-tauri/tauri.conf.json";
 import { cellCount, groupCards, MIN_COLUMN_WIDTH, type Cells } from "../board";
 import { moveTo } from "../columnOrder";
 import { isMac } from "../bosun";
@@ -403,6 +404,8 @@ mockIPC(
         return null;
       case "data_info":
         return { path: "/home/demo/Library/Application Support/app.fathom.board.dev/fathom.sqlite", bytes: 49152 };
+      case "plugin:app|version":
+        return appVersion;
       case "installed_fonts":
         return INSTALLED_FONTS;
       case "plugin:clipboard-manager|write_text":

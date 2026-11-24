@@ -1,3 +1,4 @@
+import { getVersion } from "@tauri-apps/api/app";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -347,6 +348,7 @@ export const api = {
   clearFocus: () => invoke<Settings>("clear_focus"),
   setAgentFilter: (filter: AgentFilter) => invoke<Settings>("set_agent_filter", { filter }),
   dataInfo: () => invoke<DataInfo>("data_info"),
+  appVersion: () => getVersion(),
   installedFonts: () => invoke<string[]>("installed_fonts"),
   exportData: (directory: string) => invoke<string>("export_data", { directory }),
   openLink: (target: string) => invoke<void>("open_link", { target }),
