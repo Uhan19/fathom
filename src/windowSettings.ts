@@ -57,6 +57,10 @@ export function keptWidth(stored: number, from: number, to: number): number {
   return to < from ? to : Math.max(stored, to);
 }
 
+export function keptAfterDetailDrag(stored: { chat: number; detail: number }, shownChat: number, from: number, to: number): { chat: number; detail: number } {
+  return { chat: to < from ? shownChat : stored.chat, detail: keptWidth(stored.detail, from, to) };
+}
+
 export function withLatestWindow(draft: Settings, latest: Settings): Settings {
   const { theme, chatOpen, chatWidth, detailWidth, projectFilter, agentFilter, helperStarted } = latest;
   return { ...draft, theme, chatOpen, chatWidth, detailWidth, projectFilter, agentFilter, helperStarted };

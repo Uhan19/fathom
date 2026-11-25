@@ -42,7 +42,7 @@ import { filterText, indexAmongAll, shownColumns } from "./projectFilter";
 import { focusText } from "./taskRef";
 import { DEFAULT_THEME, otherTheme } from "./theme";
 import { comboLabel, listenForShortcuts, type ShortcutAction } from "./shortcuts";
-import { boardRoomOf, chatResizer, detailResizer, fitPanels, keptWidth } from "./windowSettings";
+import { boardRoomOf, chatResizer, detailResizer, fitPanels, keptAfterDetailDrag, keptWidth } from "./windowSettings";
 import { isUnseen, leftCard, NO_UPDATES, seenLocally, type CardUpdates } from "./updates";
 import { waitsOf } from "./waits";
 import { applyLook } from "./themes/apply";
@@ -624,7 +624,8 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
                   (dx) => setDetailDrag(width(-dx)),
                   (dx) => {
                     setDetailDrag(null);
-                    changeWindow({ detailWidth: keptWidth(stored.detail, width(0), width(-dx)) });
+                    const kept = keptAfterDetailDrag(stored, chatWidth, width(0), width(-dx));
+                    changeWindow({ chatWidth: kept.chat, detailWidth: kept.detail });
                   },
                 );
               }}

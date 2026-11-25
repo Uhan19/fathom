@@ -4,9 +4,9 @@ const TERMINAL = '[data-part="terminal-host"]';
 const OPEN_DIALOG = "dialog[open]";
 const CLOSE = '[data-part="detail"] [data-control="close-detail"]';
 
-export function closesOnEscape(event: Pick<KeyboardEvent, "key" | "defaultPrevented" | "target">, page: Pick<Document, "querySelector">): boolean {
+export function closesOnEscape(event: Pick<KeyboardEvent, "key" | "defaultPrevented" | "isComposing" | "target">, page: Pick<Document, "querySelector">): boolean {
   const target = event.target as Partial<Element> | null;
-  return event.key === "Escape" && !event.defaultPrevented && !target?.closest?.(TERMINAL) && !page.querySelector(OPEN_DIALOG);
+  return event.key === "Escape" && !event.isComposing && !event.defaultPrevented && !target?.closest?.(TERMINAL) && !page.querySelector(OPEN_DIALOG);
 }
 
 export function useDetailEscape(appRef: RefObject<HTMLElement | null>, open: boolean, overlay: boolean, close: () => void) {

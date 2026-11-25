@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Settings } from "./api";
 import { defaultShortcuts } from "./shortcuts";
-import { CHAT_WIDTH, DETAIL_WIDTH, USABLE_BOARD, boardRoomOf, chatResizer, detailResizer, fitPanels, keptWidth, withLatestWindow } from "./windowSettings";
+import { CHAT_WIDTH, DETAIL_WIDTH, USABLE_BOARD, boardRoomOf, chatResizer, detailResizer, fitPanels, keptAfterDetailDrag, keptWidth, withLatestWindow } from "./windowSettings";
 
 const settings = (over: Partial<Settings> = {}): Settings => ({
   home: "/home/demo/firstmate",
@@ -178,10 +178,26 @@ describe("dragging a panel the window squeezed", () => {
       expect(fitPanels(saved, 5000)).toEqual({ chat: 600, detail: 364 });
     });
 
-    it("keeps the stored card panel width when its handle cannot widen it", () => {
+    it("keeps both stored widths when the card panel handle cannot widen it", () => {
       const width = detailResizer(404, board);
       expect(width(60)).toBe(404);
-      expect(keptWidth(460, width(0), width(60))).toBe(460);
+      expect(keptAfterDetailDrag({ chat: 600, detail: 460 }, 300, width(0), width(60))).toEqual({ chat: 600, detail: 460 });
+    });
+  });
+
+  describe("narrowing the card panel in the default 1440px window", () => {
+    const DEFAULT_WINDOW = 1440;
+    const room = DEFAULT_WINDOW - 2 * HANDLE - USABLE_BOARD;
+    const boardOf = (shown: { chat: number | null; detail: number | null }) => DEFAULT_WINDOW - 2 * HANDLE - (shown.chat ?? 0) - (shown.detail ?? 0);
+
+    it("leaves the board the room the drag gave it instead of handing it to the chat", () => {
+      const shown = fitPanels({ chat: 600, detail: 460 }, room);
+      expect(shown).toEqual({ chat: 404, detail: 460 });
+      const width = detailResizer(460, boardRoomOf(boardOf(shown), NAUTICAL_ONE_COLUMN));
+      expect(width(-60)).toBe(400);
+      const after = fitPanels(keptAfterDetailDrag({ chat: 600, detail: 460 }, 404, width(0), width(-60)), room);
+      expect(after).toEqual({ chat: 404, detail: 400 });
+      expect(boardOf(after)).toBe(620);
     });
   });
 });
