@@ -155,7 +155,7 @@ A theme must never replace, cover or overlay a control's label, including with `
 The check does not judge state markers either, so keep them visible yourself.
 In particular a card with an unread agent update, `[data-part="card"][data-state~="unseen"]`, must stand out from read cards, as Nautical's blinking `bar` does.
 
-Then it plays the interactions: dragging a card to another stage, at full size and by scrolling at the board's edge in the smallest window, moving a project both ways by its header, widening the chat, narrowing the card panel and closing it with Escape (or, for the overlay, Escape, the scrim and focus), raising the helper drawer, switching light and dark, and the reset shortcut.
+Then it plays the interactions: dragging a card to another stage, at full size and by scrolling at the board's edge in the smallest window, moving a project both ways by its header, widening the chat, narrowing the card panel, closing it with Escape and clicking back into the ticket search after picking a match (or, for the overlay, Escape, the scrim and focus), raising the helper drawer, switching light and dark, and the reset shortcut.
 The sample includes long titles, many projects, a folded row, every tag, an error banner and an empty board.
 
 It exits 0 when the theme passes and 1 with its problems, each with the control or part, what failed and a screenshot in `.shots/check/`.

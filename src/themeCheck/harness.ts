@@ -13,6 +13,7 @@ import {
   resizeChat,
   resizeDetail,
   resizeHelper,
+  searchReopensAfterPick,
   sideDetailClosesOnEscape,
   toggleMode,
   tolerateSyntheticPointers,
@@ -213,6 +214,7 @@ async function interact(plan: Plan, run: Run, params: Record<string, string>): P
     outcomes.push(await resizeDetail(frame));
     outcomes.push(await sideDetailClosesOnEscape(frame));
     await click(frame, '[data-control="close-detail"]', undefined, DETAIL);
+    outcomes.push(await step("search", searchReopensAfterPick(frame)));
   }
   await click(frame, '[data-control="helper-open"]', DRAWER_OPEN);
   outcomes.push(await resizeHelper(frame));

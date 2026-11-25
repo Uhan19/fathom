@@ -83,6 +83,7 @@ export function TicketSearch({ tickets, onOpen }: TicketSearchProps) {
           setOpen(true);
         }}
         onFocus={() => setOpen(true)}
+        onClick={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onKeyDown={onKeyDown}
       />
