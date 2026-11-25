@@ -578,7 +578,7 @@ It compares every control with Nautical's: each must be present, visible, reacha
 Then it drags cards, reorders projects, resizes the panels, switches light and dark, and presses the reset shortcut.
 It prints each problem with the control or part, what failed and a screenshot in the theme's `.shots/check/`, and exits 1 when there is any.
 Fathom runs it whenever a theme in the themes folder changes and uses a theme only once it passes; after a failed change it keeps showing the last version that passed.
-A theme folder that is a symlink to a folder elsewhere is checked under its link name, but edits inside it are not seen; Fathom re-checks it when it starts or when anything else in the themes folder changes.
+A theme folder that is a symlink to a folder elsewhere is checked under its link name; on macOS edits inside it are not seen, so Fathom re-checks it when it starts or when anything else in the themes folder changes.
 On macOS the program is `Fathom.app/Contents/MacOS/fathom`.
 
 ### Theme screenshots

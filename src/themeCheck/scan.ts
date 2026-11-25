@@ -51,6 +51,7 @@ const SKIPPED = '[data-part="terminal-host"], [aria-hidden="true"], [data-check-
 const MIN_SIZE = 4;
 const MIN_OPACITY = 0.3;
 const MIN_FONT_PX = 4;
+const MIN_STROKE_PX = 0.5;
 const OVERLAY_SHIFT = 1.25;
 const WHITE: Rgba = { r: 255, g: 255, b: 255, a: 1 };
 const FIELDS = "select, input, textarea";
@@ -87,19 +88,34 @@ function accessibleName(el: Element): string {
   );
 }
 
-const fillOf = (style: CSSStyleDeclaration) => style.getPropertyValue("-webkit-text-fill-color") || style.color;
-const clipsText = (style: CSSStyleDeclaration) => [style.getPropertyValue("background-clip"), style.getPropertyValue("-webkit-background-clip")].includes("text");
-const stroked = (style: CSSStyleDeclaration) => parseFloat(style.getPropertyValue("-webkit-text-stroke-width")) > 0;
+type Computed = Pick<CSSStyleDeclaration, "getPropertyValue">;
 
-function paintedWithoutFill(style: CSSStyleDeclaration, owner: Element, win: FrameWindow): boolean {
-  if (stroked(style) || clipsText(style)) return true;
-  for (let node: Element | null = owner; node; node = node.parentElement) if (clipsText(win.getComputedStyle(node))) return true;
+const fillOf = (style: Computed) => style.getPropertyValue("-webkit-text-fill-color") || style.getPropertyValue("color");
+const seen = (color: string) => (parseColor(color)?.a ?? 1) > 0;
+
+function strokesText(style: Computed): boolean {
+  return parseFloat(style.getPropertyValue("-webkit-text-stroke-width")) >= MIN_STROKE_PX && seen(style.getPropertyValue("-webkit-text-stroke-color"));
+}
+
+function clipsPaintToText(style: Computed): boolean {
+  const clipped = [style.getPropertyValue("background-clip"), style.getPropertyValue("-webkit-background-clip")].includes("text");
+  const painted = style.getPropertyValue("background-image") !== "none" || (parseColor(style.getPropertyValue("background-color"))?.a ?? 0) > 0;
+  return clipped && painted;
+}
+
+export function textPainted(own: Computed, around: Iterable<Computed>): boolean {
+  if (parseColor(fillOf(own))?.a !== 0 || strokesText(own) || clipsPaintToText(own)) return true;
+  for (const style of around) if (clipsPaintToText(style)) return true;
   return false;
+}
+
+function* stylesUp(el: Element, win: FrameWindow): Generator<CSSStyleDeclaration> {
+  for (let node: Element | null = el; node; node = node.parentElement) yield win.getComputedStyle(node);
 }
 
 function readable(style: CSSStyleDeclaration, owner: Element, win: FrameWindow): boolean {
   if (parseFloat(style.fontSize) < MIN_FONT_PX || style.visibility !== "visible") return false;
-  return parseColor(fillOf(style))?.a !== 0 || paintedWithoutFill(style, owner, win);
+  return textPainted(style, stylesUp(owner, win));
 }
 
 function pseudoText(el: Element, win: FrameWindow, pseudo: "::before" | "::after"): string {
@@ -268,7 +284,7 @@ export function scanTexts(scope: Element, win: FrameWindow, probe?: Probe): Text
       lowest.set(key, { key, part, ratio: 0, unreadable: fill });
       continue;
     }
-    const byGlyphs = filled.a === 0 && paintedWithoutFill(style, el, win);
+    const byGlyphs = filled.a === 0 && textPainted(style, stylesUp(el, win));
     const color = byGlyphs ? (parseColor(style.color) ?? filled) : filled;
     const { color: background, underlaid } = backgroundOf(el, win);
     const faded = { ...color, a: color.a * effectiveOpacity(el, win) };

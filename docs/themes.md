@@ -146,11 +146,13 @@ It compares each view with Nautical on the same sample, control by control:
 
 - every control is present, visible (at least 4 pixels, opacity at least 0.3), reachable (a click at its middle reaches it) and labelled (it has a name, and its text still shows Nautical's label);
 - text is never less readable than in Nautical: text Nautical shows at 3:1 or more must keep at least 3:1 against its background, and text Nautical shows below 3:1 must keep at least Nautical's contrast;
-- text is painted: a transparent `-webkit-text-fill-color` counts as hidden text unless the text is clipped to a background (`background-clip: text`) or outlined (`-webkit-text-stroke`), and such text is judged by the contrast of its painted letters; text whose letters a clip, mask or filter removes fails the check;
+- text is painted: a transparent `-webkit-text-fill-color` counts as hidden text unless the text is clipped to a painted background (`background-clip: text` on an element with a background image or color) or outlined with a visible `-webkit-text-stroke` at least 0.5 pixels wide, and such text is judged by the contrast of its painted letters; text whose letters a clip, mask or filter removes fails the check;
 - what is painted counts: the check takes screenshots, so a control whose box shows nothing, as under an opaque layer with `pointer-events: none`, fails as painted over, and text under a layer is measured against what the layer leaves visible;
 - only a declared option may remove a control: one mode removes the dark mode switch, lanes remove the project width handles, and the overlay detail removes its width handle.
 
-The check does not judge state markers, so keep them visible yourself.
+The check does not catch every way of breaking these rules.
+A theme must never replace, cover or overlay a control's label, including with `::before` or `::after` content.
+The check does not judge state markers either, so keep them visible yourself.
 In particular a card with an unread agent update, `[data-part="card"][data-state~="unseen"]`, must stand out from read cards, as Nautical's blinking `bar` does.
 
 Then it plays the interactions: dragging a card to another stage, at full size and by scrolling at the board's edge in the smallest window, moving a project both ways by its header, widening the chat, narrowing the card panel (or, for the overlay, Escape, the scrim and focus), raising the helper drawer, switching light and dark, and the reset shortcut.
@@ -161,7 +163,7 @@ Add `--json` for a JSON result.
 A check takes about a minute.
 
 Fathom runs the check whenever a theme in the themes folder changes, and uses a theme only after it passes.
-A theme folder that is a symlink to a folder outside the themes folder is checked under its link name, but the watcher does not see edits inside it; Fathom re-checks such a theme when it starts or when anything else in the themes folder changes.
+A theme folder that is a symlink to a folder outside the themes folder is checked under its link name; on macOS the watcher does not see edits inside it, so Fathom re-checks such a theme when it starts or when anything else in the themes folder changes.
 When a change fails, Fathom keeps showing the theme's last good version, and Settings shows how many problems the check found.
 The problems themselves come from `fathom theme check <folder>` or the theme's `.shots/check.json`.
 
