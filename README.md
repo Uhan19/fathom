@@ -57,7 +57,7 @@ Add `?other=120x45` to see the chat while another client owns a 120 by 45 termin
 Add `?kitty` to have the mocked terminal turn on kitty keyboard mode, so Shift+Enter sends the kitty form.
 Add `?backlog` to see a board of Fathom's own backlog, with one pending and one declined board request.
 Add `?late` to have a card arrive in a column at the moment you confirm deleting it, or `?deletefail` to see a delete fail.
-Add `?theme=dark` to start in the dark theme, `?nochat` to start with the chat panel closed, and `?filter=harbor-web,keel-cli` to start with a project filter.
+Add `?theme=dark` to start in dark mode, `?nochat` to start with the chat panel closed, and `?filter=harbor-web,keel-cli` to start with a project filter.
 Add `?agents=withAgent` or `?agents=withActiveAgent` to start with that agent filter, and `?rows=deep,landed` to start with those rows collapsed.
 Add `?focus=48,57` to start with the board focused on those task numbers.
 Add `?unseen` to light the cards that have an update you have not read, and `?folded=pilot-infra,keel-cli` to start with those columns collapsed; `?unseen&folded=pilot-infra&rows=deep` shows a lit card, a lit column header and a lit row band at once.
@@ -76,7 +76,7 @@ GitHub Actions runs the same checks on Ubuntu 24.04 for every pull request and e
 
 `scripts/check-fixture-themes.sh` runs the [theme check](#the-theme-check) on the fixture themes in `fixtures/themes`.
 Phosphor, Switchboard, Riso, Plain and Painted text (gradient and outlined text) must pass; the four hostile themes, one that hides everything, one that is white on white, one that lays an opaque layer over the window while letting clicks through and one that relabels a control and clips text with paint-only CSS, must fail without blocking the reset shortcut.
-The white-on-white one must also be reported for its contrast.
+The white-on-white one must also be reported for its contrast, and the relabelling one for its label.
 It builds the debug binary and starts the dev server on port 1420 when none is running.
 It opens windows, so on Linux run it under `xvfb-run -a`, as CI does.
 
@@ -545,8 +545,8 @@ Fathom asks your login shell for its PATH once at startup and uses it to find he
 The foot of the Settings dialog names the installed release, such as "Fathom 0.3.0".
 
 The "Dark mode" switch in the header turns the panels, cards and terminals dark, and switching it off turns them light again.
-The board rows keep their light bands in both themes.
-Fathom remembers the theme, whether the chat panel is open, the chat and card panel widths, which rows are collapsed, the agent filter and the task focus across launches.
+The board rows keep their light bands in both modes.
+Fathom remembers the theme, light or dark mode, whether the chat panel is open, the chat and card panel widths, which rows are collapsed, the agent filter and the task focus across launches.
 The selected card and the crewmate view you are watching are not remembered.
 
 ## Themes
