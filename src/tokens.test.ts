@@ -85,8 +85,10 @@ describe("token numbers", () => {
   });
 
   it("sums up Fathom's own overhead", () => {
-    expect(overheadText(report())).toEqual({ assistant: "2.9M", perQuestion: "97k", moves: "1.2M–2.4M", share: "0.27%" });
+    expect(overheadText(report())).toEqual({ assistant: "2.9M", perQuestion: "97k", moves: "1.2M–2.4M", shareLead: "", share: "0.27%" });
+    const tiny = overheadText(report({ overhead: { assistantTokens: 0, assistantQuestions: 0, moveRequests: [], weekTokens: 10_000, weekOverheadTokens: 1 } }));
+    expect([tiny.shareLead, tiny.share]).toEqual(["under ", "0.1%"]);
     const quiet = overheadText(report({ overhead: { assistantTokens: 0, assistantQuestions: 0, moveRequests: [], weekTokens: 0, weekOverheadTokens: 0 } }));
-    expect(quiet).toEqual({ assistant: "0", perQuestion: "", moves: "", share: "0%" });
+    expect(quiet).toEqual({ assistant: "0", perQuestion: "", moves: "", shareLead: "", share: "0%" });
   });
 });

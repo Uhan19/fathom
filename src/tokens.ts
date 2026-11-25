@@ -120,7 +120,8 @@ export function overheadText(report: TokenReport) {
     assistant: tokensShort(assistantTokens),
     perQuestion: assistantQuestions ? tokensShort(perQuestion) : "",
     moves: moveRequests.length === 0 ? "" : low === high || moveRequests.length === 1 ? tokensShort(high) : `${tokensShort(low)}–${tokensShort(high)}`,
-    share: share === 0 ? "0%" : share < 0.1 ? "under 0.1%" : `${share < 10 ? share.toFixed(2) : Math.round(share)}%`,
+    shareLead: share > 0 && share < 0.1 ? "under " : "",
+    share: share === 0 ? "0%" : share < 0.1 ? "0.1%" : `${share < 10 ? share.toFixed(2) : Math.round(share)}%`,
   };
 }
 

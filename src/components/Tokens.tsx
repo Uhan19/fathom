@@ -106,7 +106,7 @@ function Chart({ report, mode }: { report: TokenReport; mode: TokenMode }) {
           Daily, last 30 days
         </h3>
         <span className="dash-muted" data-part="dash-muted">
-          {mode === "raw" ? "Million tokens per day" : "Relative cost per day"}
+          {mode === "raw" ? "Tokens per day" : "Relative cost per day"}
         </span>
       </div>
       <div className="chart-frame" data-part="chart-frame">
@@ -255,7 +255,8 @@ function Overhead({ report }: { report: TokenReport }) {
         )}
       </span>
       <span className="overhead-item" data-part="overhead-item" data-kind="share">
-        Together <b>{text.share}</b> of this week
+        Together {text.shareLead}
+        <b>{text.share}</b> of this week
       </span>
     </div>
   );
