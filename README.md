@@ -150,7 +150,7 @@ Pushing a version tag publishes a GitHub Release with three downloads:
 
 The names carry no version, so `https://github.com/Uhan19/fathom/releases/latest/download/<name>` always points at the newest release.
 
-1. Set the new version in `src-tauri/tauri.conf.json`, `package.json` and `src-tauri/Cargo.toml`, then run `cargo check --manifest-path src-tauri/Cargo.toml` so `Cargo.lock` follows.
+1. Set the new version in `src-tauri/tauri.conf.json`, `package.json`, `src-tauri/Cargo.toml` and `FATHOM_LINKS` in `site/index.html`, then run `cargo check --manifest-path src-tauri/Cargo.toml` so `Cargo.lock` follows.
 2. Merge that change to `main`.
 3. Tag the merged commit and push the tag:
 
