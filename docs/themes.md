@@ -155,7 +155,7 @@ A theme must never replace, cover or overlay a control's label, including with `
 The check does not judge state markers either, so keep them visible yourself.
 In particular a card with an unread agent update, `[data-part="card"][data-state~="unseen"]`, must stand out from read cards, as Nautical's blinking `bar` does.
 
-Then it plays the interactions: dragging a card to another stage, at full size and by scrolling at the board's edge in the smallest window, moving a project both ways by its header, widening the chat, narrowing the card panel and closing it with Escape (or, for the overlay, Escape, the scrim and focus), raising the helper drawer, switching light and dark, and the reset shortcut.
+Then it plays the interactions: dragging a card to another stage, at full size and by scrolling at the board's edge in the smallest window, moving a project both ways by its header, widening the chat, narrowing the card panel, closing it with Escape and clicking back into the ticket search after picking a match (or, for the overlay, Escape, the scrim and focus), raising the helper drawer, switching light and dark, and the reset shortcut.
 The sample includes long titles, many projects, a folded row, every tag, an error banner and an empty board.
 
 It exits 0 when the theme passes and 1 with its problems, each with the control or part, what failed and a screenshot in `.shots/check/`.
@@ -208,21 +208,23 @@ link-sources main mark markdown matrix-cell matrix-grid matrix-head matrix-state
 mini-button moment moment-dot moment-head moment-state moment-text moment-time more-link move
 move-actions muted muted-small ok-text opener opener-folder panel-handle path-link phrase picker
 picker-item picker-list picker-meta picker-name picker-reason pill pr-checks pr-line pr-state
-preview-head preview-image preview-name preview-text prose quiet-note rec-tag recipient-sailor
-result result-foot result-points result-prs result-watch result-watch-head result-watch-text
-rich-text row row-count row-label row-name row-names row-toggle sailor sailor-art sailor-visor sech
-sech-note seg seg-option segmented segmented-option segmented-thumb send-field send-note send-row
-settings-body settings-dialog settings-foot settings-head settings-legend settings-section
-settings-title shortcut-empty shortcut-key shortcut-name shortcut-note shortcut-row shortcut-tools
-shortcuts shot-axes shot-badge shot-badges shot-cell shot-cell-label shot-expand shot-lead
-shot-lead-frame shot-lead-img shot-missing shot-pending shot-scale shot-strip shot-thumb-img spacer
-switch switch-knob switch-track tab tab-close tab-count tab-empty tab-label tab-pane tab-strip
-terminal-chip terminal-host terminal-scroll text-input theme-actions timeline toggle-text viewer
-viewer-bar viewer-body viewer-count viewer-file viewer-film viewer-frame viewer-half viewer-img
-viewer-knob viewer-matrix viewer-scale viewer-side viewer-side-panel viewer-slider viewer-slider-top
-viewer-split viewer-stage viewer-task viewer-title vname wait-avatar wait-box wait-group
-wait-group-head wait-kind wait-meta wait-more wait-names wait-need wait-people wait-said wait-tag
-wait-what wait-who watch watch-backdrop watch-head watch-sailor watch-status watch-title
+preview-head preview-image preview-name preview-text prose quiet-note rec-tag recipient-sailor result
+result-foot result-points result-prs result-watch result-watch-head result-watch-text rich-text row
+row-count row-label row-name row-names row-toggle sailor sailor-art sailor-visor sech sech-note seg
+seg-option segmented segmented-option segmented-thumb send-field send-note send-row settings-body
+settings-dialog settings-foot settings-head settings-legend settings-section settings-title
+shortcut-empty shortcut-key shortcut-name shortcut-note shortcut-row shortcut-tools shortcuts
+shot-axes shot-badge shot-badges shot-cell shot-cell-label shot-expand shot-lead shot-lead-frame
+shot-lead-img shot-missing shot-pending shot-scale shot-strip shot-thumb-img spacer switch
+switch-knob switch-track tab tab-close tab-count tab-empty tab-label tab-pane tab-strip terminal-chip
+terminal-host terminal-scroll text-input theme-actions ticket-search ticket-search-empty
+ticket-search-field ticket-search-item ticket-search-list ticket-search-ref ticket-search-title
+timeline toggle-text viewer viewer-bar viewer-body viewer-count viewer-file viewer-film viewer-frame
+viewer-half viewer-img viewer-knob viewer-matrix viewer-scale viewer-side viewer-side-panel
+viewer-slider viewer-slider-top viewer-split viewer-stage viewer-task viewer-title vname wait-avatar
+wait-box wait-group wait-group-head wait-kind wait-meta wait-more wait-names wait-need wait-people
+wait-said wait-tag wait-what wait-who watch watch-backdrop watch-head watch-sailor watch-status
+watch-title
 ```
 
 ### Control ids
@@ -247,9 +249,10 @@ settings-terminal-label settings-theme settings-theme-duplicate settings-themes-
 settings-ticket-prefixes shell-close-tab shell-reattach shell-retry shortcut-clear shortcut-record
 shortcut-reset shot-all shot-expand shot-open shot-phase shot-phase-option shot-state shot-theme
 shot-theme-option shot-width shot-width-option show-all-links show-all-projects show-every-card
-terminal-tab terminal-tab-close toggle-dark-mode viewer-cell viewer-compare viewer-compare-option
-viewer-phase viewer-phase-option viewer-split viewer-theme viewer-theme-option viewer-variant
-viewer-width viewer-width-option viewer-zoom wait-link worker-reattach worker-retry
+terminal-tab terminal-tab-close ticket-search ticket-search-result toggle-dark-mode viewer-cell
+viewer-compare viewer-compare-option viewer-phase viewer-phase-option viewer-split viewer-theme
+viewer-theme-option viewer-variant viewer-width viewer-width-option viewer-zoom wait-link
+worker-reattach worker-retry
 ```
 
 ### Token names

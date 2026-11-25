@@ -251,6 +251,32 @@ export async function overlayIsModal(frame: Frame, open: () => Promise<void>): P
   return outcomes;
 }
 
+export async function searchReopensAfterPick(frame: Frame): Promise<Outcome> {
+  const { doc, win } = frame;
+  const check = "clicking the ticket search after a pick shows the matches again";
+  const control = "ticket-search";
+  const field = q<HTMLInputElement>(doc, `[data-control="${control}"]`);
+  const query = q(doc, '[data-part="card"][data-id]')?.getAttribute("data-id");
+  if (!field || !query) return fail(check, control, "the ticket search field or a card to search for is missing");
+  const listShown = () => !!q(doc, '[data-part="ticket-search-list"]');
+  field.focus();
+  Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value")?.set?.call(field, query);
+  field.dispatchEvent(new win.Event("input", { bubbles: true }));
+  await wait(SETTLE_MS);
+  const result = q(doc, '[data-control="ticket-search-result"]');
+  if (!result) return fail(check, control, `typing ${query} lists no matching ticket`);
+  result.click();
+  await wait(SETTLE_MS);
+  if (!q(doc, '[data-part="detail"]') || listShown()) return fail(check, "ticket-search-result", "picking a match does not open its card and close the list");
+  field.click();
+  await wait(SETTLE_MS);
+  const reopened = listShown();
+  field.blur();
+  q(doc, '[data-control="close-detail"]')?.click();
+  await wait(SETTLE_MS);
+  return reopened ? pass(check, control) : fail(check, control, "clicking the field after a pick does not show the matches again");
+}
+
 export async function toggleMode(frame: Frame, singleMode: boolean, shortcut: KeyboardEventInit): Promise<Outcome> {
   const { doc, win } = frame;
   const check = singleMode ? "a single-mode theme ignores the light and dark switch" : "switch between light and dark";

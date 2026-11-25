@@ -13,6 +13,7 @@ import {
   resizeChat,
   resizeDetail,
   resizeHelper,
+  searchReopensAfterPick,
   sideDetailClosesOnEscape,
   toggleMode,
   tolerateSyntheticPointers,
@@ -51,6 +52,9 @@ const OPEN_TIMEOUT_MS = 3000;
 const AFTER_OPEN_MS = 50;
 const QUIET_MS = 250;
 const TERMINAL = '[data-part="terminal-host"]';
+const SHELL_TABS = 3;
+const SHELL_TAB = '[data-control="terminal-tab-close"]';
+const STILL_LOOKING = '[data-part="chat-status"]';
 const FIXTURE_THEMES = "/fixtures/themes/";
 const NAUTICAL = "nautical";
 const MAC = navigator.platform.startsWith("Mac");
@@ -83,17 +87,19 @@ function keysOf(combo: string): KeyboardEventInit {
   return { code: parsed?.code, key: parsed?.code.replace(/^(Key|Digit)/, "").toLowerCase(), ctrlKey: flags.has("Ctrl"), altKey: flags.has("Alt"), shiftKey: flags.has("Shift"), metaKey: flags.has("Meta") };
 }
 
+const terminalsStarted = (doc: Document) => doc.querySelectorAll(SHELL_TAB).length === SHELL_TABS && !doc.querySelector(STILL_LOOKING);
+
 async function loadFrame(params: Record<string, string>): Promise<Frame> {
   document.querySelector("iframe")?.remove();
   const frame = document.createElement("iframe");
-  frame.src = `${APP_PAGE}?${new URLSearchParams({ stress: "", tabs: "3", ...params })}`;
+  frame.src = `${APP_PAGE}?${new URLSearchParams({ stress: "", tabs: String(SHELL_TABS), ...params })}`;
   document.body.append(frame);
   const started = Date.now();
   for (;;) {
     const doc = frame.contentDocument;
-    const ready = doc?.querySelector('[data-part="board"], [data-part="board-empty"]:not(:empty)') && doc.documentElement.dataset.themeId && doc.querySelector('[data-part="chat"]');
+    const ready = doc?.querySelector('[data-part="board"], [data-part="board-empty"]:not(:empty)') && doc.documentElement.dataset.themeId && doc.querySelector('[data-part="chat"]') && terminalsStarted(doc);
     if (ready) break;
-    if (Date.now() - started > READY_TIMEOUT_MS) throw new Error("the fixture board never finished loading");
+    if (Date.now() - started > READY_TIMEOUT_MS) throw new Error("the fixture app never finished starting");
     await wait(POLL_MS);
   }
   const win = frame.contentWindow as Frame["win"];
@@ -213,6 +219,7 @@ async function interact(plan: Plan, run: Run, params: Record<string, string>): P
     outcomes.push(await resizeDetail(frame));
     outcomes.push(await sideDetailClosesOnEscape(frame));
     await click(frame, '[data-control="close-detail"]', undefined, DETAIL);
+    outcomes.push(await step("search", searchReopensAfterPick(frame)));
   }
   await click(frame, '[data-control="helper-open"]', DRAWER_OPEN);
   outcomes.push(await resizeHelper(frame));
