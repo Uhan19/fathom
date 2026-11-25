@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Settings } from "./api";
 import { defaultShortcuts } from "./shortcuts";
-import { CHAT_WIDTH, DETAIL_WIDTH, chatResizer, detailResizer, withLatestWindow } from "./windowSettings";
+import { CHAT_WIDTH, DETAIL_WIDTH, chatResizer, detailResizer, fitPanels, withLatestWindow } from "./windowSettings";
 
 const settings = (over: Partial<Settings> = {}): Settings => ({
   home: "/home/demo/firstmate",
@@ -109,5 +109,27 @@ describe("chatResizer", () => {
 describe("detailResizer", () => {
   it("keeps one board column instead of squeezing the board away", () => {
     expect(detailResizer(DETAIL, board(BOARD_WIDE))(5000)).toBe(Math.min(DETAIL_WIDTH.max, DETAIL + BOARD_WIDE - BOARD_MIN));
+  });
+});
+
+describe("fitPanels at the minimum window", () => {
+  const MINIMUM_WINDOW_ROOM = 960 - 352 - 300;
+
+  it("shrinks a stored chat width so the board keeps its room", () => {
+    expect(fitPanels({ chat: 600, detail: null }, MINIMUM_WINDOW_ROOM).chat).toBe(CHAT_WIDTH.min + 8);
+  });
+
+  it("takes from the chat first, then the detail, when both panels are open", () => {
+    expect(fitPanels({ chat: 600, detail: 460 }, 800)).toEqual({ chat: 340, detail: 460 });
+    expect(fitPanels({ chat: 600, detail: 460 }, 700)).toEqual({ chat: 300, detail: 400 });
+  });
+
+  it("never goes under the panel minimums", () => {
+    expect(fitPanels({ chat: 600, detail: 460 }, 10)).toEqual({ chat: CHAT_WIDTH.min, detail: DETAIL_WIDTH.min });
+  });
+
+  it("brings the stored widths back when the window grows", () => {
+    expect(fitPanels({ chat: 600, detail: 460 }, 5000)).toEqual({ chat: 600, detail: 460 });
+    expect(fitPanels({ chat: 600, detail: 460 }, null)).toEqual({ chat: 600, detail: 460 });
   });
 });

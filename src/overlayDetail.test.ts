@@ -21,4 +21,14 @@ describe("closing the overlay card detail", () => {
     expect(closesOnEscape(key("Enter"), page(false))).toBe(false);
     expect(closesOnEscape(key("Escape", body, true), page(false))).toBe(false);
   });
+
+  it("closes the side-panel detail on Escape from the board", () => {
+    expect(closesOnEscape(key("Escape"), page(false), true)).toBe(true);
+  });
+
+  it("keeps the side-panel detail open when a text field has focus", () => {
+    const field = { closest: (selector: string) => (selector.includes("textarea") ? {} : null) };
+    expect(closesOnEscape(key("Escape", field), page(false), true)).toBe(false);
+    expect(closesOnEscape(key("Escape", field), page(false))).toBe(true);
+  });
 });

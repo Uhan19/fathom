@@ -42,7 +42,7 @@ import { filterText, indexAmongAll, shownColumns } from "./projectFilter";
 import { focusText } from "./taskRef";
 import { DEFAULT_THEME, otherTheme } from "./theme";
 import { comboLabel, listenForShortcuts, type ShortcutAction } from "./shortcuts";
-import { chatResizer, detailResizer } from "./windowSettings";
+import { chatResizer, detailResizer, fitPanels, USABLE_BOARD } from "./windowSettings";
 import { isUnseen, leftCard, NO_UPDATES, seenLocally, type CardUpdates } from "./updates";
 import { waitsOf } from "./waits";
 import { applyLook } from "./themes/apply";
@@ -50,7 +50,7 @@ import { LookContext } from "./themes/context";
 import { isSingleMode, lookOf, NAUTICAL_LOOK, shownMode, type Look } from "./themes/look";
 import { previewRequests } from "./themes/previews";
 import { RESET_EVENT } from "./themes/reset";
-import { useOverlayDetail } from "./overlayDetail";
+import { useDetailEscape } from "./overlayDetail";
 import { states } from "./parts";
 
 const NO_HELPER: HelperStatus = { terminal: null, status: "", asking: false };
@@ -94,6 +94,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   const shortcutActions = useRef<Record<ShortcutAction, () => void> | null>(null);
   const mainRef = useRef<HTMLElement>(null);
   const boardColumnRef = useRef<HTMLDivElement>(null);
+  const [panelBudget, setPanelBudget] = useState<number | null>(null);
 
   const logLaunch = useCallback((board: BoardView) => {
     if (launchLogged.current || (board.fromCache && board.cards.length === 0)) return;
@@ -220,8 +221,6 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   const chatFont = (from: Appearance) => terminalFontStack(from, shownLook.fonts.terminal);
   const overlayDetail = shownLook.layout.detail === "overlay";
   const chatOpen = settings?.chatOpen ?? true;
-  const chatWidth = chatDrag ?? settings?.chatWidth ?? 0;
-  const detailWidth = detailDrag ?? settings?.detailWidth ?? 0;
   const projectFilter = settings?.projectFilter ?? [];
   const agentFilter = settings?.agentFilter ?? "all";
   const focus = settings?.focus ?? [];
@@ -431,7 +430,28 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   const chatName = chatTitle(chatSource, chatTerminal, chatAgent);
   const detailAsOverlay = detailShown && overlayDetail;
   const appRef = useRef<HTMLDivElement>(null);
-  useOverlayDetail(appRef, detailAsOverlay, () => openCard(null));
+  useDetailEscape(appRef, detailShown, overlayDetail, () => openCard(null));
+  const sideDetail = detailShown && !overlayDetail;
+  const stored = { chat: settings?.chatWidth ?? 0, detail: settings?.detailWidth ?? 0 };
+  const fitted = fitPanels({ chat: stored.chat, detail: sideDetail ? stored.detail : null }, panelBudget);
+  const chatWidth = chatDrag ?? fitted.chat;
+  const detailWidth = detailDrag ?? fitted.detail ?? stored.detail;
+
+  useLayoutEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+    const measure = () => {
+      const { shown, min } = boardRoom();
+      const panel = (part: string) => main.querySelector(`[data-part="${part}"]`)?.getBoundingClientRect().width ?? 0;
+      const budget = Math.round(shown + panel("chat") + (sideDetail ? panel("detail") : 0) - Math.max(min, USABLE_BOARD));
+      setPanelBudget((was) => (was === budget ? was : budget));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(main);
+    return () => observer.disconnect();
+  });
+
   const chatSide = shownLook.layout.chatSide === "left" ? 1 : -1;
 
   return (
@@ -647,7 +667,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
               role="separator"
               aria-label="Resize chat"
               onPointerDown={(e) => {
-                const widths = chatResizer({ chat: chatWidth, detail: detailShown && !overlayDetail ? detailWidth : null }, boardRoom());
+                const widths = chatResizer({ chat: chatWidth, detail: sideDetail ? detailWidth : null }, boardRoom());
                 startDrag(
                   e,
                   (dx) => {

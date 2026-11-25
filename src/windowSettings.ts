@@ -4,6 +4,8 @@ import { resizer } from "./drag";
 export const DETAIL_WIDTH = { min: 340, max: 900 };
 export const CHAT_WIDTH = { min: 300, max: 1400 };
 
+export const USABLE_BOARD = 560;
+
 export interface BoardRoom {
   shown: number;
   min: number;
@@ -32,6 +34,15 @@ export function chatResizer(start: PanelWidths, board: BoardRoom): (growth: numb
     const takenFromDetail = Math.max(0, next - shownChat - Math.max(0, fromBoard));
     return { chat: next, detail: start.detail === null ? null : start.detail - takenFromDetail };
   };
+}
+
+export function fitPanels(stored: PanelWidths, budget: number | null): PanelWidths {
+  if (budget === null) return stored;
+  const room = Math.max(0, Math.floor(budget));
+  const detailStored = stored.detail ?? 0;
+  const chat = Math.max(CHAT_WIDTH.min, Math.min(stored.chat, room - detailStored));
+  const detail = stored.detail === null ? null : Math.max(DETAIL_WIDTH.min, Math.min(detailStored, room - chat));
+  return { chat, detail };
 }
 
 export function withLatestWindow(draft: Settings, latest: Settings): Settings {
