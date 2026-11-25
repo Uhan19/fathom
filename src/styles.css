@@ -1522,6 +1522,7 @@ code,
 
 .map-tag {
   font-size: calc(10px * var(--board-scale));
+  white-space: nowrap;
 }
 
 .dash-pair {

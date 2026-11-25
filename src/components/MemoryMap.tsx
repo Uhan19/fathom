@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { formatMemory } from "../memory";
-import { blockLines, isHeavy, KIND_NAMES, KIND_ORDER, percentOf, ROOMY, squarify, thresholdText, tokensText, type ItemKind, type MapItem } from "../machine";
+import { blockLines, IDLE_TAG, isHeavy, KIND_NAMES, KIND_ORDER, percentOf, ROOMY, squarify, thresholdText, tokensText, type ItemKind, type MapItem } from "../machine";
 import { states } from "../parts";
 
 const GAP = 2;
@@ -144,7 +144,7 @@ function Block({ item, total, width, height, left, top, selected, idle, heavy, o
         )}
         {showTag && (
           <span className="map-tag" data-part="map-tag">
-            Idle · holding memory
+            {IDLE_TAG}
           </span>
         )}
       </span>

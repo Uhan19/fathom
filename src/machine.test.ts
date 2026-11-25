@@ -126,9 +126,14 @@ describe("the over-threshold note", () => {
     expect(causeText(heavy, 1024)).toBe("Over 1 GB, mostly the browser and dev server this worker started.");
   });
 
+  it("words Docker without a starter", () => {
+    const docker = group({ kind: "docker", id: "docker", taskId: null, bytes: 2000 * MB, parts: [{ label: "Docker VM", bytes: 1800 * MB, processes: 1 }, { label: "Docker Desktop", bytes: 200 * MB, processes: 6 }] });
+    expect(causeText(docker, 1024)).toBe("Over 1 GB, mostly the Docker VM and Docker Desktop.");
+  });
+
   it("names other programs as they are", () => {
     const own = group({ bytes: 1300 * MB, parts: [{ label: "fathom", bytes: 840 * MB, processes: 1 }, { label: "Agent (Claude Code)", bytes: 415 * MB, processes: 2 }, { label: "Local dev server", bytes: 140 * MB, processes: 1 }] });
-    expect(causeText(own, 1024)).toBe("Over 1 GB, mostly the dev server and fathom this worker started.");
+    expect(causeText(own, 1024)).toBe("Over 1 GB, mostly the dev server and fathom, which this worker started.");
   });
 
   it("says when the agent itself is the bulk", () => {
@@ -170,5 +175,7 @@ describe("block labels", () => {
     expect(blockLines("Rotate the staging certificates", 72, 50, false)).toEqual({ name: true, size: false, more: false, tag: false });
     expect(blockLines("Fathom", 72, 52, false)).toMatchObject({ name: true, size: true, more: false });
     expect(blockLines("Docker", 20, 120, false).name).toBe(false);
+    expect(blockLines("Harness course", 100, 140, false)).toMatchObject({ more: true, tag: false });
+    expect(blockLines("Harness course", 180, 140, true).tag).toBe(true);
   });
 });

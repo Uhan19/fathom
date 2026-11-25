@@ -177,7 +177,7 @@ const STARTER: Record<ItemKind, string> = {
   worker: "this worker started",
   orchestrator: "the orchestrator started",
   fathom: "Fathom started",
-  docker: "Docker runs",
+  docker: "",
   rest: "",
 };
 
@@ -192,7 +192,9 @@ export function causeText(group: MemoryGroup, thresholdMb: number): string {
   const other = big.filter((p) => !PLAIN[p.label]).map((p) => p.label);
   const named = [...(known.length ? [`the ${known.join(" and ")}`] : []), ...other];
   const list = named.length ? named.join(" and ") : "the programs";
-  return `${over}, mostly ${list} ${STARTER[group.kind]}.`.replace(/ \.$/, ".");
+  const starter = STARTER[group.kind];
+  if (!starter) return `${over}, mostly ${list}.`;
+  return other.length ? `${over}, mostly ${list}, which ${starter}.` : `${over}, mostly ${list} ${starter}.`;
 }
 
 export function withPoint(history: Point[], sample: MemorySample): Point[] {
@@ -225,6 +227,8 @@ const MORE_LINE = 15;
 const TAG_LINE = 13;
 const CHAR = 6.6;
 const ROOMY_CHAR = 7.4;
+export const IDLE_TAG = "Idle · holding memory";
+const TAG_CHAR = 7.6;
 
 export function blockLines(name: string, width: number, height: number, roomy: boolean) {
   const inner = width - PAD_X;
@@ -236,6 +240,6 @@ export function blockLines(name: string, width: number, height: number, roomy: b
     name: inner >= 26 && height >= PAD_Y + NAME_LINE,
     size: inner >= 46 && height >= sizeHeight,
     more: inner >= 46 && height >= moreHeight,
-    tag: inner >= 78 && height >= moreHeight + GAP_Y + TAG_LINE,
+    tag: inner >= IDLE_TAG.length * TAG_CHAR && height >= moreHeight + GAP_Y + TAG_LINE,
   };
 }
