@@ -291,7 +291,7 @@ Bosun is Claude Code in a herdr-core terminal labelled `fathom.role=helper`, sta
 - Command line: `--model haiku`, `--mcp-config` and `--strict-mcp-config` for `fathom --mcp --helper` alone, `--allowedTools` for the fathom tools, delegation and reading the themes folder, an `--agents` definition, a `--settings` file and `--append-system-prompt` with a short helper prompt.
 - The settings file puts `delete_column`, `delete_theme` and `set_connection` under Claude Code's ask-first permissions, and adds hooks: a `permission_prompt` notification runs `fathom --helper-asking yes`, and later hook events run `--helper-asking no`.
   That is how the drawer's dot turns yellow while Claude Code waits for the user.
-- Theme work is delegated to a `theme-designer` subagent on Sonnet with only the theme tools and `Read`; everything else stays on Haiku for speed and cost.
+- Theme work is delegated to a `theme-designer` subagent on Sonnet with only the theme tools, `get_settings` and `Read`; everything else stays on Haiku for speed and cost.
 - The helper prompt takes Bosun's name from the active theme's `text.helper`, from Bosun's next start.
 - Fathom never types into Bosun's terminal and never reads answers from it.
   Bosun changes Fathom only through MCP tools, and the window sees the change through the `data_version` poll.
@@ -470,8 +470,9 @@ The Settings dialog has sections for Firstmate (home, chat terminal label, agent
 Changes preview at once while it is open; Save keeps them and Cancel puts them back.
 
 Export writes `fathom.json` plus `backlog_tasks.csv`, `card_places.csv`, `columns.csv`, `move_requests.csv`, `row_names.csv`, `settings.csv`, `snapshot_cards.csv` and `task_numbers.csv` into a new `fathom-export-<ms>` folder.
-It leaves out `collapsed_rows`, `shell_tabs`, `column_folders`, `seen_updates` and `update_baselines`.
-Deleting the database resets Fathom and affects nothing outside it.
+`fathom.json` carries each row's collapsed flag under `rowNames`, though `row_names.csv` does not.
+The export leaves out `shell_tabs`, `column_folders`, `seen_updates` and `update_baselines`.
+Deleting the database resets Fathom and affects nothing outside it, but on the backlog it also deletes every task.
 
 ## 22. Build, test and release
 
@@ -494,7 +495,8 @@ Deleting the database resets Fathom and affects nothing outside it.
 These are the choices a reader of the code would most likely second-guess.
 
 1. **The agent's task list is the truth; Fathom stores only the user's layer.**
-   Each fact lives in one place, so the board can never drift from what the agent believes, and deleting Fathom's database loses only arrangement and preferences.
+   Each fact lives in one place, so the board can never drift from what the agent believes, and on a Firstmate board deleting Fathom's database loses only Fathom's own layer: arrangement, preferences, read marks and task numbers.
+   On the backlog the database is the task list, so deleting it also deletes the tasks.
 2. **Read through the source's own commands, write only requests.**
    Fathom reads Firstmate's tasks through its scripts and never parses its task list or edits its files, so Firstmate can change its storage without breaking reads and its own rules decide what a move means.
    Live refresh still watches `data/backlog.md` by name.
