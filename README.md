@@ -662,7 +662,8 @@ All herdr-core calls (`ls`, `get`, `events`, `attach`, `send`) live in `src-taur
 Fathom talks only to herdr-core, never to the Herdr app.
 
 The chevron at the right of the panel's tab strip hides the chat, and the rail left at the window's edge shows it again; the show-or-hide shortcut does both.
-Dragging the chat's edge wider takes room from the board until the board is one column wide, then from open card details down to their narrowest.
+Dragging the chat's edge wider takes room from the board until the board is 560 pixels wide, or one column wide if a column is wider, then from open card details down to their narrowest.
+When the window is too narrow for the chat and a side card detail at their set widths, the chat gives way first and then the detail, each down to its narrowest, so the board keeps that room; both return to their set widths when the window grows.
 
 The chat panel attaches to the terminal that carries the configured label, or else to a terminal Fathom opened (`fathom.role=chat`).
 If none carries either, the panel offers to open a terminal and also lists the terminals herdr-core knows so you can pick one.
