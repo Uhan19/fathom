@@ -97,7 +97,8 @@ It is a board over an agent's task list, not a task manager of its own.
 | `fathom theme check <folder> [--json]` | Runs the theme check; exits 0 on pass, 1 with problems, 2 on usage or setup errors. |
 | `fathom theme shot <folder> [--mode light\|dark] [--size desktop\|min] [--json]` | Renders the fixture board with the theme and writes PNGs to `<folder>/.shots/`. |
 
-The database path for headless modes is `--db`, else the `FATHOM_DB` environment variable, else the app's own database; the flag wins.
+For `--mcp`, `--helper-asking` and `theme check` or `theme shot`, the database path is `--db`, else the `FATHOM_DB` environment variable, else the app's own database; the flag wins.
+`--export` ignores both and always reads the app's own database.
 A binary built with plain `cargo build` carries the release app id, so use `--db` when experimenting so you never touch real data.
 The dev build (`pnpm dev`) uses the app id `app.fathom.board.dev` and so a separate database.
 
@@ -117,7 +118,8 @@ Task numbers and unread marks are keyed by a source "home" string (the Firstmate
 ### Firstmate
 
 - Tasks are read only with `<home>/bin/fm-tasks-axi.sh list --fields hold_kind,hold_until,hold_reason,blocked_by,links,priority,closed` and `show <id> --full`.
-  Fathom never parses Firstmate's task file directly, so Firstmate can change its storage backend freely.
+  Fathom never parses Firstmate's task file directly, so Firstmate can change how it stores tasks without breaking reads.
+  Live refresh still depends on the file name: it watches `data/backlog.md` (section 7), so a Firstmate that stops writing that file leaves the board stale until something else triggers a re-read.
 - Every spawn runs with the home as the working folder, `FM_HOME` set, Firstmate override variables (`FM_DATA_OVERRIDE`, `FM_ROOT_OVERRIDE`, `FM_STATE_OVERRIDE`, `FM_WAKE_QUEUE`, `FM_WAKE_QUEUE_LOCK`, `TASKS_AXI_FILE`) cleared, and the login shell's PATH.
 - A home that has the wrapper but no `data/` folder holds no tasks yet, so the board is empty rather than an error, and Fathom watches the home until `data/` appears.
 - Rows come from state and hold (`tasks::row_for`): `done` is Landed; hold kind `parked` is Deep; hold kind `captain` is Surface without a date and Deep with one, even a past one; `in_flight` is Shallows; anything else is Seabed.
@@ -168,9 +170,10 @@ Task numbers and unread marks are keyed by a source "home" string (the Firstmate
   The README lists every path, including the launch log.
 - Opened in WAL mode with a 5 second busy timeout, because the window and any number of MCP server processes write to it at once.
 - Migrations in `src-tauri/migrations/` are listed in `MIGRATIONS` in `src-tauri/src/db.rs`; the applied count is SQLite's `user_version`.
-- **Migrations only ever add.**
-  That is what makes rollback safe: an older build still reads a newer database, so the README's rollback is simply "open the previous version".
-  Keep that property when you add a migration.
+- **Migrations only add, from `0004` on.**
+  That is what makes rollback safe: any build that includes `0003` still reads a newer database, so the README's rollback is simply "open the previous version".
+  The one exception is `0003_column_ids.sql`, which rebuilt `columns` and `card_places` to key places by column id, so builds from before it cannot read a newer database.
+  Keep the add-only property when you add a migration.
 - Tables: `columns`, `row_names`, `collapsed_rows`, `settings` (key and JSON value), `snapshot`, `card_places`, `move_requests`, `backlog_tasks`, `shell_tabs`, `column_folders`, `seen_updates`, `update_baselines`, `task_numbers`.
 - Settings keys live in `src-tauri/src/settings.rs`: the connection (`home`, `terminalLabel`, `hcSession`, `hcSocket`, `agentFolder`, `chatAgent`), appearance (`themeId`, `theme` for light or dark, fonts, sizes, added fonts), window state (`chatOpen`, `chatWidth`, `detailWidth`), filters (`projectFilter`, `agentFilter`, `focus`, `focusRestore`), Bosun (`helperStarted`, `helperAsking`), `shortcuts` and ticket links (`linearWorkspace`, `ticketPrefixes`).
   Adding a setting needs no migration.
@@ -182,7 +185,7 @@ Task numbers and unread marks are keyed by a source "home" string (the Firstmate
 Fathom does not poll Firstmate.
 Freshness comes from change signals, each feeding one debounced re-read (250 ms) in `state.rs`.
 
-- File watchers (`watch.rs`) on `data/` (the task list file and `waits.json`) and on `state/` recursively (`.meta`, `.status` and the inbox reply folder).
+- File watchers (`watch.rs`) on `data/` (only `backlog.md`, the task list file, and `waits.json`) and on `state/` recursively (`.meta`, `.status` and the inbox reply folder).
   When `data/` does not exist yet, a non-recursive watch on the home waits for it to appear and then arms the `data/` watch.
 - herdr-core's event stream (`hc events --json`), restarted after a 2 second delay if it drops.
   Activity events (`created`, `finished`, `removed`, `restarted`, `status`, `turn`) re-read the board; those plus `labels` and `lost` re-read the workers, debounced at 80 ms.
@@ -336,7 +339,7 @@ Read the README's "The MCP server" and "The helper tools" sections for the full 
 The detail panel (`src/components/CardDetail.tsx`) has Overview, Links, Files and Activity tabs, plus Agent while a worker is on the card, and a message box at the bottom.
 The message box sends `<card title> (<task id>): <text>` to the chat terminal with `hc send`, which pastes the text and presses Enter.
 
-- **Overview** starts with a Result section (`src/result.ts`) when the task left something to show: a headline labelled Result, Answer, Plan, Your call or Latest, then screenshots, pull requests, up to three points from the report's lead section, a decision decoded into lettered options, or the latest status line for watch tasks.
+- **Overview** starts with a Result section (`src/result.ts`) when the task left something to show: a headline labelled Result, Answer, Verdict, Recommendation, Your call, or Watch for watch tasks, then screenshots, pull requests, up to three points from the report's lead section, a decision decoded into lettered options, or the latest status line for watch tasks.
   Picking options prefills the message box; nothing is sent without the user.
   Overview also shows the waits, the hold or move request, the note rendered as Markdown, key links and facts.
 - **Screenshots** come from the task folder (`<home>/data/<task id>/`), `~/Documents/screenshots/<task id>/` and task-id-prefixed files in `~/Documents/screenshots`, and are tagged from file name tokens (before or after, a width, light or dark, and the rest as the state).
@@ -467,6 +470,7 @@ The Settings dialog has sections for Firstmate (home, chat terminal label, agent
 Changes preview at once while it is open; Save keeps them and Cancel puts them back.
 
 Export writes `fathom.json` plus `backlog_tasks.csv`, `card_places.csv`, `columns.csv`, `move_requests.csv`, `row_names.csv`, `settings.csv`, `snapshot_cards.csv` and `task_numbers.csv` into a new `fathom-export-<ms>` folder.
+It leaves out `collapsed_rows`, `shell_tabs`, `column_folders`, `seen_updates` and `update_baselines`.
 Deleting the database resets Fathom and affects nothing outside it.
 
 ## 22. Build, test and release
@@ -492,7 +496,8 @@ These are the choices a reader of the code would most likely second-guess.
 1. **The agent's task list is the truth; Fathom stores only the user's layer.**
    Each fact lives in one place, so the board can never drift from what the agent believes, and deleting Fathom's database loses only arrangement and preferences.
 2. **Read through the source's own commands, write only requests.**
-   Fathom reads Firstmate through its scripts and never parses or edits its files, so Firstmate stays free to change its storage and its own rules decide what a move means.
+   Fathom reads Firstmate's tasks through its scripts and never parses its task list or edits its files, so Firstmate can change its storage without breaking reads and its own rules decide what a move means.
+   Live refresh still watches `data/backlog.md` by name.
 3. **A drag is a request, not a move.**
    The agent may know why a task cannot move, so it answers; the card shows the user's intent at once as "asked".
 4. **Deep is the user's.**
@@ -514,7 +519,7 @@ These are the choices a reader of the code would most likely second-guess.
     App-control tools never reach worker agents, risky tools ask first, Bosun cannot spend usage by starting workers, and design work goes to a stronger model only when needed.
 12. **Bosun is a drawer under the board**, so each change lands in view right above the line the user typed.
 13. **Header counts ignore filters**, so a hidden project that needs the user still shows up in the count.
-14. **Migrations only add**, so rolling back to an older build is just opening it.
+14. **Migrations only add from `0004` on**, so rolling back to any build that includes `0003` is just opening it; `0003` (column ids) is the one migration that rebuilt tables.
 15. **Themes are data checked against the built-in theme**, with a reset that nothing can block, so an agent can restyle the whole app without ever making it unusable, and a failed edit never replaces a working theme.
 16. **Agents only ever see an invented board** during theme work, so no real task reaches a model through it.
 17. **Unread starts from a baseline**, so a new install or a new home does not light up every card.
@@ -527,7 +532,7 @@ These are the choices a reader of the code would most likely second-guess.
 - A restore button for deleted project columns.
 - Stopping or restarting workers from the board, workers on Firstmate boards, and workers for agents other than Claude Code.
 - Remembering the selected card or the watched crewmate across launches.
-- Accounts, cloud sync, sharing and phone access: Fathom is local-only.
+- Accounts, cloud sync, sharing and phone access: Fathom itself has no accounts or sync, while Bosun and connected agents talk to their own model providers.
 - Registering Fathom's MCP server with any agent globally; that is the user's choice.
 - Themable control labels, scripts in themes, and remote theme assets.
 - Windows, and the Mac App Store.
@@ -547,7 +552,7 @@ These are the choices a reader of the code would most likely second-guess.
 - **A new MCP tool:** add it to the right `#[tool_router]` block in `src-tauri/src/mcp.rs`, put shared logic in `control.rs` so the window can use it too, update the server instructions if agents need to know when to call it, and add it to the README's tool table.
   If Bosun should ask before using it, add it to `HELPER_ASKS_FIRST` in `launch.rs`.
 - **A new setting:** add its key, default and validation in `src-tauri/src/settings.rs`, its field in `src/api.ts`, and its control in `SettingsDialog.tsx`; no migration is needed.
-- **A new table or column:** add a numbered file in `src-tauri/migrations/`, list it in `MIGRATIONS` in `db.rs`, keep it additive, and include it in `export.rs`.
+- **A new table or column:** add a numbered file in `src-tauri/migrations/`, list it in `MIGRATIONS` in `db.rs`, keep it additive, and add it to `export.rs` if it holds user data worth taking away.
 - **A new UI control:** give it a `data-control` id and its element a `data-part` name, use tokens for every color, and add the names to `docs/themes.md`, or `src/themes/guide.test.ts` fails.
   The theme check will then require every theme to keep it visible, reachable and labelled.
 - **A new task source:** add a `Source` variant in `source.rs` with its own home key, implement reading cards and, if it supports them, move requests and status marks, and keep writes to the source behind explicit requests.

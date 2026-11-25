@@ -107,15 +107,16 @@ The task folder, screenshots and progress reports come from Firstmate's records,
 
 ## Yours, local and quick
 
-- **Your data stays on your computer.**
-  Fathom keeps everything in one small local database, with no account and no cloud.
+- **Fathom stores everything on your computer.**
+  Everything Fathom keeps lives in one small local database, with no account and no Fathom cloud.
+  Bosun and any agent you connect read your board, and send what they read to their own model provider.
 - **Fathom never edits your agent's files.**
   With Firstmate, it reads the task list through Firstmate's own commands and only ever sends requests.
 - **Take it with you.**
-  Export everything Fathom stores to JSON and CSV in one click.
+  Export your board, tasks and settings to JSON and CSV in one click.
 - **Opens with your board already there.**
   Fathom paints the last board at once from a cache, then refreshes as your agents work, without polling the task list.
-- **Your real board stays private.**
+- **Theme work never sees your real board.**
   Theme previews and theme checks always use an invented sample board, so your real tasks never reach a model through theme work.
 
 ## Get Fathom
