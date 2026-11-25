@@ -42,6 +42,7 @@ const KEY_LINEAR_WORKSPACE: &str = "linearWorkspace";
 const KEY_TICKET_PREFIXES: &str = "ticketPrefixes";
 const KEY_MEMORY_BADGE_MB: &str = "memoryBadgeMb";
 const KEY_VIEW: &str = "view";
+const KEY_TOKEN_MODE: &str = "tokenMode";
 const LINEAR_HOST: &str = "linear.app/";
 const MAX_PREFIX_LEN: usize = 10;
 
@@ -92,6 +93,14 @@ pub enum AgentFilter {
     All,
     WithAgent,
     WithActiveAgent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum TokenMode {
+    #[default]
+    Raw,
+    Cost,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
@@ -147,6 +156,8 @@ pub struct Settings {
     pub memory_badge_mb: u32,
     #[serde(default)]
     pub view: View,
+    #[serde(default)]
+    pub token_mode: TokenMode,
 }
 
 fn memory_badge_mb() -> u32 {
@@ -188,6 +199,7 @@ pub struct WindowChange {
     pub chat_width: Option<u32>,
     pub detail_width: Option<u32>,
     pub view: Option<View>,
+    pub token_mode: Option<TokenMode>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -400,6 +412,10 @@ pub fn load(db: &Db) -> Result<Settings, String> {
             .get(KEY_VIEW)
             .and_then(|key| serde_json::from_value(json!(key)).ok())
             .unwrap_or_default(),
+        token_mode: stored
+            .get(KEY_TOKEN_MODE)
+            .and_then(|key| serde_json::from_value(json!(key)).ok())
+            .unwrap_or_default(),
     })
 }
 
@@ -413,6 +429,7 @@ pub fn store(db: &Db, next: &Settings) -> Result<Settings, String> {
     let agent_filter = serde_json::to_value(next.agent_filter).map_err(|e| e.to_string())?;
     let focus = serde_json::to_string(&next.focus).map_err(|e| e.to_string())?;
     let view = serde_json::to_value(next.view).map_err(|e| e.to_string())?;
+    let token_mode = serde_json::to_value(next.token_mode).map_err(|e| e.to_string())?;
     let pairs = [
         (KEY_HOME, next.home.trim().to_string()),
         (KEY_LABEL, next.terminal_label.trim().to_string()),
@@ -437,6 +454,10 @@ pub fn store(db: &Db, next: &Settings) -> Result<Settings, String> {
         (KEY_TICKET_PREFIXES, prefixes),
         (KEY_MEMORY_BADGE_MB, next.memory_badge_mb.to_string()),
         (KEY_VIEW, view.as_str().unwrap_or_default().to_string()),
+        (
+            KEY_TOKEN_MODE,
+            token_mode.as_str().unwrap_or_default().to_string(),
+        ),
         (
             KEY_AGENT_FILTER,
             agent_filter.as_str().unwrap_or_default().to_string(),
@@ -465,6 +486,7 @@ pub fn change_window(db: &Db, change: &WindowChange) -> Result<Settings, String>
         s.chat_width = change.chat_width.unwrap_or(s.chat_width);
         s.detail_width = change.detail_width.unwrap_or(s.detail_width);
         s.view = change.view.unwrap_or(s.view);
+        s.token_mode = change.token_mode.unwrap_or(s.token_mode);
         Ok(())
     })
 }
@@ -1038,6 +1060,21 @@ mod tests {
         assert_eq!(load(&db).unwrap().view, View::Dashboard);
         db.set_setting(KEY_VIEW, "sideways").unwrap();
         assert_eq!(load(&db).unwrap().view, View::Board);
+    }
+
+    #[test]
+    fn the_token_mode_starts_raw_and_is_remembered() {
+        let (_dir, db) = fresh();
+        assert_eq!(load(&db).unwrap().token_mode, TokenMode::Raw);
+        let change = WindowChange {
+            token_mode: Some(TokenMode::Cost),
+            ..WindowChange::default()
+        };
+        assert_eq!(
+            change_window(&db, &change).unwrap().token_mode,
+            TokenMode::Cost
+        );
+        assert_eq!(load(&db).unwrap().token_mode, TokenMode::Cost);
     }
 
     #[test]

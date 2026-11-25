@@ -12,6 +12,7 @@ import {
   type HerdrStatus,
   type MemoryGroup,
   type MemorySample,
+  type TokenReport,
   type MoveTo,
   type Overlay,
   type Placement,
@@ -30,6 +31,7 @@ import { startDrag } from "./drag";
 import { Board } from "./components/Board";
 import { Dashboard, ViewSwitch } from "./components/Dashboard";
 import { Machine, type StopState } from "./components/Machine";
+import { Tokens } from "./components/Tokens";
 import { withPoint, type Point } from "./machine";
 import { AgentFilterToggle } from "./components/AgentFilterToggle";
 import { TicketSearch } from "./components/TicketSearch";
@@ -88,6 +90,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [memory, setMemory] = useState<MemorySample | null>(null);
   const [memoryHistory, setMemoryHistory] = useState<Point[]>([]);
+  const [tokenReport, setTokenReport] = useState<TokenReport | null>(null);
   const [stops, setStops] = useState<Record<string, StopState>>({});
   const [updates, setUpdates] = useState<CardUpdates>(NO_UPDATES);
   const [moveError, setMoveError] = useState<string | null>(null);
@@ -139,6 +142,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
         setMemory(m);
         setMemoryHistory((h) => withPoint(h, m));
       }),
+      events.tokens((r) => alive && setTokenReport(r)),
     ];
     api
       .cachedBoard()
@@ -157,6 +161,10 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
       .then((u) => alive && setUpdates(u))
       .catch(() => undefined);
     api.helperStatus().then((h) => alive && setHelper(h));
+    api
+      .tokenReport()
+      .then((r) => alive && r && setTokenReport(r))
+      .catch(() => undefined);
     return () => {
       alive = false;
       unlisten.forEach((p) => void p.then((fn) => fn()));
@@ -571,7 +579,10 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
       <main className="main" data-part="main" ref={mainRef}>
         <div className="board-column" data-part="board-column" ref={boardColumnRef} inert={detailAsOverlay}>
           {onDashboard && (
-            <Dashboard mac={MAC}>
+            <Dashboard
+              mac={MAC}
+              tokens={<Tokens report={tokenReport} mode={settings?.tokenMode ?? "raw"} onMode={(tokenMode) => changeWindow({ tokenMode })} />}
+              machine={
               <Machine
                 sample={memory}
                 history={memoryHistory}
@@ -583,7 +594,8 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
                 stops={stops}
                 onStop={stopWorker}
               />
-            </Dashboard>
+              }
+            />
           )}
           {!onDashboard && (focus.length > 0 || projectFilter.length > 0 || agentFilter !== "all") && (
             <div className="filter-strip" data-part="filter-strip" role="status">

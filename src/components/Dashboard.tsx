@@ -3,15 +3,16 @@ import type { Tab } from "../api";
 
 interface DashboardProps {
   mac: boolean;
-  children?: ReactNode;
+  machine?: ReactNode;
+  tokens?: ReactNode;
 }
 
-export function Dashboard({ mac, children }: DashboardProps) {
+export function Dashboard({ mac, machine, tokens }: DashboardProps) {
   return (
     <div className="dashboard" data-part="dashboard" role="region" aria-label="Dashboard">
       <SectionHead title="Machine" lead={mac ? "What is using this Mac’s memory" : "What is using this computer’s memory"} />
-      {children}
-      <SectionHead title="Tokens and quota" />
+      {machine}
+      {tokens ?? <SectionHead title="Tokens and quota" />}
     </div>
   );
 }

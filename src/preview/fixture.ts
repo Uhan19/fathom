@@ -1,5 +1,5 @@
 import { AGENTS, type AgentKey } from "../agents";
-import type { AgentSession, Card, Column, Detail, MemoryGroup, MemoryPart, MemorySample, MoveRequest, RowKey, ShellTab, Terminal, Waits, Worker } from "../api";
+import type { AgentSession, Card, Column, Detail, MemoryGroup, MemoryPart, MemorySample, TokenDay, TokenReport, MoveRequest, RowKey, ShellTab, Terminal, Waits, Worker } from "../api";
 import type { CardUpdates } from "../updates";
 
 type Seed = [id: string, project: string, row: RowKey, title: string, extra?: Partial<Card>];
@@ -201,6 +201,56 @@ export const fixtureMemory = (workers: Worker[], takenAtMs = Date.now()): Memory
         { name: "Editor", bytes: 860 * MB },
       ],
     },
+  };
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const PER_MILLION = { input: 15, output: 75, cacheWrite: 30, cacheRead: 1.5 };
+
+const fixtureDay = (startMs: number, millions: number, todayShare = 1): TokenDay => {
+  const tokens = millions * 1_000_000 * todayShare;
+  const counts = { input: tokens * 0.004, output: tokens * 0.006, cacheWrite: tokens * 0.02, cacheRead: tokens * 0.97 };
+  const cost = (kind: keyof typeof counts) => (counts[kind] / 1_000_000) * PER_MILLION[kind] * 0.05;
+  const date = new Date(startMs);
+  return {
+    date: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`,
+    startMs,
+    input: Math.round(counts.input),
+    output: Math.round(counts.output),
+    cacheWrite: Math.round(counts.cacheWrite),
+    cacheRead: Math.round(counts.cacheRead),
+    cost: { input: cost("input"), output: cost("output"), cacheWrite: cost("cacheWrite"), cacheRead: cost("cacheRead") },
+  };
+};
+
+export const fixtureTokens = (takenAtMs = Date.now()): TokenReport => {
+  const midnight = new Date(takenAtMs);
+  midnight.setHours(0, 0, 0, 0);
+  const days = Array.from({ length: 30 }, (_, i) => {
+    const millions = 190 + ((i * 37) % 90) + (i % 7 === 5 ? -80 : 0);
+    return fixtureDay(midnight.getTime() - (29 - i) * DAY_MS, millions, i === 29 ? 0.5 : 1);
+  });
+  const title = (id: string) => FIXTURE_CARDS.find((c) => c.id === id)?.title ?? id;
+  const week = days.slice(-7);
+  const weekTokens = week.reduce((t, d) => t + d.input + d.output + d.cacheWrite + d.cacheRead, 0);
+  const weekCost = week.reduce((t, d) => t + d.cost.input + d.cost.output + d.cost.cacheWrite + d.cost.cacheRead, 0);
+  const share = (name: string, part: number) => ({ name, tokens: Math.round(weekTokens * part), cost: weekCost * part });
+  return {
+    takenAtMs,
+    days,
+    models: [share("claude-opus-5-5", 0.93), share("claude-sonnet-5-5", 0.06), share("claude-haiku-5-5", 0.01)],
+    consumers: [
+      { role: "orchestrator", taskId: null, ...share("Orchestrator", 0.33) },
+      { role: "worker", taskId: "hrb-16", ...share(title("hrb-16"), 0.05) },
+      { role: "worker", taskId: "atl-09", ...share(title("atl-09"), 0.04) },
+      { role: "worker", taskId: "hrb-18", ...share(title("hrb-18"), 0.03) },
+      { role: "other", taskId: null, ...share("keel-cli", 0.02) },
+      { role: "assistant", taskId: null, ...share("Board assistant", 0.0014) },
+    ],
+    projects: [share("atlas-api", 0.18), share("harbor-web", 0.15), share("keel-cli", 0.06), share("lantern-docs", 0.03)],
+    overhead: { assistantTokens: 2_900_000, assistantQuestions: 30, moveRequests: [1_100_000, 2_400_000, 1_700_000], weekTokens, weekOverheadTokens: Math.round(weekTokens * 0.0029) },
+    unpriced: [],
+    pricesError: null,
   };
 };
 

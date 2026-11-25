@@ -115,7 +115,7 @@ Select named parts, never Fathom's class names or ids, which may change in any r
 
 - `[data-part="card"]` is a kind of element, such as a card, a column head or the header.
 - `[data-kind="surface"]` is a variant that does not change, such as a card's or row's stage (`surface`, `shallows`, `deep`, `seabed`, `landed`), a button's style (`header`, `danger`, `dark`) or a tag's kind (`asked`, `failed`, `answered`, `reported`).
-- `[data-state~="selected"]` is a state that changes, such as `selected`, `unseen`, `lifted`, `collapsed`, `closed`, `working`, `idle`, `fill`, `targeted`, `active`, `measured` (a card showing its worker's memory), `high` (a memory badge at the Settings threshold or above), and on the Dashboard's memory map `heavy` (a block at that threshold or above), `idle` (a worker past its prompt cache that still holds memory) `roomy` (a block wide enough for larger text) and `single` (the Selected card alone, with no idle worker beside it).
+- `[data-state~="selected"]` is a state that changes, such as `selected`, `unseen`, `lifted`, `collapsed`, `closed`, `working`, `idle`, `fill`, `targeted`, `active`, `measured` (a card showing its worker's memory), `high` (a memory badge at the Settings threshold or above), and on the Dashboard's memory map `heavy` (a block at that threshold or above), `idle` (a worker past its prompt cache that still holds memory) `roomy` (a block wide enough for larger text) `single` (the Selected card alone, with no idle worker beside it), and on the daily token chart `today` (today's bar, drawn lighter because the day is not over).
 - ARIA attributes carry the rest: `[aria-checked="true"]`, `[aria-selected="true"]`, `[aria-expanded="false"]`, `[aria-pressed="true"]` and `:disabled`.
 - `[data-control="open-settings"]` is one control, by a stable id (list below).
   Repeated controls share an id; `data-column`, `data-row`, `data-id` and `data-key` on them or their parents tell them apart.
@@ -186,17 +186,17 @@ The program is `/Applications/Fathom.app/Contents/MacOS/fathom` on macOS and `fa
 
 ```text
 agent-choice agent-choices agent-filter agent-filter-icon answer answer-text app app-version
-back-link banner bar beacon blocked-by board board-column board-empty board-scroll bosun bosun-about
+back-link banner bar bar-seg beacon blocked-by board board-column board-empty board-scroll bosun bosun-about
 bosun-command bosun-dot bosun-examples bosun-handle bosun-head bosun-hint bosun-rail bosun-screen
-bosun-summary bosun-title brand brand-mark brand-mark-gap brand-name button call-bar call-box
+bosun-summary bosun-title brand brand-mark brand-mark-gap brand-name breakdown-col button call-bar call-box
 call-key call-letter call-opt call-pick call-progress call-q call-radio call-rec call-row
-call-row-text card card-body card-ghost card-head card-name card-note card-number card-open card-ref cell chat
+call-row-text card card-body card-ghost card-head card-name card-note card-number card-open card-ref cell chart-axis chart-bar chart-bars chart-frame chart-scale chat
 chat-actions chat-body chat-ended chat-head chat-hide chat-rail chat-rail-caret chat-rail-name
 chat-status chat-wrap chip chips col-handle column-add column-add-head column-ghost column-head
 column-heads column-heads-label column-name column-name-input column-slot column-total composer
 composer-box composer-field composer-foot composer-hint composer-recipient composer-to
-composer-to-label confirm confirm-foot confirm-move confirm-name count count-badge count-label
-count-lead count-value dash-card dash-head dash-label dash-lead dash-legend dash-muted dash-notice dash-pair dash-title dashboard data-line detail detail-agent detail-head detail-meta detail-note detail-scrim
+composer-to-label confirm confirm-foot confirm-move confirm-name consumer-list consumer-name consumer-row consumer-share consumer-value count count-badge count-label
+count-lead count-value dash-card dash-head dash-head-end dash-label dash-lead dash-legend dash-muted dash-notice dash-pair dash-title dashboard data-line detail detail-agent detail-head detail-meta detail-note detail-scrim
 detail-scroll detail-send detail-tab detail-tab-sailor detail-tabs detail-title detail-title-row
 drop-slot error-text fact facts field field-note field-pair file-actions file-glyph file-group
 file-list file-main file-meta file-name file-preview file-row file-text film-cell film-label
@@ -205,26 +205,27 @@ header-toggles heavy-note herdr-dot herdr-label hold icon icon-button idle-item 
 launcher-error launcher-foot launcher-item launcher-list launcher-name launcher-note launcher-path
 launcher-section legend-item legend-swatch legend-value link-body link-detail link-glyph link-group link-label link-list link-row
 link-sources main map-block map-cell map-label map-name map-note map-size map-tag map-tokens mark markdown matrix-cell matrix-grid matrix-head matrix-state md-image mem-figures mem-map mem-of mem-total memory-badge meta-text
-mini-button moment moment-dot moment-head moment-state moment-text moment-time more-link move
-move-actions muted muted-small ok-text opener opener-folder panel-handle path-link phrase picker
+mini-button mix-bar mix-seg moment moment-dot moment-head moment-state moment-text moment-time more-link move
+move-actions muted muted-small ok-text opener opener-folder overhead-item overhead-line panel-handle path-link phrase picker
 picker-item picker-list picker-meta picker-name picker-reason pill pr-checks pr-line pr-state
-pressure-pill preview-head preview-image preview-name preview-text proc-bar proc-fill proc-name proc-row proc-size prose quiet-note rec-tag recipient-sailor
+pressure-pill preview-head preview-image preview-name preview-text prices-note proc-bar proc-fill proc-name proc-row proc-size prose quiet-note rec-tag recipient-sailor
 result result-foot result-points result-prs result-watch result-watch-head result-watch-text
 rich-text row row-count row-label row-name row-names row-toggle sailor sailor-art sailor-visor sech
 sech-note seg seg-option segmented segmented-option segmented-thumb selected-head selected-meta selected-name selected-size send-field send-note send-row
 settings-body settings-dialog settings-foot settings-head settings-legend settings-section
-settings-title shortcut-empty shortcut-key shortcut-name shortcut-note shortcut-row shortcut-tools
+settings-title share-bar share-fill share-list share-name share-row share-value shortcut-empty shortcut-key shortcut-name shortcut-note shortcut-row shortcut-tools
 shortcuts shot-axes shot-badge shot-badges shot-cell shot-cell-label shot-expand shot-lead
 shot-lead-frame shot-lead-img shot-missing shot-pending shot-scale shot-strip shot-thumb-img spacer
 spark split-bar split-seg summary-main summary-top switch switch-knob switch-track tab tab-close
 tab-count tab-empty tab-label tab-pane tab-strip terminal-chip terminal-host terminal-scroll
 text-input theme-actions ticket-search ticket-search-empty ticket-search-field ticket-search-item
-ticket-search-list ticket-search-ref ticket-search-title timeline toggle-text view-switch view-tab
-viewer viewer-bar viewer-body viewer-count viewer-file viewer-film viewer-frame viewer-half
-viewer-img viewer-knob viewer-matrix viewer-scale viewer-side viewer-side-panel viewer-slider
-viewer-slider-top viewer-split viewer-stage viewer-task viewer-title vname wait-avatar wait-box
-wait-group wait-group-head wait-kind wait-meta wait-more wait-names wait-need wait-people wait-said
-wait-tag wait-what wait-who watch watch-backdrop watch-head watch-sailor watch-status watch-title
+ticket-search-list ticket-search-ref ticket-search-title tile-note tile-value timeline toggle-text
+token-tile token-tiles view-switch view-tab viewer viewer-bar viewer-body viewer-count viewer-file
+viewer-film viewer-frame viewer-half viewer-img viewer-knob viewer-matrix viewer-scale viewer-side
+viewer-side-panel viewer-slider viewer-slider-top viewer-split viewer-stage viewer-task viewer-title
+vname wait-avatar wait-box wait-group wait-group-head wait-kind wait-meta wait-more wait-names
+wait-need wait-people wait-said wait-tag wait-what wait-who watch watch-backdrop watch-head
+watch-sailor watch-status watch-title
 ```
 
 ### Control ids
@@ -250,9 +251,10 @@ settings-ticket-prefixes shell-close-tab shell-reattach shell-retry shortcut-cle
 shortcut-reset shot-all shot-expand shot-open shot-phase shot-phase-option shot-state shot-theme
 shot-theme-option shot-width shot-width-option show-all-links show-all-projects show-every-card
 stop-worker stop-worker-cancel stop-worker-confirm terminal-tab terminal-tab-close ticket-search
-ticket-search-result toggle-dark-mode view-board view-dashboard viewer-cell viewer-compare
-viewer-compare-option viewer-phase viewer-phase-option viewer-split viewer-theme viewer-theme-option
-viewer-variant viewer-width viewer-width-option viewer-zoom wait-link worker-reattach worker-retry
+ticket-search-result toggle-dark-mode token-mode token-mode-option view-board view-dashboard
+viewer-cell viewer-compare viewer-compare-option viewer-phase viewer-phase-option viewer-split
+viewer-theme viewer-theme-option viewer-variant viewer-width viewer-width-option viewer-zoom
+wait-link worker-reattach worker-retry
 ```
 
 ### Token names
@@ -260,8 +262,8 @@ viewer-variant viewer-width viewer-width-option viewer-zoom wait-link worker-rea
 ```text
 --accent --accent-hover --accent-ink --after-bg --backdrop --badge-bg --badge-hover-bg --badge-ink
 --before-bg --board-scale --body-font --brand-ink --card-bg --card-ink --card-ink-2 --card-line
---card-muted --card-shadow --chat-bg --chip-bg --collapsed-width --count-bg --count-ink --ctrl-bg
---ctrl-hover --ctrl-ink --ctrl-line --danger --danger-hover --danger-ink --dash-bg --drop-bg --drop-line
+--card-muted --card-shadow --chart-axis --chat-bg --chip-bg --collapsed-width --count-bg --count-ink --ctrl-bg
+--ctrl-hover --ctrl-ink --ctrl-line --danger --danger-hover --danger-ink --dash-bg --dash-seg-on --dash-seg-on-ink --drop-bg --drop-line
 --drop-target-bg --error-ink --fail-bg --fail-line --fail-mark --field-bg --field-disabled
 --field-ink --field-line --field-placeholder --focus-glow --focus-ring --folded-ink --handle-bg
 --handle-grip --handle-hover --hazard-gap --hazard-stripe --header-bg --header-blue
@@ -285,7 +287,7 @@ viewer-variant viewer-width viewer-width-option viewer-zoom wait-link worker-rea
 --term-blue --term-bright-black --term-bright-blue --term-bright-cyan --term-bright-green
 --term-bright-magenta --term-bright-red --term-bright-white --term-bright-yellow --term-cursor
 --term-cursor-accent --term-cyan --term-foreground --term-green --term-magenta --term-red
---term-selection-background --term-white --term-yellow --tone-active --tone-attention --tone-good
+--term-selection-background --term-white --term-yellow --tok-input --tok-output --tok-read --tok-write --tone-active --tone-attention --tone-good
 --tone-quiet --tone-trouble --viewer-knob-bg --viewer-knob-ink --viewer-shadow --viewer-split --wait
 --wait-bg --wait-ink --wait-line --wait-solid --wait-solid-ink --warn-ink
 ```

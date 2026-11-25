@@ -33,6 +33,7 @@ import {
   fixtureBacklogUpdates,
   fixtureDetail,
   fixtureMemory,
+  fixtureTokens,
   fixtureUpdates,
   helperScreen,
   shellScreen,
@@ -131,6 +132,7 @@ let settings: Settings = {
   ticketPrefixes: params.has("nolinear") ? [] : ["ATL", "OPS"],
   memoryBadgeMb: 1024,
   view: params.get("view") === "dashboard" ? "dashboard" : "board",
+  tokenMode: params.get("tokens") === "cost" ? "cost" : "raw",
 };
 
 const openChatTerminal = (agent: AgentKey) => {
@@ -400,7 +402,10 @@ mockIPC(
             void emit("metrics://memory", { ...past, used: past.used + Math.round(Math.sin(i / 3) * 400 + i * 12) * MB });
           }
           void emit("metrics://memory", fixtureMemory(shownWorkers(), now));
+          if ((args.demand as { dashboard?: boolean } | undefined)?.dashboard && !empty) void emit("metrics://tokens", fixtureTokens(now));
         }, 0);
+        return null;
+      case "token_report":
         return null;
       case "stop_worker":
         console.info("stop_worker", args.taskId);

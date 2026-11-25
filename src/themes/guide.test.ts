@@ -11,9 +11,10 @@ import { CardDetail } from "../components/CardDetail";
 import { ChatPanel } from "../components/ChatPanel";
 import { Dashboard } from "../components/Dashboard";
 import { Machine } from "../components/Machine";
+import { Tokens } from "../components/Tokens";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { NO_LINKING } from "../links";
-import { FIXTURE_COLUMNS, FIXTURE_CARDS, FIXTURE_REQUESTS, FIXTURE_TERMINALS, FIXTURE_WAITS, FIXTURE_WORKERS, fixtureMemory, fixtureUpdates } from "../preview/fixture";
+import { FIXTURE_COLUMNS, FIXTURE_CARDS, FIXTURE_REQUESTS, FIXTURE_TERMINALS, FIXTURE_WAITS, FIXTURE_WORKERS, fixtureMemory, fixtureTokens, fixtureUpdates } from "../preview/fixture";
 import { badgesByTask } from "../memory";
 import { withPoint } from "../machine";
 import { defaultShortcuts } from "../shortcuts";
@@ -56,6 +57,7 @@ const settings: Settings = {
   ticketPrefixes: ["ATL"],
   memoryBadgeMb: 1024,
   view: "board",
+  tokenMode: "raw",
 };
 
 const board = (collapsedRows: RowKey[]) =>
@@ -90,6 +92,8 @@ const board = (collapsedRows: RowKey[]) =>
 const VIEWS: ReactElement[] = [
   createElement(App),
   createElement(Dashboard, { mac: true }),
+  createElement(Tokens, { report: { ...fixtureTokens(1_900_000_000_000), unpriced: ["claude-test-1"], pricesError: "line 3: expected a number" }, mode: "cost", onMode: ignore }),
+  createElement(Tokens, { report: null, mode: "raw", onMode: ignore }),
   createElement(Machine, {
     sample: { ...fixtureMemory(FIXTURE_WORKERS, 1_900_000_000_000), herdrConnected: false },
     history: withPoint([], fixtureMemory(FIXTURE_WORKERS, 1_900_000_000_000)),

@@ -241,9 +241,50 @@ export interface Settings {
   ticketPrefixes: string[];
   memoryBadgeMb: number;
   view: Tab;
+  tokenMode: TokenMode;
 }
 
 export type Tab = "board" | "dashboard";
+export type TokenMode = "raw" | "cost";
+
+export interface Costs {
+  input: number;
+  output: number;
+  cacheWrite: number;
+  cacheRead: number;
+}
+
+export interface TokenDay {
+  date: string;
+  startMs: number;
+  input: number;
+  output: number;
+  cacheWrite: number;
+  cacheRead: number;
+  cost: Costs;
+}
+
+export interface TokenShare {
+  name: string;
+  tokens: number;
+  cost: number;
+}
+
+export interface ConsumerShare extends TokenShare {
+  role: "orchestrator" | "worker" | "assistant" | "move" | "other";
+  taskId: string | null;
+}
+
+export interface TokenReport {
+  takenAtMs: number;
+  days: TokenDay[];
+  models: TokenShare[];
+  consumers: ConsumerShare[];
+  projects: TokenShare[];
+  overhead: { assistantTokens: number; assistantQuestions: number; moveRequests: number[]; weekTokens: number; weekOverheadTokens: number };
+  unpriced: string[];
+  pricesError: string | null;
+}
 
 export type Pressure = "normal" | "warning" | "critical";
 export type GroupKind = "fathom" | "orchestrator" | "worker" | "docker";
@@ -297,6 +338,7 @@ export interface WindowChange {
   chatWidth?: number;
   detailWidth?: number;
   view?: Tab;
+  tokenMode?: TokenMode;
 }
 
 export type SignIn = "signedIn" | "signedOut" | "unknown";
@@ -438,6 +480,7 @@ export const api = {
   launcherFolders: () => invoke<LauncherFolders>("launcher_folders"),
   setMetricsDemand: (demand: MetricsDemand) => invoke<void>("set_metrics_demand", { demand }),
   memorySample: () => invoke<MemorySample>("memory_sample"),
+  tokenReport: () => invoke<TokenReport | null>("token_report"),
   stopWorker: (taskId: string, title: string) => invoke<StopOutcome>("stop_worker", { taskId, title }),
   rememberColumnFolder: (column: number, folder: string) => invoke<void>("remember_column_folder", { column, folder }),
 };
@@ -457,6 +500,8 @@ export const events = {
   themes: (handler: () => void): Promise<UnlistenFn> => listen("themes://updated", () => handler()),
   memory: (handler: (sample: MemorySample) => void): Promise<UnlistenFn> =>
     listen<MemorySample>("metrics://memory", (e) => handler(e.payload)),
+  tokens: (handler: (report: TokenReport) => void): Promise<UnlistenFn> =>
+    listen<TokenReport>("metrics://tokens", (e) => handler(e.payload)),
   helper: (handler: (helper: HelperStatus) => void): Promise<UnlistenFn> =>
     listen<HelperStatus>("helper://updated", (e) => handler(e.payload)),
   terminalEnded: (handler: (ended: EndedView) => void): Promise<UnlistenFn> =>

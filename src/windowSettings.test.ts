@@ -30,6 +30,7 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
   ticketPrefixes: [],
   memoryBadgeMb: 1024,
   view: "board",
+  tokenMode: "raw",
   ...over,
 });
 
