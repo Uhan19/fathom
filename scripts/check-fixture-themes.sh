@@ -15,13 +15,11 @@ cargo build --manifest-path "$root/src-tauri/Cargo.toml" --features tauri/custom
 work="$(mktemp -d)"
 trap 'rm -rf "${work:?}"' EXIT
 
-limit_runtime="$(command -v timeout || command -v gtimeout || true)"
-
 check() {
   local id="$1"
   cp -R "$fixtures/$id" "$work/$id"
   local started=$SECONDS code=0
-  ${limit_runtime:+"$limit_runtime" --kill-after=10 "$check_limit"} "$binary" theme check "$work/$id" --json --db "$work/fathom.sqlite" >"$work/$id.json" 2>"$work/$id.log" || code=$?
+  timeout --foreground --kill-after=10 "$check_limit" "$binary" theme check "$work/$id" --json --db "$work/fathom.sqlite" >"$work/$id.json" 2>"$work/$id.log" || code=$?
   echo "$id: checked in $((SECONDS - started))s"
   if [ "$code" -eq 124 ] || [ "$code" -eq 137 ]; then
     echo "$id: the theme check did not finish within ${check_limit}s" >&2
