@@ -14,6 +14,7 @@ use crate::fonts;
 use crate::herdr::{Terminal, View};
 use crate::launch::{Agent, LaunchError};
 use crate::metrics::memory::MemorySample;
+use crate::metrics::quota::QuotaReport;
 use crate::metrics::tokens::TokenReport;
 use crate::metrics::{Demand, Metrics};
 use crate::moves::Placement;
@@ -511,4 +512,9 @@ pub async fn memory_sample(
 #[tauri::command]
 pub fn token_report(metrics: State<'_, Arc<Metrics>>) -> Option<TokenReport> {
     metrics.tokens()
+}
+
+#[tauri::command]
+pub fn quota_report(metrics: State<'_, Arc<Metrics>>) -> QuotaReport {
+    metrics.quota()
 }

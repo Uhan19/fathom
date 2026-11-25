@@ -1,5 +1,6 @@
 pub mod memory;
 mod procs;
+pub mod quota;
 pub mod tokens;
 
 use std::collections::{BTreeMap, HashMap};
@@ -16,10 +17,12 @@ use crate::source::Source;
 use crate::state::{AppState, now_ms};
 use crate::workers::LIVE;
 use memory::{Machine, MemorySample, Roots, TerminalRoot, WorkerRoot};
+use quota::QuotaReport;
 use tokens::{Roles, Store, TokenReport};
 
 pub const EVENT_MEMORY: &str = "metrics://memory";
 pub const EVENT_TOKENS: &str = "metrics://tokens";
+pub const EVENT_QUOTA: &str = "metrics://quota";
 const MEMORY_EVERY: Duration = Duration::from_secs(3);
 const TOKENS_EVERY: Duration = Duration::from_secs(60);
 const CLAUDE_CONFIG_ENV: &str = "CLAUDE_CONFIG_DIR";
@@ -42,18 +45,26 @@ pub struct Metrics {
     wake: Condvar,
     latest: Mutex<Option<MemorySample>>,
     latest_tokens: Mutex<Option<TokenReport>>,
+    data_dir: PathBuf,
 }
 
 impl Metrics {
     pub fn start(app: AppHandle, state: Arc<AppState>, data_dir: PathBuf) -> Arc<Metrics> {
-        let metrics = Arc::new(Metrics::default());
+        let metrics = Arc::new(Metrics {
+            data_dir,
+            ..Metrics::default()
+        });
         let sampler = Arc::clone(&metrics);
         let memory_app = app.clone();
         let memory_state = Arc::clone(&state);
         std::thread::spawn(move || sampler.run_memory(&memory_app, &memory_state));
         let reader = Arc::clone(&metrics);
-        std::thread::spawn(move || reader.run_tokens(&app, &state, &data_dir));
+        std::thread::spawn(move || reader.run_tokens(&app, &state));
         metrics
+    }
+
+    pub fn quota(&self) -> QuotaReport {
+        quota::read(&self.data_dir, now_ms())
     }
 
     pub fn tokens(&self) -> Option<TokenReport> {
@@ -90,13 +101,15 @@ impl Metrics {
         }
     }
 
-    fn run_tokens(&self, app: &AppHandle, state: &AppState, data_dir: &Path) {
+    fn run_tokens(&self, app: &AppHandle, state: &AppState) {
+        let data_dir = self.data_dir.as_path();
         let mut store: Option<Store> = None;
         let mut last_read: Option<Instant> = None;
         let mut demand = *self.demand.lock().unwrap();
         loop {
             let due = last_read.is_none_or(|at| at.elapsed() >= TOKENS_EVERY);
             if demand.dashboard && due {
+                let _ = app.emit(EVENT_QUOTA, &self.quota());
                 match read_tokens(&mut store, state, data_dir) {
                     Ok(report) => {
                         let _ = app.emit(EVENT_TOKENS, &report);
