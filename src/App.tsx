@@ -27,6 +27,7 @@ import { emptyBoardText } from "./source";
 import { moveTo } from "./columnOrder";
 import { startDrag } from "./drag";
 import { Board } from "./components/Board";
+import { Dashboard, ViewSwitch } from "./components/Dashboard";
 import { AgentFilterToggle } from "./components/AgentFilterToggle";
 import { TicketSearch } from "./components/TicketSearch";
 import { boardTickets } from "./ticketSearch";
@@ -147,7 +148,6 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
       .then((u) => alive && setUpdates(u))
       .catch(() => undefined);
     api.helperStatus().then((h) => alive && setHelper(h));
-    void api.setMetricsDemand({ dashboard: false, badges: true }).catch(() => undefined);
     return () => {
       alive = false;
       unlisten.forEach((p) => void p.then((fn) => fn()));
@@ -321,8 +321,10 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
 
   const cards = view?.cards ?? [];
   const counts = rowCounts(cards);
+  const tab = settings?.view ?? "board";
+  const onDashboard = tab === "dashboard";
   const selected = cards.find((c) => c.id === selectedId) ?? null;
-  const detailShown = selected !== null && appearance !== null;
+  const detailShown = selected !== null && appearance !== null && !onDashboard;
 
   const changeColumn = (id: number, change: { width?: number; collapsed?: boolean }) => {
     setView((v) => v && { ...v, columns: v.columns.map((c) => (c.id === id ? { ...c, ...change } : c)) });
@@ -368,6 +370,11 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   const overlay: Overlay = { places: view?.places ?? [], requests: view?.requests ?? [] };
   const waits = view?.waits ?? NO_WAITS;
   const workerByTask = useMemo(() => Object.fromEntries(workers.map((w) => [w.taskId, w])) as Record<string, Worker>, [workers]);
+  const settingsLoaded = settings !== null;
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    void api.setMetricsDemand({ dashboard: onDashboard, badges: !onDashboard }).catch(() => undefined);
+  }, [settingsLoaded, onDashboard]);
   const memoryBadgeMb = settings?.memoryBadgeMb;
   const badges = useMemo(() => (memoryBadgeMb ? badgesByTask(memory, memoryBadgeMb) : {}), [memory, memoryBadgeMb]);
   const watchedWorker = watched ? workers.find((w) => w.terminal === watched.terminal) : undefined;
@@ -466,7 +473,14 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
     <div className="app" data-part="app" ref={appRef}>
       <header className="top" data-part="header" inert={detailAsOverlay}>
         <Brand />
-        <TicketSearch tickets={tickets} onOpen={openCard} />
+        <ViewSwitch view={tab} onChange={(view) => changeWindow({ view })} />
+        <TicketSearch
+          tickets={tickets}
+          onOpen={(id) => {
+            if (onDashboard) changeWindow({ view: "board" });
+            openCard(id);
+          }}
+        />
         <span className="count" data-part="count" data-kind="surface">
           <span className="count-label" data-part="count-label">
             <span className="count-lead" data-part="count-lead">{shownLook.text.surfaceLead}</span>surface
@@ -538,7 +552,8 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
       )}
       <main className="main" data-part="main" ref={mainRef}>
         <div className="board-column" data-part="board-column" ref={boardColumnRef} inert={detailAsOverlay}>
-          {(focus.length > 0 || projectFilter.length > 0 || agentFilter !== "all") && (
+          {onDashboard && <Dashboard mac={MAC} />}
+          {!onDashboard && (focus.length > 0 || projectFilter.length > 0 || agentFilter !== "all") && (
             <div className="filter-strip" data-part="filter-strip" role="status">
               {focus.length > 0 && (
                 <div className="filter-part" data-part="filter-part">
@@ -566,7 +581,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
               )}
             </div>
           )}
-          {view ? (
+          {onDashboard ? null : view ? (
             view.columns.length > 0 ? (
               <Board
                 cards={cards}

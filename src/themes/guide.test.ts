@@ -9,6 +9,7 @@ import { Board } from "../components/Board";
 import { BosunDrawer } from "../components/BosunDrawer";
 import { CardDetail } from "../components/CardDetail";
 import { ChatPanel } from "../components/ChatPanel";
+import { Dashboard } from "../components/Dashboard";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { NO_LINKING } from "../links";
 import { FIXTURE_COLUMNS, FIXTURE_CARDS, FIXTURE_REQUESTS, FIXTURE_TERMINALS, FIXTURE_WAITS, FIXTURE_WORKERS, fixtureMemory, fixtureUpdates } from "../preview/fixture";
@@ -52,6 +53,7 @@ const settings: Settings = {
   linearWorkspace: "reef-co",
   ticketPrefixes: ["ATL"],
   memoryBadgeMb: 1024,
+  view: "board",
 };
 
 const board = (collapsedRows: RowKey[]) =>
@@ -85,6 +87,7 @@ const board = (collapsedRows: RowKey[]) =>
 
 const VIEWS: ReactElement[] = [
   createElement(App),
+  createElement(Dashboard, { mac: true }),
   board(["landed"]),
   createElement(CardDetail, {
     card: FIXTURE_CARDS[2],

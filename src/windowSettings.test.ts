@@ -29,6 +29,7 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
   linearWorkspace: "",
   ticketPrefixes: [],
   memoryBadgeMb: 1024,
+  view: "board",
   ...over,
 });
 

@@ -130,6 +130,7 @@ let settings: Settings = {
   linearWorkspace: params.has("nolinear") ? "" : "reef-co",
   ticketPrefixes: params.has("nolinear") ? [] : ["ATL", "OPS"],
   memoryBadgeMb: 1024,
+  view: params.get("view") === "dashboard" ? "dashboard" : "board",
 };
 
 const openChatTerminal = (agent: AgentKey) => {

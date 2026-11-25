@@ -41,6 +41,7 @@ const KEY_SHORTCUTS: &str = "shortcuts";
 const KEY_LINEAR_WORKSPACE: &str = "linearWorkspace";
 const KEY_TICKET_PREFIXES: &str = "ticketPrefixes";
 const KEY_MEMORY_BADGE_MB: &str = "memoryBadgeMb";
+const KEY_VIEW: &str = "view";
 const LINEAR_HOST: &str = "linear.app/";
 const MAX_PREFIX_LEN: usize = 10;
 
@@ -93,6 +94,14 @@ pub enum AgentFilter {
     WithActiveAgent,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum View {
+    #[default]
+    Board,
+    Dashboard,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Surface {
@@ -136,6 +145,8 @@ pub struct Settings {
     pub ticket_prefixes: Vec<String>,
     #[serde(default = "memory_badge_mb")]
     pub memory_badge_mb: u32,
+    #[serde(default)]
+    pub view: View,
 }
 
 fn memory_badge_mb() -> u32 {
@@ -176,6 +187,7 @@ pub struct WindowChange {
     pub chat_open: Option<bool>,
     pub chat_width: Option<u32>,
     pub detail_width: Option<u32>,
+    pub view: Option<View>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -384,6 +396,10 @@ pub fn load(db: &Db) -> Result<Settings, String> {
             .and_then(|v| ticket_prefixes(&v).ok())
             .unwrap_or_default(),
         memory_badge_mb: width(KEY_MEMORY_BADGE_MB, &MEMORY_BADGE_MB),
+        view: stored
+            .get(KEY_VIEW)
+            .and_then(|key| serde_json::from_value(json!(key)).ok())
+            .unwrap_or_default(),
     })
 }
 
@@ -396,6 +412,7 @@ pub fn store(db: &Db, next: &Settings) -> Result<Settings, String> {
     let shortcuts = serde_json::to_string(&next.shortcuts).map_err(|e| e.to_string())?;
     let agent_filter = serde_json::to_value(next.agent_filter).map_err(|e| e.to_string())?;
     let focus = serde_json::to_string(&next.focus).map_err(|e| e.to_string())?;
+    let view = serde_json::to_value(next.view).map_err(|e| e.to_string())?;
     let pairs = [
         (KEY_HOME, next.home.trim().to_string()),
         (KEY_LABEL, next.terminal_label.trim().to_string()),
@@ -419,6 +436,7 @@ pub fn store(db: &Db, next: &Settings) -> Result<Settings, String> {
         (KEY_LINEAR_WORKSPACE, workspace),
         (KEY_TICKET_PREFIXES, prefixes),
         (KEY_MEMORY_BADGE_MB, next.memory_badge_mb.to_string()),
+        (KEY_VIEW, view.as_str().unwrap_or_default().to_string()),
         (
             KEY_AGENT_FILTER,
             agent_filter.as_str().unwrap_or_default().to_string(),
@@ -446,6 +464,7 @@ pub fn change_window(db: &Db, change: &WindowChange) -> Result<Settings, String>
         s.chat_open = change.chat_open.unwrap_or(s.chat_open);
         s.chat_width = change.chat_width.unwrap_or(s.chat_width);
         s.detail_width = change.detail_width.unwrap_or(s.detail_width);
+        s.view = change.view.unwrap_or(s.view);
         Ok(())
     })
 }
@@ -1005,6 +1024,20 @@ mod tests {
             assert!(check_shortcuts(defaults).is_ok(), "{platform}");
             assert!(defaults.named().iter().all(|(_, c)| is_shortcut(c)));
         }
+    }
+
+    #[test]
+    fn the_open_view_starts_on_the_board_and_is_remembered() {
+        let (_dir, db) = fresh();
+        assert_eq!(load(&db).unwrap().view, View::Board);
+        let change = WindowChange {
+            view: Some(View::Dashboard),
+            ..WindowChange::default()
+        };
+        assert_eq!(change_window(&db, &change).unwrap().view, View::Dashboard);
+        assert_eq!(load(&db).unwrap().view, View::Dashboard);
+        db.set_setting(KEY_VIEW, "sideways").unwrap();
+        assert_eq!(load(&db).unwrap().view, View::Board);
     }
 
     #[test]

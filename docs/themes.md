@@ -122,7 +122,7 @@ Select named parts, never Fathom's class names or ids, which may change in any r
 - `:root[data-mode="dark"]` holds dark mode, `:root[data-mode="light"]` light mode.
 - Element selectors (`body`, `button`, `svg`, `dialog`), pseudo-classes and pseudo-elements are fine.
 
-The main regions are `app`, `header`, `main`, `board-column`, `board-scroll`, `board`, `column-heads`, `row`, `cell`, `card`, `detail`, `chat-wrap`, `chat`, `bosun` (the helper drawer) and `settings-dialog`.
+The main regions are `app`, `header`, `main`, `board-column`, `board-scroll`, `board`, `column-heads`, `row`, `cell`, `card`, `detail`, `chat-wrap`, `chat`, `bosun` (the helper drawer), `settings-dialog` and `dashboard` (the Dashboard tab, which takes the board's place).
 
 ### Tokens
 
@@ -141,7 +141,7 @@ Fathom turns theme animations off when the system asks for reduced motion.
 
 ## The check
 
-`fathom theme check <folder>` renders an invented sample board with the theme, in every mode the theme has, at 1600 by 1000 and at the smallest window, 960 by 600.
+`fathom theme check <folder>` renders an invented sample board and Dashboard tab with the theme, in every mode the theme has, at 1600 by 1000 and at the smallest window, 960 by 600.
 It compares each view with Nautical on the same sample, control by control:
 
 - every control is present, visible (at least 4 pixels, opacity at least 0.3), reachable (a click at its middle reaches it) and labelled (it has a name, and its text still shows Nautical's label);
@@ -169,7 +169,7 @@ The problems themselves come from `fathom theme check <folder>` or the theme's `
 
 ## Shots
 
-`fathom theme shot <folder> [--mode light|dark] [--size desktop|min]` renders the invented sample board with the theme and writes PNG screenshots of the board, a card's detail, Settings and the chat with the helper drawer into `<folder>/.shots/`.
+`fathom theme shot <folder> [--mode light|dark] [--size desktop|min]` renders the invented sample board with the theme and writes PNG screenshots of the board, a card's detail, Settings, the chat with the helper drawer and the Dashboard tab into `<folder>/.shots/`.
 It never shows the real board, so no real task, terminal or name leaves the computer.
 
 The program is `/Applications/Fathom.app/Contents/MacOS/fathom` on macOS and `fathom` on Linux.
@@ -196,7 +196,7 @@ chat-status chat-wrap chip chips col-handle column-add column-add-head column-gh
 column-heads column-heads-label column-name column-name-input column-slot column-total composer
 composer-box composer-field composer-foot composer-hint composer-recipient composer-to
 composer-to-label confirm confirm-foot confirm-move confirm-name count count-badge count-label
-count-lead count-value data-line detail detail-agent detail-head detail-meta detail-note detail-scrim
+count-lead count-value dash-head dash-lead dash-title dashboard data-line detail detail-agent detail-head detail-meta detail-note detail-scrim
 detail-scroll detail-send detail-tab detail-tab-sailor detail-tabs detail-title detail-title-row
 drop-slot error-text fact facts field field-note field-pair file-actions file-glyph file-group
 file-list file-main file-meta file-name file-preview file-row file-text film-cell film-label
@@ -208,23 +208,23 @@ link-sources main mark markdown matrix-cell matrix-grid matrix-head matrix-state
 mini-button moment moment-dot moment-head moment-state moment-text moment-time more-link move
 move-actions muted muted-small ok-text opener opener-folder panel-handle path-link phrase picker
 picker-item picker-list picker-meta picker-name picker-reason pill pr-checks pr-line pr-state
-preview-head preview-image preview-name preview-text prose quiet-note rec-tag recipient-sailor result
-result-foot result-points result-prs result-watch result-watch-head result-watch-text rich-text row
-row-count row-label row-name row-names row-toggle sailor sailor-art sailor-visor sech sech-note seg
-seg-option segmented segmented-option segmented-thumb send-field send-note send-row settings-body
-settings-dialog settings-foot settings-head settings-legend settings-section settings-title
-shortcut-empty shortcut-key shortcut-name shortcut-note shortcut-row shortcut-tools shortcuts
-shot-axes shot-badge shot-badges shot-cell shot-cell-label shot-expand shot-lead shot-lead-frame
-shot-lead-img shot-missing shot-pending shot-scale shot-strip shot-thumb-img spacer switch
-switch-knob switch-track tab tab-close tab-count tab-empty tab-label tab-pane tab-strip terminal-chip
-terminal-host terminal-scroll text-input theme-actions ticket-search ticket-search-empty
-ticket-search-field ticket-search-item ticket-search-list ticket-search-ref ticket-search-title
-timeline toggle-text viewer viewer-bar viewer-body viewer-count viewer-file viewer-film viewer-frame
-viewer-half viewer-img viewer-knob viewer-matrix viewer-scale viewer-side viewer-side-panel
-viewer-slider viewer-slider-top viewer-split viewer-stage viewer-task viewer-title vname wait-avatar
-wait-box wait-group wait-group-head wait-kind wait-meta wait-more wait-names wait-need wait-people
-wait-said wait-tag wait-what wait-who watch watch-backdrop watch-head watch-sailor watch-status
-watch-title
+preview-head preview-image preview-name preview-text prose quiet-note rec-tag recipient-sailor
+result result-foot result-points result-prs result-watch result-watch-head result-watch-text
+rich-text row row-count row-label row-name row-names row-toggle sailor sailor-art sailor-visor sech
+sech-note seg seg-option segmented segmented-option segmented-thumb send-field send-note send-row
+settings-body settings-dialog settings-foot settings-head settings-legend settings-section
+settings-title shortcut-empty shortcut-key shortcut-name shortcut-note shortcut-row shortcut-tools
+shortcuts shot-axes shot-badge shot-badges shot-cell shot-cell-label shot-expand shot-lead
+shot-lead-frame shot-lead-img shot-missing shot-pending shot-scale shot-strip shot-thumb-img spacer
+switch switch-knob switch-track tab tab-close tab-count tab-empty tab-label tab-pane tab-strip
+terminal-chip terminal-host terminal-scroll text-input theme-actions ticket-search
+ticket-search-empty ticket-search-field ticket-search-item ticket-search-list ticket-search-ref
+ticket-search-title timeline toggle-text view-switch view-tab viewer viewer-bar viewer-body
+viewer-count viewer-file viewer-film viewer-frame viewer-half viewer-img viewer-knob viewer-matrix
+viewer-scale viewer-side viewer-side-panel viewer-slider viewer-slider-top viewer-split viewer-stage
+viewer-task viewer-title vname wait-avatar wait-box wait-group wait-group-head wait-kind wait-meta
+wait-more wait-names wait-need wait-people wait-said wait-tag wait-what wait-who watch
+watch-backdrop watch-head watch-sailor watch-status watch-title
 ```
 
 ### Control ids
@@ -249,10 +249,10 @@ settings-terminal-label settings-theme settings-theme-duplicate settings-themes-
 settings-ticket-prefixes shell-close-tab shell-reattach shell-retry shortcut-clear shortcut-record
 shortcut-reset shot-all shot-expand shot-open shot-phase shot-phase-option shot-state shot-theme
 shot-theme-option shot-width shot-width-option show-all-links show-all-projects show-every-card
-terminal-tab terminal-tab-close ticket-search ticket-search-result toggle-dark-mode viewer-cell
-viewer-compare viewer-compare-option viewer-phase viewer-phase-option viewer-split viewer-theme
-viewer-theme-option viewer-variant viewer-width viewer-width-option viewer-zoom wait-link
-worker-reattach worker-retry
+terminal-tab terminal-tab-close ticket-search ticket-search-result toggle-dark-mode view-board
+view-dashboard viewer-cell viewer-compare viewer-compare-option viewer-phase viewer-phase-option
+viewer-split viewer-theme viewer-theme-option viewer-variant viewer-width viewer-width-option
+viewer-zoom wait-link worker-reattach worker-retry
 ```
 
 ### Token names
@@ -261,7 +261,7 @@ worker-reattach worker-retry
 --accent --accent-hover --accent-ink --after-bg --backdrop --badge-bg --badge-hover-bg --badge-ink
 --before-bg --board-scale --body-font --brand-ink --card-bg --card-ink --card-ink-2 --card-line
 --card-muted --card-shadow --chat-bg --chip-bg --collapsed-width --count-bg --count-ink --ctrl-bg
---ctrl-hover --ctrl-ink --ctrl-line --danger --danger-hover --danger-ink --drop-bg --drop-line
+--ctrl-hover --ctrl-ink --ctrl-line --danger --danger-hover --danger-ink --dash-bg --drop-bg --drop-line
 --drop-target-bg --error-ink --fail-bg --fail-line --fail-mark --field-bg --field-disabled
 --field-ink --field-line --field-placeholder --focus-glow --focus-ring --folded-ink --handle-bg
 --handle-grip --handle-hover --hazard-gap --hazard-stripe --header-bg --header-blue

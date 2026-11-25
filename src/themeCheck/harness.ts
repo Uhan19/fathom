@@ -147,6 +147,9 @@ const click = async (frame: Frame, selector: string, done?: string, gone?: strin
 const DETAIL = '[data-part="detail"]';
 const DRAWER_OPEN = '[data-part="bosun"]:not([data-state~="closed"])';
 const SETTINGS = '[data-part="settings-dialog"][open]';
+const DASHBOARD = '[data-part="dashboard"]';
+
+const openDashboard = (frame: Frame) => click(frame, '[data-control="view-dashboard"]', DASHBOARD);
 
 const openCard = (frame: Frame) => click(frame, '[data-part="row"][data-kind="surface"] [data-control="card-open"]', DETAIL);
 
@@ -188,6 +191,9 @@ async function scanAll(frame: Frame): Promise<ViewScan[]> {
   const dialog = doc.querySelector(SETTINGS);
   if (dialog) scans.push(await look(frame, "settings", dialog));
   await click(frame, '[data-control="settings-cancel"]', undefined, SETTINGS);
+  await openDashboard(frame);
+  if (doc.querySelector(DASHBOARD)) scans.push(await look(frame, "dashboard", doc.querySelector('[data-part="app"]')!));
+  await click(frame, '[data-control="view-board"]', '[data-part="board"]', DASHBOARD);
   return scans;
 }
 
@@ -254,6 +260,7 @@ async function showView(frame: Frame, view: string) {
     if (tab) await click(frame, `[data-control="detail-tab"][data-key="${tab}"]`, `[data-control="detail-tab"][data-key="${tab}"][aria-selected="true"]`);
   } else if (view === "helper" || view === "chat") await click(frame, '[data-control="helper-open"]', DRAWER_OPEN);
   else if (view === "settings") await click(frame, '[data-control="open-settings"]', SETTINGS);
+  else if (view === "dashboard") await openDashboard(frame);
 }
 
 async function proveFindings(findings: Finding[], run: Run, params: Record<string, string>) {
@@ -321,6 +328,9 @@ async function shotRun(run: Run): Promise<string[]> {
   frame = await loadFrame(params);
   await click(frame, '[data-control="helper-open"]', DRAWER_OPEN);
   await take("chat");
+  frame = await loadFrame(params);
+  await openDashboard(frame);
+  await take("dashboard");
   return shots;
 }
 

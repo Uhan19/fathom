@@ -240,7 +240,10 @@ export interface Settings {
   linearWorkspace: string;
   ticketPrefixes: string[];
   memoryBadgeMb: number;
+  view: Tab;
 }
+
+export type Tab = "board" | "dashboard";
 
 export type Pressure = "normal" | "warning" | "critical";
 export type GroupKind = "fathom" | "orchestrator" | "worker" | "docker";
@@ -284,6 +287,7 @@ export interface WindowChange {
   chatOpen?: boolean;
   chatWidth?: number;
   detailWidth?: number;
+  view?: Tab;
 }
 
 export type SignIn = "signedIn" | "signedOut" | "unknown";

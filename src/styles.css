@@ -221,6 +221,7 @@
   --term-bright-magenta: #a21caf;
   --term-bright-cyan: #0891b2;
   --term-bright-white: #c3cce0;
+  --dash-bg: #e9eef7;
   --heavy-ink: #b45309;
   --heavy-bg: #fff1dc;
   --heavy-line: #f0b25a;
@@ -336,6 +337,7 @@
   --term-bright-magenta: #e3beff;
   --term-bright-cyan: #85e6ee;
   --term-bright-white: #ffffff;
+  --dash-bg: #0b111d;
   --heavy-ink: #f5b45a;
   --heavy-bg: #3a2a12;
   --heavy-line: #a8671c;
@@ -679,8 +681,45 @@ code,
   display: flex;
   align-items: center;
   gap: calc(12px * var(--board-scale));
-  margin-right: auto;
   min-width: 0;
+}
+
+.view-switch {
+  display: flex;
+  align-self: stretch;
+  gap: 18px;
+  margin: -14px auto -14px 18px;
+}
+
+.view-tab {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 4px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--header-ink);
+  opacity: 0.72;
+  font-family: var(--heading);
+  font-size: calc(13px * var(--board-scale));
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.view-tab:hover {
+  opacity: 1;
+}
+
+.view-tab:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.view-tab[data-state~="active"] {
+  opacity: 1;
+  border-bottom-color: var(--header-rule);
 }
 
 .brand-mark {
@@ -1052,6 +1091,39 @@ code,
   .switch-knob {
     transition: none;
   }
+}
+
+.dashboard {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px 20px 48px;
+  background: var(--dash-bg);
+  color: var(--panel-ink);
+}
+
+.dash-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.dash-title {
+  margin: 0;
+  font-family: var(--heading);
+  font-size: calc(14px * var(--board-scale));
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.dash-lead {
+  font-size: calc(13.5px * var(--board-scale));
+  color: var(--muted);
 }
 
 .board-empty {
@@ -4254,6 +4326,15 @@ button.md-image {
 
   :root[data-header="rail"] .brand {
     margin-right: 0;
+  }
+
+  :root[data-header="rail"] .view-switch {
+    align-self: flex-start;
+    margin: 0;
+  }
+
+  :root[data-header="rail"] .view-tab {
+    padding: 6px 4px;
   }
 
   :root[data-header="rail"] .ticket-search {
