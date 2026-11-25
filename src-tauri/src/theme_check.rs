@@ -533,7 +533,7 @@ fn check_resize(window: tauri::WebviewWindow, width: u32, height: u32) -> Result
 
 #[tauri::command]
 fn check_baseline(session: SessionRef, mode: Mode, size: Size) -> Option<serde_json::Value> {
-    if cfg!(debug_assertions) {
+    if cfg!(dev) {
         return None;
     }
     let text = fs::read_to_string(baseline_file(&session.baselines, mode, size)).ok()?;

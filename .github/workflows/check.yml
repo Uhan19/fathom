@@ -36,6 +36,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - name: Check the fixture themes
+        timeout-minutes: 30
         run: xvfb-run -a scripts/check-fixture-themes.sh
 
   linux-packages:
