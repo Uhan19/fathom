@@ -216,6 +216,22 @@ body[data-scheme="bp5"] .why{background-image:linear-gradient(90deg,#46afff,tran
 @media (max-width:900px){.setup-grid{grid-template-columns:minmax(0,1fr);gap:32px}}
 @media (max-width:900px){.cust-grid{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:900px){.hero{grid-template-columns:minmax(0,1fr);padding-left:32px;padding-right:32px;overflow-x:clip}.mb-body{position:relative;height:372px}.mb-chat{position:absolute;top:0;right:0;bottom:0;box-shadow:-8px 0 20px -12px rgba(6,20,40,.4)}.hero .mb-chat{display:none}.foot{flex-wrap:wrap;row-gap:12px}.foot .brand{flex-basis:100%}.schemes span{display:none}}
+.log{padding:120px 0;border-top:1px solid var(--rule);background-image:linear-gradient(90deg,#46afff,transparent 30%);background-size:100% 1px;background-repeat:no-repeat}
+.log-list{list-style:none;margin:0;padding:0}
+.log-entry{display:grid;grid-template-columns:200px minmax(0,1fr);gap:56px;padding:36px 40px;border:1px solid transparent;border-top:1px dashed var(--rule)}
+.log-entry:first-child{position:relative;margin-bottom:24px;background:var(--card);border:1px solid var(--cardbd);border-radius:2px;box-shadow:inset 3px 0 #46afff,0 1px 2px rgba(10,34,54,.04),0 12px 30px -20px rgba(10,34,54,.25)}
+.log-entry:first-child::before,.log-entry:first-child::after{content:"";position:absolute;width:12px;height:12px;border:0 solid #46afff;pointer-events:none}
+.log-entry:first-child::before{top:-1px;left:-1px;border-top-width:2px;border-left-width:2px}.log-entry:first-child::after{bottom:-1px;right:-1px;border-bottom-width:2px;border-right-width:2px}
+.log-meta{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.log-meta h3{font-family:'Saira',sans-serif;font-weight:600;font-size:26px;letter-spacing:.02em}
+.log-meta h3 a{text-decoration:none}.log-meta h3 a:hover{color:var(--accent)}
+.log-meta time{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.log-entry:first-child .log-meta::after{content:"Latest";order:-1;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;padding:2px 8px;border-radius:2px;background:#f2c230;color:#111315}
+.log-feats{list-style:none;margin:0;padding:0;display:grid;gap:12px;max-width:720px}
+.log-feats li{position:relative;padding-left:22px;font-size:16px;color:var(--muted)}
+.log-feats li::before{content:"";position:absolute;left:0;top:.62em;width:7px;height:7px;background:#46afff}
+.log-feats b{color:var(--ink);font-weight:600}.log-feats a{color:var(--accent)}
+@media (max-width:900px){.log-entry{grid-template-columns:minmax(0,1fr);gap:16px;padding:28px 20px}.log-meta{flex-direction:row;flex-wrap:wrap;align-items:baseline;gap:6px 14px}}
 </style></head><body id="top" data-scheme="bp5"><header class="nav"><a class="brand" href="#top"><svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true"><path class="mk-a" d="M50.38 13.62 A26 26 0 0 0 13.62 50.38 Z" fill="#F4F1EA"/><path d="M50.38 13.62 A26 26 0 0 1 13.62 50.38 Z" fill="#C9A45C"/><path d="M51.09 12.91 L12.91 51.09" style="stroke:var(--bg)" stroke-width="2.6"/></svg><b>FATHOM</b></a><a class="l" href="#why">Why Fathom</a><a class="l" href="#how">How it works</a><a class="l" href="#customize">Customize</a><a class="l" href="#agent-setup">Agent setup</a><a class="l" href="#docs">Docs</a><a class="l" href="https://github.com/Uhan19/fathom">GitHub</a><a class="btn btn-primary" href="#download">Download</a></header><main>
 <section class="wrap hero"><div>
 <p class="eyebrow">Organize and orchestrate your agent crew</p>
@@ -290,7 +306,7 @@ body[data-scheme="bp5"] .why{background-image:linear-gradient(90deg,#46afff,tran
 <pre><code id="setup-prompt">Set up Fathom on this computer by following https://raw.githubusercontent.com/Uhan19/fathom/main/docs/<wbr>agent-setup.md</code></pre>
 <div class="setup-actions"><button class="btn btn-primary" type="button" data-copy="setup-prompt">Copy prompt</button><a class="btn" href="https://github.com/Uhan19/fathom/blob/main/docs/agent-setup.md">Read the full sheet ↗</a></div>
 </article></div></section><section id="download" class="dl">
-<div class="sec-head"><p class="eyebrow">Download</p><h2>Get Fathom</h2><p class="lede">Free and open source under the <a href="https://github.com/Uhan19/fathom/blob/main/LICENSE">MIT license</a>. Version <span data-cfg="version">[VERSION]</span>. To install by hand, use the files below, or <a href="#agent-setup">let your agent set it up</a>.</p></div>
+<div class="sec-head"><p class="eyebrow">Download</p><h2>Get Fathom</h2><p class="lede">Free and open source under the <a href="https://github.com/Uhan19/fathom/blob/main/LICENSE">MIT license</a>. Version <span data-cfg="version">[VERSION]</span> (<a href="#changelog">what’s new</a>). To install by hand, use the files below, or <a href="#agent-setup">let your agent set it up</a>.</p></div>
 <div class="dl-grid">
 <article class="dl-card primary">
 <h3>macOS</h3><p class="dl-req">macOS 13 Ventura or newer</p>
@@ -310,6 +326,51 @@ body[data-scheme="bp5"] .why{background-image:linear-gradient(90deg,#46afff,tran
 </div>
 <p class="dl-msg" role="status" aria-live="polite"></p>
 <div class="dl-prereq"><span>Install these too:</span><a href="https://herdr.dev/core/">herdr-core ↗</a><a href="https://code.claude.com/docs/en/quickstart">Claude Code ↗</a><a href="https://github.com/openai/codex">Codex ↗</a><a href="https://github.com/kunchenguid/firstmate">Firstmate ↗</a><a href="#d-need">What each one does</a></div>
+</section><section id="changelog" class="log">
+<div class="sec-head"><p class="eyebrow">Changelog</p><h2>What’s new in Fathom</h2><p class="lede">Every release and what it added, newest first. Downloads for each version are on <a href="https://github.com/Uhan19/fathom/releases">GitHub Releases</a>.</p></div>
+<!-- Newest release first: add a new release as the first entry. -->
+<ol class="log-list">
+<li class="log-entry"><div class="log-meta"><h3><a href="https://github.com/Uhan19/fathom/releases/tag/v0.4.0">v0.4.0</a></h3><time datetime="2026-11-25">Nov 25, 2026</time></div>
+<ul class="log-feats">
+<li><b>Find any task fast.</b> Type a number or a few words of a title into the search field in the header, and jump straight to that card.</li>
+<li><b>Themes that restyle everything.</b> Pick a theme in Settings to change colors, fonts and art, and even the layout: the chat on the left, the board as lanes, the header as a side rail, or card details as a pop-over.</li>
+<li><b>Themes that cannot break the app.</b> Fathom checks every theme before using it, so every control stays visible and readable, and one shortcut always brings back the built-in look.</li>
+<li><b>Bosun designs themes.</b> Ask for a new look in plain words, and Bosun builds, checks and previews it for you.</li>
+<li><b>Fits narrow windows.</b> The chat and the side card details shrink to fit a small window, and Escape closes the side card details.</li>
+<li><b>See your version.</b> The Settings footer shows which release you are running.</li>
+<li><b>Ready for a fresh Firstmate.</b> A new Firstmate home with no tasks yet shows an empty board instead of an error, and the setup sheet recommends Firstmate and installs the tools it needs.</li>
+<li><b>A tour of Fathom.</b> A new <a href="https://github.com/Uhan19/fathom/blob/main/docs/features.md">feature tour</a> explains what Fathom does, with a technical map for agents working on its code.</li>
+</ul></li>
+<li class="log-entry"><div class="log-meta"><h3><a href="https://github.com/Uhan19/fathom/releases/tag/v0.3.0">v0.3.0</a></h3><time datetime="2026-11-24">Nov 24, 2026</time></div>
+<ul class="log-feats">
+<li><b>A number for every task.</b> Each card shows a short number such as #42 that never changes, on the board and in its details.</li>
+<li><b>Focus on a few tasks.</b> Ask Bosun to show only the tasks you name by number, and clear the focus to get your filters back.</li>
+<li><b>See who you are waiting on.</b> With Firstmate, a card that waits on someone shows their name, its Overview says what it waits for, and pull request reviews update live from GitHub.</li>
+</ul></li>
+<li class="log-entry"><div class="log-meta"><h3><a href="https://github.com/Uhan19/fathom/releases/tag/v0.2.0">v0.2.0</a></h3><time datetime="2026-11-22">Nov 22, 2026</time></div>
+<ul class="log-feats">
+<li><b>Talk to a card’s worker.</b> While a card has a worker, its details gain an Agent tab with the worker’s live terminal and a box to message it.</li>
+<li><b>Result first.</b> A card’s Overview opens with what the task produced: the report’s headline, its pull requests, or a decision with options to pick from, and its screenshots open in a full-window viewer.</li>
+<li><b>A tidier header.</b> Expand all and Dark mode are switches, the agent filter is a three-way toggle, and the chat hides from the caret in its own tab strip.</li>
+<li><b>The board stays in view.</b> Widening the chat while card details are open keeps at least one whole board column on screen.</li>
+<li><b>Set up by your agent.</b> Paste one line into Claude Code or Codex, and it installs Fathom and what it needs by following the new setup sheet.</li>
+<li><b>Better on Linux.</b> The .deb and AppImage carry every icon size, and the setup sheet can add the AppImage to your app menu.</li>
+<li><b>Open source.</b> Fathom is free under the MIT license.</li>
+</ul></li>
+<li class="log-entry"><div class="log-meta"><h3><a href="https://github.com/Uhan19/fathom/releases/tag/v0.1.0">v0.1.0</a></h3><time datetime="2026-11-20">Nov 20, 2026</time></div>
+<ul class="log-feats">
+<li><b>Your agents’ work on one board.</b> Tasks sort into five rows, Surface, Shallows, Deep, Seabed and Landed, with a column per project, and the board updates live.</li>
+<li><b>Your agent beside the board.</b> The chat panel is your agent’s live terminal, and opens Claude Code, Codex or Firstmate for you when none is running. Shells open as tabs beside it.</li>
+<li><b>Steer by dragging.</b> Drag cards to reorder them, or drag one to another row to ask the agent to move the task.</li>
+<li><b>Sailors for working agents.</b> A sailor on a card shows whether its agent is working or idle, and a click opens that agent’s live terminal. Cards with an update you have not read light up.</li>
+<li><b>Card details.</b> Overview, Links, Files and Activity tabs, with live pull request status and file previews.</li>
+<li><b>Shape the board.</b> Add, delete, rename, reorder, resize and collapse columns, collapse rows, and filter cards by agent.</li>
+<li><b>Fathom’s own backlog.</b> Without Firstmate, any agent keeps its tasks on the board through Fathom’s MCP server, and can start Claude Code workers on them.</li>
+<li><b>Meet Bosun.</b> A helper under the board that changes Fathom when you ask in plain words.</li>
+<li><b>Make it yours.</b> Light and dark themes, chat and board fonts and sizes, and your own shortcuts.</li>
+<li><b>macOS and Linux.</b> Download a .dmg for macOS, or a .deb or AppImage for Linux.</li>
+</ul></li>
+</ol>
 </section><section id="docs" class="docs">
 <div class="sec-head"><p class="eyebrow">Docs</p><h2>Set up and use Fathom</h2></div>
 <div class="docs-grid">
@@ -379,7 +440,7 @@ claude mcp add --scope user fathom -- /usr/bin/fathom --mcp</code></pre>
 <table><tbody><tr><td><kbd>⌘J</kbd> / <kbd>Ctrl+J</kbd></td><td>Open or close Bosun</td></tr><tr><td><kbd>Esc</kbd></td><td>Close a worker’s terminal or a card’s details</td></tr></tbody></table></article>
 </div>
 </div>
-</section></div></main><footer class="foot wrap"><a class="brand" href="#top"><svg width="20" height="20" viewBox="0 0 64 64" aria-hidden="true"><path class="mk-a" d="M50.38 13.62 A26 26 0 0 0 13.62 50.38 Z" fill="#F4F1EA"/><path d="M50.38 13.62 A26 26 0 0 1 13.62 50.38 Z" fill="#C9A45C"/><path d="M51.09 12.91 L12.91 51.09" style="stroke:var(--bg)" stroke-width="2.6"/></svg><b>FATHOM</b></a><span>Your agents do the work. Fathom keeps track.</span><a href="https://github.com/Uhan19/fathom">GitHub</a><a href="#docs">Docs</a></footer><script>
+</section></div></main><footer class="foot wrap"><a class="brand" href="#top"><svg width="20" height="20" viewBox="0 0 64 64" aria-hidden="true"><path class="mk-a" d="M50.38 13.62 A26 26 0 0 0 13.62 50.38 Z" fill="#F4F1EA"/><path d="M50.38 13.62 A26 26 0 0 1 13.62 50.38 Z" fill="#C9A45C"/><path d="M51.09 12.91 L12.91 51.09" style="stroke:var(--bg)" stroke-width="2.6"/></svg><b>FATHOM</b></a><span>Your agents do the work. Fathom keeps track.</span><a href="https://github.com/Uhan19/fathom">GitHub</a><a href="#docs">Docs</a><a href="#changelog">Changelog</a></footer><script>
 const FATHOM_LINKS = { version: "0.4.0", mac: "https://github.com/Uhan19/fathom/releases/latest/download/Fathom_universal.dmg", deb: "https://github.com/Uhan19/fathom/releases/latest/download/Fathom_amd64.deb", appimage: "https://github.com/Uhan19/fathom/releases/latest/download/Fathom_amd64.AppImage" }; // set these when the files are hosted
 (function(){
   document.querySelectorAll('[data-cfg="version"]').forEach(function(el){ if (FATHOM_LINKS.version) el.textContent = FATHOM_LINKS.version; });

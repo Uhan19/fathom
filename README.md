@@ -163,6 +163,7 @@ The names carry no version, so `https://github.com/Uhan19/fathom/releases/latest
 The `Release` workflow then checks that the tag matches the version in `src-tauri/tauri.conf.json` and `package.json` and stops if it does not.
 It builds the Linux packages on Ubuntu 22.04 and the universal disk image on macOS, and creates the release from the tag with generated notes.
 The same workflow runs without publishing for pull requests that change it and when started by hand from the Actions tab, and leaves the three files in a `release-assets` artifact.
+Once the release is published, add it as the first entry of the changelog in `site/index.html`, with its date and what it added.
 
 The disk image has an ad-hoc signature.
 When the repository has the secrets `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD` and `APPLE_SIGNING_IDENTITY`, the workflow signs with that Developer ID certificate instead.
