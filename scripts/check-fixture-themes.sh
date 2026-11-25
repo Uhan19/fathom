@@ -5,33 +5,26 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 fixtures="$root/fixtures/themes"
 binary="$root/src-tauri/target/debug/fathom"
-dev_url="http://localhost:1420/themecheck.html"
+check_limit=420
 passing=(plain phosphor switchboard riso painted-text)
 failing=(hostile-hidden hostile-white:contrast hostile-cover hostile-paint:label)
 
-cargo build --manifest-path "$root/src-tauri/Cargo.toml"
+pnpm --dir "$root" vite:build
+cargo build --manifest-path "$root/src-tauri/Cargo.toml" --features tauri/custom-protocol
 
 work="$(mktemp -d)"
-server=""
-cleanup() {
-  if [ -n "$server" ]; then kill "$server" 2>/dev/null || true; fi
-  rm -rf "${work:?}"
-}
-trap cleanup EXIT
-
-if ! curl -sf "$dev_url" >/dev/null; then
-  "$root/node_modules/.bin/vite" --config "$root/vite.config.ts" --port 1420 --strictPort "$root" >"$work/vite.log" 2>&1 &
-  server=$!
-  for _ in $(seq 1 60); do
-    curl -sf "$dev_url" >/dev/null && break
-    sleep 1
-  done
-fi
+trap 'rm -rf "${work:?}"' EXIT
 
 check() {
   local id="$1"
   cp -R "$fixtures/$id" "$work/$id"
-  "$binary" theme check "$work/$id" --json --db "$work/fathom.sqlite" >"$work/$id.json" 2>"$work/$id.log" || true
+  local started=$SECONDS code=0
+  timeout --foreground --kill-after=10 "$check_limit" "$binary" theme check "$work/$id" --json --db "$work/fathom.sqlite" >"$work/$id.json" 2>"$work/$id.log" || code=$?
+  echo "$id: checked in $((SECONDS - started))s"
+  if [ "$code" -eq 124 ] || [ "$code" -eq 137 ]; then
+    echo "$id: the theme check did not finish within ${check_limit}s" >&2
+    return 1
+  fi
 }
 
 verdict() {
@@ -49,13 +42,11 @@ verdict() {
 
 status=0
 for id in "${passing[@]}"; do
-  check "$id"
-  verdict "$work/$id.json" pass || { cat "$work/$id.log"; status=1; }
+  check "$id" && verdict "$work/$id.json" pass || { cat "$work/$id.log"; status=1; }
 done
 for entry in "${failing[@]}"; do
   id="${entry%%:*}"
   problem="${entry#"$id"}"
-  check "$id"
-  verdict "$work/$id.json" fail "${problem#:}" || { cat "$work/$id.log"; status=1; }
+  check "$id" && verdict "$work/$id.json" fail "${problem#:}" || { cat "$work/$id.log"; status=1; }
 done
 exit "$status"
