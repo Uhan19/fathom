@@ -262,6 +262,13 @@ export interface MemoryGroup {
   terminal: string | null;
   bytes: number;
   parts: MemoryPart[];
+  session: AgentSession | null;
+}
+
+export interface AgentSession {
+  contextTokens: number;
+  lastReplyMs: number;
+  warmMs: number;
 }
 
 export interface MemorySample {
@@ -275,6 +282,8 @@ export interface MemorySample {
   groups: MemoryGroup[];
   rest: { bytes: number; apps: { name: string; bytes: number }[] };
 }
+
+export type StopOutcome = { kind: "asked"; noteId: string } | { kind: "stopped" };
 
 export interface MetricsDemand {
   dashboard: boolean;
@@ -429,6 +438,7 @@ export const api = {
   launcherFolders: () => invoke<LauncherFolders>("launcher_folders"),
   setMetricsDemand: (demand: MetricsDemand) => invoke<void>("set_metrics_demand", { demand }),
   memorySample: () => invoke<MemorySample>("memory_sample"),
+  stopWorker: (taskId: string, title: string) => invoke<StopOutcome>("stop_worker", { taskId, title }),
   rememberColumnFolder: (column: number, folder: string) => invoke<void>("remember_column_folder", { column, folder }),
 };
 

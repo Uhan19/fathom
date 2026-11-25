@@ -115,7 +115,7 @@ Select named parts, never Fathom's class names or ids, which may change in any r
 
 - `[data-part="card"]` is a kind of element, such as a card, a column head or the header.
 - `[data-kind="surface"]` is a variant that does not change, such as a card's or row's stage (`surface`, `shallows`, `deep`, `seabed`, `landed`), a button's style (`header`, `danger`, `dark`) or a tag's kind (`asked`, `failed`, `answered`, `reported`).
-- `[data-state~="selected"]` is a state that changes, such as `selected`, `unseen`, `lifted`, `collapsed`, `closed`, `working`, `idle`, `fill`, `targeted`, `active`, `measured` (a card showing its worker's memory) or `high` (a memory badge at the Settings threshold or above).
+- `[data-state~="selected"]` is a state that changes, such as `selected`, `unseen`, `lifted`, `collapsed`, `closed`, `working`, `idle`, `fill`, `targeted`, `active`, `measured` (a card showing its worker's memory), `high` (a memory badge at the Settings threshold or above), and on the Dashboard's memory map `heavy` (a block at that threshold or above), `idle` (a worker past its prompt cache that still holds memory) `roomy` (a block wide enough for larger text) and `single` (the Selected card alone, with no idle worker beside it).
 - ARIA attributes carry the rest: `[aria-checked="true"]`, `[aria-selected="true"]`, `[aria-expanded="false"]`, `[aria-pressed="true"]` and `:disabled`.
 - `[data-control="open-settings"]` is one control, by a stable id (list below).
   Repeated controls share an id; `data-column`, `data-row`, `data-id` and `data-key` on them or their parents tell them apart.
@@ -190,41 +190,41 @@ back-link banner bar beacon blocked-by board board-column board-empty board-scro
 bosun-command bosun-dot bosun-examples bosun-handle bosun-head bosun-hint bosun-rail bosun-screen
 bosun-summary bosun-title brand brand-mark brand-mark-gap brand-name button call-bar call-box
 call-key call-letter call-opt call-pick call-progress call-q call-radio call-rec call-row
-call-row-text card card-body card-ghost card-name card-note card-number card-open card-ref cell chat
+call-row-text card card-body card-ghost card-head card-name card-note card-number card-open card-ref cell chat
 chat-actions chat-body chat-ended chat-head chat-hide chat-rail chat-rail-caret chat-rail-name
 chat-status chat-wrap chip chips col-handle column-add column-add-head column-ghost column-head
 column-heads column-heads-label column-name column-name-input column-slot column-total composer
 composer-box composer-field composer-foot composer-hint composer-recipient composer-to
 composer-to-label confirm confirm-foot confirm-move confirm-name count count-badge count-label
-count-lead count-value dash-head dash-lead dash-title dashboard data-line detail detail-agent detail-head detail-meta detail-note detail-scrim
+count-lead count-value dash-card dash-head dash-label dash-lead dash-legend dash-muted dash-notice dash-pair dash-title dashboard data-line detail detail-agent detail-head detail-meta detail-note detail-scrim
 detail-scroll detail-send detail-tab detail-tab-sailor detail-tabs detail-title detail-title-row
 drop-slot error-text fact facts field field-note field-pair file-actions file-glyph file-group
 file-list file-main file-meta file-name file-preview file-row file-text film-cell film-label
 filter-part filter-strip font-list font-picker font-picker-head font-row font-sample header
-header-toggles herdr-dot herdr-label hold icon icon-button inline-link key-links launcher
+header-toggles heavy-note herdr-dot herdr-label hold icon icon-button idle-item idle-meta idle-name idle-tag inline-link key-links launcher
 launcher-error launcher-foot launcher-item launcher-list launcher-name launcher-note launcher-path
-launcher-section link-body link-detail link-glyph link-group link-label link-list link-row
-link-sources main mark markdown matrix-cell matrix-grid matrix-head matrix-state md-image memory-badge meta-text
+launcher-section legend-item legend-swatch legend-value link-body link-detail link-glyph link-group link-label link-list link-row
+link-sources main map-block map-cell map-label map-name map-note map-size map-tag map-tokens mark markdown matrix-cell matrix-grid matrix-head matrix-state md-image mem-figures mem-map mem-of mem-total memory-badge meta-text
 mini-button moment moment-dot moment-head moment-state moment-text moment-time more-link move
 move-actions muted muted-small ok-text opener opener-folder panel-handle path-link phrase picker
 picker-item picker-list picker-meta picker-name picker-reason pill pr-checks pr-line pr-state
-preview-head preview-image preview-name preview-text prose quiet-note rec-tag recipient-sailor
+pressure-pill preview-head preview-image preview-name preview-text proc-bar proc-fill proc-name proc-row proc-size prose quiet-note rec-tag recipient-sailor
 result result-foot result-points result-prs result-watch result-watch-head result-watch-text
 rich-text row row-count row-label row-name row-names row-toggle sailor sailor-art sailor-visor sech
-sech-note seg seg-option segmented segmented-option segmented-thumb send-field send-note send-row
+sech-note seg seg-option segmented segmented-option segmented-thumb selected-head selected-meta selected-name selected-size send-field send-note send-row
 settings-body settings-dialog settings-foot settings-head settings-legend settings-section
 settings-title shortcut-empty shortcut-key shortcut-name shortcut-note shortcut-row shortcut-tools
 shortcuts shot-axes shot-badge shot-badges shot-cell shot-cell-label shot-expand shot-lead
 shot-lead-frame shot-lead-img shot-missing shot-pending shot-scale shot-strip shot-thumb-img spacer
-switch switch-knob switch-track tab tab-close tab-count tab-empty tab-label tab-pane tab-strip
-terminal-chip terminal-host terminal-scroll text-input theme-actions ticket-search
-ticket-search-empty ticket-search-field ticket-search-item ticket-search-list ticket-search-ref
-ticket-search-title timeline toggle-text view-switch view-tab viewer viewer-bar viewer-body
-viewer-count viewer-file viewer-film viewer-frame viewer-half viewer-img viewer-knob viewer-matrix
-viewer-scale viewer-side viewer-side-panel viewer-slider viewer-slider-top viewer-split viewer-stage
-viewer-task viewer-title vname wait-avatar wait-box wait-group wait-group-head wait-kind wait-meta
-wait-more wait-names wait-need wait-people wait-said wait-tag wait-what wait-who watch
-watch-backdrop watch-head watch-sailor watch-status watch-title
+spark split-bar split-seg summary-main summary-top switch switch-knob switch-track tab tab-close
+tab-count tab-empty tab-label tab-pane tab-strip terminal-chip terminal-host terminal-scroll
+text-input theme-actions ticket-search ticket-search-empty ticket-search-field ticket-search-item
+ticket-search-list ticket-search-ref ticket-search-title timeline toggle-text view-switch view-tab
+viewer viewer-bar viewer-body viewer-count viewer-file viewer-film viewer-frame viewer-half
+viewer-img viewer-knob viewer-matrix viewer-scale viewer-side viewer-side-panel viewer-slider
+viewer-slider-top viewer-split viewer-stage viewer-task viewer-title vname wait-avatar wait-box
+wait-group wait-group-head wait-kind wait-meta wait-more wait-names wait-need wait-people wait-said
+wait-tag wait-what wait-who watch watch-backdrop watch-head watch-sailor watch-status watch-title
 ```
 
 ### Control ids
@@ -239,8 +239,8 @@ column-delete-target column-expand column-rename column-rename-input column-resi
 composer-recipient composer-send content-image content-link content-path detail-tab expand-all
 file-back file-open file-open-app file-reveal font-add font-picker-done font-remove font-search
 helper-check-again helper-close helper-copy-install helper-open helper-restart helper-retry
-helper-start helper-start-again helper-stop launcher-attach launcher-folder launcher-toggle
-link-open move-dismiss move-resend no-match-clear-focus no-match-show-every-card open-agent
+helper-start helper-start-again helper-stop idle-more launcher-attach launcher-folder launcher-toggle
+link-open map-block move-dismiss move-resend no-match-clear-focus no-match-show-every-card open-agent
 open-blocker open-report open-settings picker-terminal resize-card-panel resize-chat resize-helper
 row-toggle settings-agent-folder settings-board-font settings-board-font-size settings-cancel
 settings-chat-font settings-chat-font-size settings-close settings-export settings-hc-session
@@ -249,10 +249,10 @@ settings-terminal-label settings-theme settings-theme-duplicate settings-themes-
 settings-ticket-prefixes shell-close-tab shell-reattach shell-retry shortcut-clear shortcut-record
 shortcut-reset shot-all shot-expand shot-open shot-phase shot-phase-option shot-state shot-theme
 shot-theme-option shot-width shot-width-option show-all-links show-all-projects show-every-card
-terminal-tab terminal-tab-close ticket-search ticket-search-result toggle-dark-mode view-board
-view-dashboard viewer-cell viewer-compare viewer-compare-option viewer-phase viewer-phase-option
-viewer-split viewer-theme viewer-theme-option viewer-variant viewer-width viewer-width-option
-viewer-zoom wait-link worker-reattach worker-retry
+stop-worker stop-worker-cancel stop-worker-confirm terminal-tab terminal-tab-close ticket-search
+ticket-search-result toggle-dark-mode view-board view-dashboard viewer-cell viewer-compare
+viewer-compare-option viewer-phase viewer-phase-option viewer-split viewer-theme viewer-theme-option
+viewer-variant viewer-width viewer-width-option viewer-zoom wait-link worker-reattach worker-retry
 ```
 
 ### Token names
@@ -268,11 +268,11 @@ viewer-zoom wait-link worker-reattach worker-retry
 --header-ctrl-fill --header-ctrl-hover --header-ctrl-line --header-ink --header-muted --header-rule
 --heading --heavy-bg --heavy-ink --heavy-line --hold-bg --hold-line --hover-line --info-line --lamp --lamp-glow --lamp-ink --lane-width
 --line --link --link-hover --logo --logo-face --logo-shade --mark-landed --mark-shallows
---mark-surface --moment-tone --mono --move-bg --move-line --muted --note-bg --ok-ink --page
+--mark-surface --mem-bar --mem-bar-track --mem-docker --mem-docker-ink --mem-fathom --mem-fathom-ink --mem-hatch --mem-orchestrator --mem-orchestrator-ink --mem-rest --mem-rest-ink --mem-worker --mem-worker-ink --moment-tone --mono --move-bg --move-line --muted --note-bg --ok-ink --page
 --page-ink --panel-bg --panel-ink --panel-ink-2 --pill-deep-bg --pill-ink --pill-landed-bg
 --pill-landed-line --pill-seabed-bg --pill-shallows-bg --pill-surface-bg --pr-closed-bg
 --pr-closed-ink --pr-draft-bg --pr-draft-ink --pr-merged-bg --pr-merged-ink --pr-open-bg
---pr-open-ink --quiet-bg --quiet-hover-line --rail-width --refused-glow --row-deep --row-deep-edge
+--pr-open-ink --pressure-critical --pressure-critical-ink --pressure-ok-bg --pressure-ok-ink --quiet-bg --quiet-hover-line --rail-width --refused-glow --row-deep --row-deep-edge
 --row-hover --row-ink --row-label-width --row-landed --row-seabed --row-seabed-edge --row-shallows
 --row-shallows-edge --row-surface --sailor-badge --sailor-badge-anchor --sailor-brim --sailor-cap
 --sailor-cap-shine --sailor-coat --sailor-collar --sailor-ear --sailor-face --sailor-grille

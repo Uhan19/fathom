@@ -10,10 +10,12 @@ import { BosunDrawer } from "../components/BosunDrawer";
 import { CardDetail } from "../components/CardDetail";
 import { ChatPanel } from "../components/ChatPanel";
 import { Dashboard } from "../components/Dashboard";
+import { Machine } from "../components/Machine";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { NO_LINKING } from "../links";
 import { FIXTURE_COLUMNS, FIXTURE_CARDS, FIXTURE_REQUESTS, FIXTURE_TERMINALS, FIXTURE_WAITS, FIXTURE_WORKERS, fixtureMemory, fixtureUpdates } from "../preview/fixture";
 import { badgesByTask } from "../memory";
+import { withPoint } from "../machine";
 import { defaultShortcuts } from "../shortcuts";
 import { LookContext } from "./context";
 import { lookOf, NAUTICAL_LOOK } from "./look";
@@ -88,6 +90,17 @@ const board = (collapsedRows: RowKey[]) =>
 const VIEWS: ReactElement[] = [
   createElement(App),
   createElement(Dashboard, { mac: true }),
+  createElement(Machine, {
+    sample: { ...fixtureMemory(FIXTURE_WORKERS, 1_900_000_000_000), herdrConnected: false },
+    history: withPoint([], fixtureMemory(FIXTURE_WORKERS, 1_900_000_000_000)),
+    workers: FIXTURE_WORKERS,
+    source: "firstmate",
+    herdr: { connected: false, message: "no socket" },
+    thresholdMb: 1024,
+    mac: true,
+    stops: { "hrb-18": { kind: "failed", error: "no inbox" } },
+    onStop: ignore,
+  }),
   board(["landed"]),
   createElement(CardDetail, {
     card: FIXTURE_CARDS[2],

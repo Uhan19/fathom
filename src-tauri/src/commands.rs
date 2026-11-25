@@ -19,6 +19,7 @@ use crate::metrics::tokens::TokenReport;
 use crate::metrics::{Demand, Metrics};
 use crate::moves::Placement;
 use crate::pulls::{PrCache, PrStatus};
+use crate::requests::StopOutcome;
 use crate::settings::{AgentFilter, Settings, WindowChange};
 use crate::shell_tabs::LauncherFolders;
 use crate::source::Source;
@@ -512,6 +513,16 @@ pub async fn memory_sample(
 #[tauri::command]
 pub fn token_report(metrics: State<'_, Arc<Metrics>>) -> Option<TokenReport> {
     metrics.tokens()
+}
+
+#[tauri::command]
+pub async fn stop_worker(
+    state: AppStateRef<'_>,
+    task_id: String,
+    title: String,
+) -> Result<StopOutcome, String> {
+    let state = Arc::clone(&state);
+    blocking(move || state.stop_worker(&task_id, &title)).await
 }
 
 #[tauri::command]

@@ -171,6 +171,7 @@ pub fn run() {
             commands::memory_sample,
             commands::token_report,
             commands::quota_report,
+            commands::stop_worker,
         ])
         .build(context)
         .expect("error while building Fathom");

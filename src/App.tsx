@@ -10,6 +10,7 @@ import {
   type Column,
   type HelperStatus,
   type HerdrStatus,
+  type MemoryGroup,
   type MemorySample,
   type MoveTo,
   type Overlay,
@@ -28,6 +29,8 @@ import { moveTo } from "./columnOrder";
 import { startDrag } from "./drag";
 import { Board } from "./components/Board";
 import { Dashboard, ViewSwitch } from "./components/Dashboard";
+import { Machine, type StopState } from "./components/Machine";
+import { withPoint, type Point } from "./machine";
 import { AgentFilterToggle } from "./components/AgentFilterToggle";
 import { TicketSearch } from "./components/TicketSearch";
 import { boardTickets } from "./ticketSearch";
@@ -84,6 +87,8 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   const [chatDrag, setChatDrag] = useState<number | null>(null);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [memory, setMemory] = useState<MemorySample | null>(null);
+  const [memoryHistory, setMemoryHistory] = useState<Point[]>([]);
+  const [stops, setStops] = useState<Record<string, StopState>>({});
   const [updates, setUpdates] = useState<CardUpdates>(NO_UPDATES);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [columnError, setColumnError] = useState<string | null>(null);
@@ -129,7 +134,11 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
       events.settings((s) => alive && setSettings(s)),
       events.helper((h) => alive && setHelper(h)),
       events.themes(() => alive && setThemesChanged((n) => n + 1)),
-      events.memory((m) => alive && setMemory(m)),
+      events.memory((m) => {
+        if (!alive) return;
+        setMemory(m);
+        setMemoryHistory((h) => withPoint(h, m));
+      }),
     ];
     api
       .cachedBoard()
@@ -370,6 +379,15 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   const overlay: Overlay = { places: view?.places ?? [], requests: view?.requests ?? [] };
   const waits = view?.waits ?? NO_WAITS;
   const workerByTask = useMemo(() => Object.fromEntries(workers.map((w) => [w.taskId, w])) as Record<string, Worker>, [workers]);
+  const stopWorker = (group: MemoryGroup) => {
+    const taskId = group.taskId;
+    if (!taskId) return;
+    setStops((s) => ({ ...s, [taskId]: { kind: "sending" } }));
+    api
+      .stopWorker(taskId, group.name)
+      .then((outcome) => setStops((s) => ({ ...s, [taskId]: { kind: outcome.kind === "asked" ? "asked" : "sending" } })))
+      .catch((e) => setStops((s) => ({ ...s, [taskId]: { kind: "failed", error: errorText(e) } })));
+  };
   const settingsLoaded = settings !== null;
   useEffect(() => {
     if (!settingsLoaded) return;
@@ -552,7 +570,21 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
       )}
       <main className="main" data-part="main" ref={mainRef}>
         <div className="board-column" data-part="board-column" ref={boardColumnRef} inert={detailAsOverlay}>
-          {onDashboard && <Dashboard mac={MAC} />}
+          {onDashboard && (
+            <Dashboard mac={MAC}>
+              <Machine
+                sample={memory}
+                history={memoryHistory}
+                workers={workers}
+                source={view?.source ?? "firstmate"}
+                herdr={herdr}
+                thresholdMb={settings?.memoryBadgeMb ?? 1024}
+                mac={MAC}
+                stops={stops}
+                onStop={stopWorker}
+              />
+            </Dashboard>
+          )}
           {!onDashboard && (focus.length > 0 || projectFilter.length > 0 || agentFilter !== "all") && (
             <div className="filter-strip" data-part="filter-strip" role="status">
               {focus.length > 0 && (

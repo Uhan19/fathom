@@ -1,6 +1,7 @@
 pub mod memory;
 mod procs;
 pub mod quota;
+pub mod session;
 pub mod tokens;
 
 use std::collections::{BTreeMap, HashMap};
@@ -46,6 +47,7 @@ pub struct Metrics {
     latest: Mutex<Option<MemorySample>>,
     latest_tokens: Mutex<Option<TokenReport>>,
     data_dir: PathBuf,
+    sessions: session::Sessions,
 }
 
 impl Metrics {
@@ -80,14 +82,24 @@ impl Metrics {
         if let Some(latest) = self.latest.lock().unwrap().clone() {
             return Ok(latest);
         }
-        sample_memory(state)
+        self.sample(state)
+    }
+
+    fn sample(&self, state: &AppState) -> Result<MemorySample, String> {
+        let mut sample = sample_memory(state)?;
+        if let Some(claude) = claude_dir() {
+            for group in sample.groups.iter_mut().filter(|g| !g.agents.is_empty()) {
+                group.session = self.sessions.of(&claude, &group.agents);
+            }
+        }
+        Ok(sample)
     }
 
     fn run_memory(&self, app: &AppHandle, state: &AppState) {
         let mut demand = *self.demand.lock().unwrap();
         loop {
             if demand.dashboard || (demand.badges && !state.workers().is_empty()) {
-                match sample_memory(state) {
+                match self.sample(state) {
                     Ok(sample) => {
                         let _ = app.emit(EVENT_MEMORY, &sample);
                         *self.latest.lock().unwrap() = Some(sample);
@@ -155,11 +167,14 @@ fn read_tokens(
     Ok(report)
 }
 
-fn transcripts_root() -> Option<PathBuf> {
-    let config = std::env::var_os(CLAUDE_CONFIG_ENV)
+fn claude_dir() -> Option<PathBuf> {
+    std::env::var_os(CLAUDE_CONFIG_ENV)
         .map(PathBuf::from)
-        .or_else(|| std::env::home_dir().map(|home| home.join(CLAUDE_DIR)))?;
-    Some(config.join(TRANSCRIPTS_DIR))
+        .or_else(|| std::env::home_dir().map(|home| home.join(CLAUDE_DIR)))
+}
+
+fn transcripts_root() -> Option<PathBuf> {
+    claude_dir().map(|config| config.join(TRANSCRIPTS_DIR))
 }
 
 fn token_roles(state: &AppState, data_dir: &Path) -> Roles {

@@ -319,6 +319,9 @@ const bytes = (text: string) => [...new TextEncoder().encode(text)];
 
 mockWindows("main");
 
+const HISTORY_POINTS = 20;
+const HISTORY_STEP_MS = 3 * 60 * 1000;
+const MB = 1024 * 1024;
 const shownWorkers = () => (empty ? [] : backlog ? FIXTURE_BACKLOG_WORKERS : FIXTURE_WORKERS);
 
 let detailFiles: FileEntry[] = [];
@@ -390,8 +393,18 @@ mockIPC(
       case "workers":
         return shownWorkers();
       case "set_metrics_demand":
-        setTimeout(() => void emit("metrics://memory", fixtureMemory(shownWorkers())), 0);
+        setTimeout(() => {
+          const now = Date.now();
+          for (let i = HISTORY_POINTS; i > 0; i--) {
+            const past = fixtureMemory(shownWorkers(), now - i * HISTORY_STEP_MS);
+            void emit("metrics://memory", { ...past, used: past.used + Math.round(Math.sin(i / 3) * 400 + i * 12) * MB });
+          }
+          void emit("metrics://memory", fixtureMemory(shownWorkers(), now));
+        }, 0);
         return null;
+      case "stop_worker":
+        console.info("stop_worker", args.taskId);
+        return backlog ? { kind: "stopped" } : { kind: "asked", noteId: "n-preview" };
       case "memory_sample":
         return fixtureMemory(shownWorkers());
       case "card_updates":

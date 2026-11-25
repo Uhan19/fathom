@@ -16,6 +16,7 @@ use crate::db::{CardPlace, Column, Db, MoveRequest, MoveStatus, MoveTo, RowView,
 use crate::herdr::{self, Frame, Herdr, Notice, Terminal, View};
 use crate::launch::{self, Agent, FathomServer, Launch, LaunchError, SignIn};
 use crate::moves::{self, Placement};
+use crate::requests::{self, StopOutcome};
 use crate::settings::{self, AgentFilter, Settings, WindowChange};
 use crate::shell_path;
 use crate::shell_tabs::{self, LauncherFolders};
@@ -560,6 +561,20 @@ impl AppState {
         self.db.lock().unwrap().mark_seen(&home, card_id, mark)?;
         self.request_updates();
         Ok(())
+    }
+
+    pub fn stop_worker(&self, task_id: &str, title: &str) -> Result<StopOutcome, String> {
+        let worker = self
+            .workers()
+            .into_iter()
+            .find(|w| w.task_id == task_id)
+            .ok_or_else(|| format!("no worker is running for {task_id}"))?;
+        let outcome =
+            requests::stop_worker(&self.source(), &worker, title, now_ms(), |terminal| {
+                self.herdr.kill(terminal)
+            })?;
+        self.request_workers();
+        Ok(outcome)
     }
 
     pub fn workers(&self) -> Vec<Worker> {

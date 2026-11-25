@@ -1,5 +1,5 @@
 import { AGENTS, type AgentKey } from "../agents";
-import type { Card, Column, Detail, MemoryGroup, MemoryPart, MemorySample, MoveRequest, RowKey, ShellTab, Terminal, Waits, Worker } from "../api";
+import type { AgentSession, Card, Column, Detail, MemoryGroup, MemoryPart, MemorySample, MoveRequest, RowKey, ShellTab, Terminal, Waits, Worker } from "../api";
 import type { CardUpdates } from "../updates";
 
 type Seed = [id: string, project: string, row: RowKey, title: string, extra?: Partial<Card>];
@@ -146,7 +146,9 @@ export const FIXTURE_WORKERS: Worker[] = [
 
 const MB = 1024 * 1024;
 const part = (label: string, mb: number, processes = 1): MemoryPart => ({ label, bytes: mb * MB, processes });
-const memoryGroup = (kind: MemoryGroup["kind"], id: string, name: string, parts: MemoryPart[], worker?: Worker): MemoryGroup => ({
+const MINUTE = 60 * 1000;
+const session = (contextTokens: number, minutesAgo: number, takenAtMs: number): AgentSession => ({ contextTokens, lastReplyMs: takenAtMs - minutesAgo * MINUTE, warmMs: 60 * MINUTE });
+const memoryGroup = (kind: MemoryGroup["kind"], id: string, name: string, parts: MemoryPart[], worker?: Worker, agent: AgentSession | null = null): MemoryGroup => ({
   kind,
   id,
   name,
@@ -154,9 +156,10 @@ const memoryGroup = (kind: MemoryGroup["kind"], id: string, name: string, parts:
   terminal: worker?.terminal ?? null,
   bytes: parts.reduce((sum, p) => sum + p.bytes, 0),
   parts,
+  session: agent,
 });
-const workerGroup = (worker: Worker, parts: MemoryPart[]) =>
-  memoryGroup("worker", `worker:${worker.taskId}`, FIXTURE_CARDS.find((c) => c.id === worker.taskId)?.title ?? worker.taskId, parts, worker);
+const workerGroup = (worker: Worker, parts: MemoryPart[], agent: AgentSession | null) =>
+  memoryGroup("worker", `worker:${worker.taskId}`, FIXTURE_CARDS.find((c) => c.id === worker.taskId)?.title ?? worker.taskId, parts, worker, agent);
 
 export const fixtureMemory = (workers: Worker[], takenAtMs = Date.now()): MemorySample => {
   const parts: Record<string, MemoryPart[]> = {
@@ -165,10 +168,16 @@ export const fixtureMemory = (workers: Worker[], takenAtMs = Date.now()): Memory
     "hrb-16": [part("Agent (Claude Code)", 300, 3), part("Headless Chrome", 529, 7), part("Browser automation helper", 354, 2), part("Local dev server", 237, 2)],
     "pil-08": [part("Agent (Codex)", 188, 2), part("Shell", 12, 1)],
   };
+  const sessions: Record<string, AgentSession | null> = {
+    "atl-09": session(142_000, 2, takenAtMs),
+    "hrb-18": session(118_000, 125, takenAtMs),
+    "hrb-16": session(96_000, 1, takenAtMs),
+    "pil-08": null,
+  };
   const groups = [
-    memoryGroup("fathom", "fathom", "Fathom", [part("Fathom", 640, 4), part("Board assistant", 256, 3)]),
-    memoryGroup("orchestrator", "orchestrator", "Orchestrator", [part("Agent (Claude Code)", 780, 4)]),
-    ...workers.filter((w) => parts[w.taskId]).map((w) => workerGroup(w, parts[w.taskId])),
+    memoryGroup("fathom", "fathom", "Fathom", [part("Fathom", 640, 4), part("Board assistant", 256, 3)], undefined, session(12_000, 30, takenAtMs)),
+    memoryGroup("orchestrator", "orchestrator", "Orchestrator", [part("Agent (Claude Code)", 780, 4)], undefined, session(180_000, 1, takenAtMs)),
+    ...workers.filter((w) => parts[w.taskId]).map((w) => workerGroup(w, parts[w.taskId], sessions[w.taskId] ?? null)),
     memoryGroup("docker", "docker", "Docker", [part("Docker VM", 1840, 1), part("Docker Desktop", 310, 6)]),
   ];
   const total = 32768 * MB;

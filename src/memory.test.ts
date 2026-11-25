@@ -12,6 +12,7 @@ const group = (over: Partial<MemoryGroup>): MemoryGroup => ({
   terminal: "t1",
   bytes: 410 * MB,
   parts: [{ label: "Agent (Claude Code)", bytes: 410 * MB, processes: 1 }],
+  session: null,
   ...over,
 });
 

@@ -128,6 +128,9 @@ pub struct Group {
     pub terminal: Option<String>,
     pub bytes: u64,
     pub parts: Vec<Part>,
+    pub session: Option<super::session::Session>,
+    #[serde(skip)]
+    pub agents: Vec<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -223,6 +226,8 @@ pub fn group(
             terminal: Some(worker.terminal.clone()),
             bytes: 0,
             parts: agent_parts(&members, args_of),
+            session: None,
+            agents: claude_pids(&members, args_of),
         });
     }
     if let Some(orchestrator) = &roots.orchestrator {
@@ -236,6 +241,8 @@ pub fn group(
                 terminal: orchestrator.terminal.clone(),
                 bytes: 0,
                 parts: agent_parts(&members, args_of),
+                session: None,
+                agents: claude_pids(&members, args_of),
             });
         }
     }
@@ -253,6 +260,8 @@ pub fn group(
             terminal: None,
             bytes: 0,
             parts: fathom_parts(&fathom, roots.fathom.first().copied()),
+            session: None,
+            agents: claude_pids(&fathom, args_of),
         });
     }
     let docker_roots: Vec<u32> = machine
@@ -274,6 +283,8 @@ pub fn group(
             terminal: None,
             bytes: 0,
             parts: summed(docker.iter().map(|(p, _)| (docker_label(p), p.bytes))),
+            session: None,
+            agents: vec![],
         });
     }
     for group in &mut groups {
@@ -334,6 +345,19 @@ fn agent_parts(
         ordered.push((label, process.bytes));
     }
     summed(ordered.into_iter())
+}
+
+fn claude_pids(
+    members: &[(&Process, Option<&Process>)],
+    args_of: &dyn Fn(u32) -> Vec<String>,
+) -> Vec<u32> {
+    members
+        .iter()
+        .filter(|(process, _)| {
+            is_claude(process) || label_of(process, &args_of(process.pid)) == AGENT_CLAUDE
+        })
+        .map(|(process, _)| process.pid)
+        .collect()
 }
 
 fn fathom_parts(members: &[(&Process, Option<&Process>)], own: Option<u32>) -> Vec<Part> {
