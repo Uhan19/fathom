@@ -16,6 +16,15 @@ export interface PanelWidths {
   detail: number | null;
 }
 
+export interface OpenPanels {
+  chat: number | null;
+  detail: number | null;
+}
+
+export function boardRoomOf(shown: number, oneVisible: number): BoardRoom {
+  return { shown, min: Math.max(oneVisible, USABLE_BOARD) };
+}
+
 export function spareBoard(board: BoardRoom): number {
   return board.shown < 0 ? board.shown : Math.max(0, board.shown - board.min);
 }
@@ -36,13 +45,16 @@ export function chatResizer(start: PanelWidths, board: BoardRoom): (growth: numb
   };
 }
 
-export function fitPanels(stored: PanelWidths, budget: number | null): PanelWidths {
+export function fitPanels(stored: OpenPanels, budget: number | null): OpenPanels {
   if (budget === null) return stored;
   const room = Math.max(0, Math.floor(budget));
-  const detailStored = stored.detail ?? 0;
-  const chat = Math.max(CHAT_WIDTH.min, Math.min(stored.chat, room - detailStored));
-  const detail = stored.detail === null ? null : Math.max(DETAIL_WIDTH.min, Math.min(detailStored, room - chat));
+  const chat = stored.chat === null ? null : Math.max(CHAT_WIDTH.min, Math.min(stored.chat, room - (stored.detail ?? 0)));
+  const detail = stored.detail === null ? null : Math.max(DETAIL_WIDTH.min, Math.min(stored.detail, room - (chat ?? 0)));
   return { chat, detail };
+}
+
+export function keptWidth(stored: number, from: number, to: number): number {
+  return to < from ? to : Math.max(stored, to);
 }
 
 export function withLatestWindow(draft: Settings, latest: Settings): Settings {

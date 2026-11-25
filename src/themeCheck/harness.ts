@@ -13,6 +13,7 @@ import {
   resizeChat,
   resizeDetail,
   resizeHelper,
+  sideDetailClosesOnEscape,
   toggleMode,
   tolerateSyntheticPointers,
   type Frame,
@@ -210,6 +211,7 @@ async function interact(plan: Plan, run: Run, params: Record<string, string>): P
   if (layout.detail === "overlay") outcomes.push(...(await overlayIsModal(frame, () => openCard(frame))));
   else {
     outcomes.push(await resizeDetail(frame));
+    outcomes.push(await sideDetailClosesOnEscape(frame));
     await click(frame, '[data-control="close-detail"]', undefined, DETAIL);
   }
   await click(frame, '[data-control="helper-open"]', DRAWER_OPEN);

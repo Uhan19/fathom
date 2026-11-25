@@ -2,16 +2,10 @@ import { useEffect, useRef, type RefObject } from "react";
 
 const TERMINAL = '[data-part="terminal-host"]';
 const OPEN_DIALOG = "dialog[open]";
-const TEXT_FIELD = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
 const CLOSE = '[data-part="detail"] [data-control="close-detail"]';
 
-export function closesOnEscape(
-  event: Pick<KeyboardEvent, "key" | "defaultPrevented" | "target">,
-  page: Pick<Document, "querySelector">,
-  keepsTextFields = false,
-): boolean {
+export function closesOnEscape(event: Pick<KeyboardEvent, "key" | "defaultPrevented" | "target">, page: Pick<Document, "querySelector">): boolean {
   const target = event.target as Partial<Element> | null;
-  if (keepsTextFields && target?.closest?.(TEXT_FIELD)) return false;
   return event.key === "Escape" && !event.defaultPrevented && !target?.closest?.(TERMINAL) && !page.querySelector(OPEN_DIALOG);
 }
 
@@ -25,7 +19,7 @@ export function useDetailEscape(appRef: RefObject<HTMLElement | null>, open: boo
     const previous = overlay && document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (overlay) app.querySelector<HTMLElement>(CLOSE)?.focus();
     const escape = (e: KeyboardEvent) => {
-      if (!closesOnEscape(e, document, !overlay)) return;
+      if (!closesOnEscape(e, document)) return;
       e.preventDefault();
       closeRef.current();
     };

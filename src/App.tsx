@@ -42,7 +42,7 @@ import { filterText, indexAmongAll, shownColumns } from "./projectFilter";
 import { focusText } from "./taskRef";
 import { DEFAULT_THEME, otherTheme } from "./theme";
 import { comboLabel, listenForShortcuts, type ShortcutAction } from "./shortcuts";
-import { chatResizer, detailResizer, fitPanels, USABLE_BOARD } from "./windowSettings";
+import { boardRoomOf, chatResizer, detailResizer, fitPanels, keptWidth } from "./windowSettings";
 import { isUnseen, leftCard, NO_UPDATES, seenLocally, type CardUpdates } from "./updates";
 import { waitsOf } from "./waits";
 import { applyLook } from "./themes/apply";
@@ -237,10 +237,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
     if (!main || !board) return { shown: 0, min: 0 };
     const scroll = board.querySelector(".board-scroll");
     const scrollbar = scroll ? scroll.getBoundingClientRect().width - scroll.clientWidth : 0;
-    return {
-      shown: board.getBoundingClientRect().width - (main.scrollWidth - main.clientWidth),
-      min: oneVisibleWidth() + scrollbar,
-    };
+    return boardRoomOf(board.getBoundingClientRect().width - (main.scrollWidth - main.clientWidth), oneVisibleWidth() + scrollbar);
   };
 
   useLayoutEffect(() => {
@@ -433,8 +430,8 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   useDetailEscape(appRef, detailShown, overlayDetail, () => openCard(null));
   const sideDetail = detailShown && !overlayDetail;
   const stored = { chat: settings?.chatWidth ?? 0, detail: settings?.detailWidth ?? 0 };
-  const fitted = fitPanels({ chat: stored.chat, detail: sideDetail ? stored.detail : null }, panelBudget);
-  const chatWidth = chatDrag ?? fitted.chat;
+  const fitted = fitPanels({ chat: chatOpen ? stored.chat : null, detail: sideDetail ? stored.detail : null }, panelBudget);
+  const chatWidth = chatDrag ?? fitted.chat ?? stored.chat;
   const detailWidth = detailDrag ?? fitted.detail ?? stored.detail;
 
   useLayoutEffect(() => {
@@ -443,7 +440,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
     const measure = () => {
       const { shown, min } = boardRoom();
       const panel = (part: string) => main.querySelector(`[data-part="${part}"]`)?.getBoundingClientRect().width ?? 0;
-      const budget = Math.round(shown + panel("chat") + (sideDetail ? panel("detail") : 0) - Math.max(min, USABLE_BOARD));
+      const budget = Math.round(shown + panel("chat") + (sideDetail ? panel("detail") : 0) - min);
       setPanelBudget((was) => (was === budget ? was : budget));
     };
     measure();
@@ -627,7 +624,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
                   (dx) => setDetailDrag(width(-dx)),
                   (dx) => {
                     setDetailDrag(null);
-                    changeWindow({ detailWidth: width(-dx) });
+                    changeWindow({ detailWidth: keptWidth(stored.detail, width(0), width(-dx)) });
                   },
                 );
               }}
@@ -668,6 +665,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
               aria-label="Resize chat"
               onPointerDown={(e) => {
                 const widths = chatResizer({ chat: chatWidth, detail: sideDetail ? detailWidth : null }, boardRoom());
+                const startChat = widths(0).chat;
                 startDrag(
                   e,
                   (dx) => {
@@ -679,7 +677,8 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
                     const next = widths(chatSide * dx);
                     setChatDrag(null);
                     setDetailDrag(null);
-                    changeWindow(next.detail === null ? { chatWidth: next.chat } : { chatWidth: next.chat, detailWidth: next.detail });
+                    const chat = keptWidth(stored.chat, startChat, next.chat);
+                    changeWindow(next.detail === null ? { chatWidth: chat } : { chatWidth: chat, detailWidth: keptWidth(stored.detail, detailWidth, next.detail) });
                   },
                 );
               }}

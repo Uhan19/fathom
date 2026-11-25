@@ -220,22 +220,34 @@ export function resizeHelper(frame: Frame): Promise<Outcome> {
   return resize(frame, "resize-helper", () => drawer()?.getBoundingClientRect().height ?? 0, { x: 0, y: -RESIZE_BY }, "raise the helper drawer by its handle");
 }
 
+const detailShown = (doc: Document) => !!q(doc, '[data-part="detail"]');
+
+async function escapeClosesDetail(frame: Frame, check: string): Promise<Outcome> {
+  const { doc, win } = frame;
+  (doc.activeElement ?? doc.body).dispatchEvent(new win.KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
+  await wait(SETTLE_MS);
+  return detailShown(doc) ? fail(check, "close-detail", "Escape does not close the detail") : pass(check, "close-detail");
+}
+
+export function sideDetailClosesOnEscape(frame: Frame): Promise<Outcome> {
+  const focused = frame.doc.activeElement;
+  if (focused instanceof frame.win.HTMLElement) focused.blur();
+  return escapeClosesDetail(frame, "Escape closes the side-panel card detail");
+}
+
 export async function overlayIsModal(frame: Frame, open: () => Promise<void>): Promise<Outcome[]> {
   const { doc, win } = frame;
   const check = "the overlay card detail behaves as a dialog";
   const outcomes: Outcome[] = [];
-  const shown = () => !!q(doc, '[data-part="detail"]');
   const behind = q(doc, '[data-part="board-column"]');
   outcomes.push(behind?.inert ? pass(check, "close-detail") : fail(check, "close-detail", "the board behind the open detail can still be reached"));
   const focused = doc.activeElement?.closest('[data-part="detail"]');
   outcomes.push(focused ? pass(check, "close-detail") : fail(check, "close-detail", "opening the detail does not move focus into it"));
-  doc.activeElement?.dispatchEvent(new win.KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
-  await wait(SETTLE_MS);
-  outcomes.push(shown() ? fail(check, "close-detail", "Escape does not close the detail") : pass(check, "close-detail"));
+  outcomes.push(await escapeClosesDetail(frame, check));
   await open();
   q(doc, '[data-control="close-detail-scrim"]')?.dispatchEvent(new win.MouseEvent("click", { bubbles: true, cancelable: true }));
   await wait(SETTLE_MS);
-  outcomes.push(shown() ? fail(check, "close-detail-scrim", "a click on the scrim does not close the detail") : pass(check, "close-detail-scrim"));
+  outcomes.push(detailShown(doc) ? fail(check, "close-detail-scrim", "a click on the scrim does not close the detail") : pass(check, "close-detail-scrim"));
   return outcomes;
 }
 

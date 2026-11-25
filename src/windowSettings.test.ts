@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Settings } from "./api";
 import { defaultShortcuts } from "./shortcuts";
-import { CHAT_WIDTH, DETAIL_WIDTH, chatResizer, detailResizer, fitPanels, withLatestWindow } from "./windowSettings";
+import { CHAT_WIDTH, DETAIL_WIDTH, USABLE_BOARD, boardRoomOf, chatResizer, detailResizer, fitPanels, keptWidth, withLatestWindow } from "./windowSettings";
 
 const settings = (over: Partial<Settings> = {}): Settings => ({
   home: "/home/demo/firstmate",
@@ -112,16 +112,22 @@ describe("detailResizer", () => {
   });
 });
 
-describe("fitPanels at the minimum window", () => {
-  const MINIMUM_WINDOW_ROOM = 960 - 352 - 300;
+const MINIMUM_WINDOW = 960;
+const SIDE_WINDOW = 1280;
+const HANDLE = 8;
+const RAIL = 44;
+const NAUTICAL_ONE_COLUMN = 150 + 10 + 280 + 32;
+const MINIMUM_WINDOW_ROOM = MINIMUM_WINDOW - HANDLE - USABLE_BOARD;
+const SIDE_WINDOW_ROOM = SIDE_WINDOW - 2 * HANDLE - USABLE_BOARD;
 
-  it("shrinks a stored chat width so the board keeps its room", () => {
-    expect(fitPanels({ chat: 600, detail: null }, MINIMUM_WINDOW_ROOM).chat).toBe(CHAT_WIDTH.min + 8);
+describe("fitPanels", () => {
+  it("shows a stored 600px chat at 392px in the minimum window so the board keeps its room", () => {
+    expect(fitPanels({ chat: 600, detail: null }, MINIMUM_WINDOW_ROOM).chat).toBe(392);
   });
 
   it("takes from the chat first, then the detail, when both panels are open", () => {
     expect(fitPanels({ chat: 600, detail: 460 }, 800)).toEqual({ chat: 340, detail: 460 });
-    expect(fitPanels({ chat: 600, detail: 460 }, 700)).toEqual({ chat: 300, detail: 400 });
+    expect(fitPanels({ chat: 600, detail: 460 }, SIDE_WINDOW_ROOM)).toEqual({ chat: 300, detail: 404 });
   });
 
   it("never goes under the panel minimums", () => {
@@ -131,5 +137,51 @@ describe("fitPanels at the minimum window", () => {
   it("brings the stored widths back when the window grows", () => {
     expect(fitPanels({ chat: 600, detail: 460 }, 5000)).toEqual({ chat: 600, detail: 460 });
     expect(fitPanels({ chat: 600, detail: 460 }, null)).toEqual({ chat: 600, detail: 460 });
+  });
+
+  it("keeps no room for a hidden chat", () => {
+    expect(fitPanels({ chat: null, detail: 460 }, SIDE_WINDOW - RAIL - HANDLE - USABLE_BOARD)).toEqual({ chat: null, detail: 460 });
+  });
+});
+
+describe("dragging a panel the window squeezed", () => {
+  it("neither snaps a widening chat drag back nor lowers the stored width at the minimum window", () => {
+    const widths = chatResizer({ chat: 392, detail: null }, boardRoomOf(MINIMUM_WINDOW - HANDLE - 392, NAUTICAL_ONE_COLUMN));
+    const dropped = widths(80).chat;
+    const saved = keptWidth(600, widths(0).chat, dropped);
+    expect(fitPanels({ chat: saved, detail: null }, MINIMUM_WINDOW_ROOM).chat).toBe(dropped);
+    expect(saved).toBe(600);
+    expect(fitPanels({ chat: saved, detail: null }, 5000).chat).toBe(600);
+  });
+
+  it("saves a narrowing drag as the new width", () => {
+    const widths = chatResizer({ chat: 392, detail: null }, boardRoomOf(MINIMUM_WINDOW - HANDLE - 392, NAUTICAL_ONE_COLUMN));
+    const saved = keptWidth(600, widths(0).chat, widths(-50).chat);
+    expect(saved).toBe(342);
+    expect(fitPanels({ chat: saved, detail: null }, MINIMUM_WINDOW_ROOM).chat).toBe(342);
+  });
+
+  describe("with the card panel open", () => {
+    const board = boardRoomOf(SIDE_WINDOW - 2 * HANDLE - 300 - 404, NAUTICAL_ONE_COLUMN);
+
+    it("keeps both stored widths when the chat handle is clicked without moving", () => {
+      const still = chatResizer({ chat: 300, detail: 404 }, board)(0);
+      expect(keptWidth(600, 300, still.chat)).toBe(600);
+      expect(keptWidth(460, 404, still.detail ?? 0)).toBe(460);
+    });
+
+    it("keeps a widened chat where it was dropped and brings its stored width back when the window grows", () => {
+      const dropped = chatResizer({ chat: 300, detail: 404 }, board)(40);
+      expect(dropped).toEqual({ chat: 340, detail: 364 });
+      const saved = { chat: keptWidth(600, 300, dropped.chat), detail: keptWidth(460, 404, dropped.detail ?? 0) };
+      expect(fitPanels(saved, SIDE_WINDOW_ROOM)).toEqual(dropped);
+      expect(fitPanels(saved, 5000)).toEqual({ chat: 600, detail: 364 });
+    });
+
+    it("keeps the stored card panel width when its handle cannot widen it", () => {
+      const width = detailResizer(404, board);
+      expect(width(60)).toBe(404);
+      expect(keptWidth(460, width(0), width(60))).toBe(460);
+    });
   });
 });
