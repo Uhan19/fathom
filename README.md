@@ -590,6 +590,15 @@ fathom theme shot <folder> [--mode light|dark] [--size desktop|min]
 This renders the same invented sample board with the theme and writes PNG screenshots of the board, a card's detail, Settings and the chat with the helper drawer into the theme's `.shots/`.
 Agents look at a theme only this way: neither the check nor the screenshots ever show the real board, so no real task, terminal or name reaches a model.
 
+## Searching tickets
+
+The "Search tickets" field in the header finds any task on the board by its [number](#task-numbers), its Firstmate name or its title.
+As you type, a list shows one line per matching task: its number and name as its card shows them, then the card's title.
+Matching ignores case, a number matches with or without its `#`, and every character typed narrows the list.
+The search covers every card on the board, including cards in folded columns and collapsed rows and cards that the project filter, the agent filter or a focus hides.
+The arrow keys move through the list, Enter or a click opens the task's card detail, and Escape closes the list.
+Clicking the field again after opening a task shows the same matches again.
+
 ## Showing only some projects
 
 Ask [Bosun](#bosun) to show only some projects, and the board keeps only their columns.
