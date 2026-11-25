@@ -3,6 +3,7 @@ import type { TokenMode, TokenReport, TokenShare } from "../api";
 import { states } from "../parts";
 import {
   axisLabels,
+  byValue,
   consumerName,
   dayLabel,
   dayValue,
@@ -182,7 +183,7 @@ function Breakdown({ report, mode }: { report: TokenReport; mode: TokenMode }) {
           Top consumers, this week
         </h3>
         <div className="consumer-list" data-part="consumer-list">
-          {report.consumers.map((c) => (
+          {byValue(report.consumers, mode).map((c) => (
             <div key={`${c.role}:${c.name}`} className="consumer-row" data-part="consumer-row" data-kind={c.role}>
               <span className="consumer-name" data-part="consumer-name" title={consumerName(c)}>
                 {consumerName(c)}
@@ -211,7 +212,7 @@ function Bars({ shares, mode, kind, name }: { shares: TokenShare[]; mode: TokenM
   const largest = Math.max(1e-9, ...shares.map((s) => shareValue(s, mode)));
   return (
     <div className="share-list" data-part="share-list">
-      {shares.map((share) => (
+      {byValue(shares, mode).map((share) => (
         <div key={share.name} className="share-row" data-part="share-row" data-kind={kind}>
           <span className="share-name" data-part="share-name" title={name(share)}>
             {name(share)}
@@ -236,7 +237,13 @@ function Overhead({ report }: { report: TokenReport }) {
         Fathom’s own overhead
       </span>
       <span className="overhead-item" data-part="overhead-item">
-        Board assistant <b>{text.assistant}</b> total{text.perQuestion && <>, about {text.perQuestion} per question</>}
+        {text.perQuestion ? (
+          <>
+            Board assistant <b>{text.assistant}</b> total, about {text.perQuestion} per question
+          </>
+        ) : (
+          "Board assistant not used in the last 30 days"
+        )}
       </span>
       <span className="overhead-item" data-part="overhead-item">
         {text.moves ? (

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TokenDay, TokenReport } from "./api";
-import { axisLabels, consumerName, dollars, mix, modelName, overheadText, periods, shareText, sum, tokensShort, valueText } from "./tokens";
+import { axisLabels, byValue, consumerName, dollars, mix, modelName, overheadText, periods, shareText, sum, tokensShort, valueText } from "./tokens";
 
 const day = (date: string, read: number, cost = 1): TokenDay => ({
   date,
@@ -73,6 +73,15 @@ describe("token numbers", () => {
   it("calls the orchestrator a session and keeps other names", () => {
     expect(consumerName({ role: "orchestrator", name: "Orchestrator", taskId: null, tokens: 1, cost: 0 })).toBe("Orchestrator session");
     expect(consumerName({ role: "worker", name: "Split the invoice service", taskId: "atl-9", tokens: 1, cost: 0 })).toBe("Split the invoice service");
+  });
+
+  it("orders a breakdown by the shown measure", () => {
+    const shares = [
+      { name: "a", tokens: 300, cost: 1 },
+      { name: "b", tokens: 100, cost: 9 },
+    ];
+    expect(byValue(shares, "raw").map((s) => s.name)).toEqual(["a", "b"]);
+    expect(byValue(shares, "cost").map((s) => s.name)).toEqual(["b", "a"]);
   });
 
   it("sums up Fathom's own overhead", () => {

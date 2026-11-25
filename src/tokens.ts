@@ -49,6 +49,10 @@ export function shareValue(share: TokenShare, mode: TokenMode): number {
   return mode === "raw" ? share.tokens : share.cost;
 }
 
+export function byValue<T extends TokenShare>(shares: T[], mode: TokenMode): T[] {
+  return [...shares].sort((a, b) => shareValue(b, mode) - shareValue(a, mode));
+}
+
 export function sum(days: TokenDay[], mode: TokenMode, kind?: Kind): number {
   return days.reduce((total, day) => total + dayValue(day, mode, kind), 0);
 }
