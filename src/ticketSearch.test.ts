@@ -1,37 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { groupCards } from "./board";
+import type { Column, SourceKind } from "./api";
 import { FIXTURE_CARDS, FIXTURE_COLUMNS } from "./preview/fixture";
 import { shownColumns } from "./projectFilter";
 import { boardTickets, listPlace, matchTickets, searchKey, type ListPlace } from "./ticketSearch";
 
-const NO_OVERLAY = { places: [], requests: [] };
-const tickets = boardTickets(FIXTURE_CARDS, FIXTURE_COLUMNS, NO_OVERLAY, "firstmate");
+const board = (columns: Column[] = FIXTURE_COLUMNS, source: SourceKind = "firstmate") => ({ cards: FIXTURE_CARDS, columns, places: [], requests: [], source });
+const tickets = boardTickets(board());
 const ids = (query: string) => matchTickets(tickets, query).map((t) => t.card.id);
 
 describe("boardTickets", () => {
   it("lists every card on the board, including folded columns, in board order", () => {
     const folded = FIXTURE_COLUMNS.map((c) => ({ ...c, collapsed: true }));
-    const all = boardTickets(FIXTURE_CARDS, folded, NO_OVERLAY, "firstmate");
+    const all = boardTickets(board(folded));
     expect(all).toHaveLength(FIXTURE_CARDS.length);
     expect(all.slice(0, 3).map((t) => t.card.id)).toEqual(["atl-12", "atl-15", "atl-09"]);
   });
 
   it("shows the ticket id the way the card does", () => {
     expect(tickets.find((t) => t.card.id === "atl-12")?.ref).toBe("#40 atl-12");
-    const fathom = boardTickets(FIXTURE_CARDS, FIXTURE_COLUMNS, NO_OVERLAY, "fathom");
+    const fathom = boardTickets(board(FIXTURE_COLUMNS, "fathom"));
     expect(fathom.find((t) => t.card.id === "atl-12")?.ref).toBe("#40");
   });
 
-  it("finds a ticket the project filter hides and opens that card", () => {
-    const onlyAtlas = shownColumns(FIXTURE_COLUMNS, ["atlas-api"]);
-    const onBoard = [...groupCards(FIXTURE_CARDS, onlyAtlas).values()].flatMap((rows) => [...rows.values()].flat());
-    expect(onBoard.length).toBeGreaterThan(0);
-    expect(onBoard.map((c) => c.id)).not.toContain("hrb-17");
+  it("lists every card of a project with a column, and none from projects without one", () => {
+    const [column] = FIXTURE_COLUMNS;
+    const projectCards = FIXTURE_CARDS.filter((c) => c.project === column.project).map((c) => c.id);
+    const listed = boardTickets(board([column])).map((t) => t.card.id);
+    expect(projectCards.length).toBeGreaterThan(0);
+    expect([...listed].sort()).toEqual([...projectCards].sort());
+  });
 
-    const [picked, ...rest] = matchTickets(tickets, "hrb-17");
-    expect(rest).toEqual([]);
-    expect(picked.card.title).toBe("Make the sidebar keyboard friendly");
-    expect(FIXTURE_CARDS.find((c) => c.id === picked.card.id)?.project).toBe("harbor-web");
+  it("finds a ticket by its id in a project the board's project filter hides", () => {
+    const view = board();
+    expect(shownColumns(view.columns, ["atlas-api"]).map((c) => c.project)).not.toContain("harbor-web");
+    expect(matchTickets(boardTickets(view), "hrb-17").map((t) => t.card.id)).toEqual(["hrb-17"]);
   });
 });
 
@@ -125,6 +127,7 @@ describe("listPlace", () => {
     const field = { left: 600, top: 18, bottom: 48, width: 300 };
     const place = listPlace(field, view);
     expect(edges(place, view).top).toBeGreaterThanOrEqual(field.bottom);
+    expect(place.width).toBeGreaterThanOrEqual(field.width);
     expectInside(place, view);
   });
 });

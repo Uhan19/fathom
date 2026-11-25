@@ -1,4 +1,4 @@
-import { ROW_ORDER, type Card, type Column, type Overlay, type SourceKind } from "./api";
+import { ROW_ORDER, type BoardView, type Card } from "./api";
 import { groupCards } from "./board";
 import { taskRef } from "./taskRef";
 
@@ -7,8 +7,9 @@ export interface Ticket {
   ref: string;
 }
 
-export function boardTickets(cards: Card[], columns: Column[], overlay: Overlay, source: SourceKind): Ticket[] {
-  const cells = groupCards(cards, columns, overlay);
+export function boardTickets(view: Pick<BoardView, "cards" | "columns" | "places" | "requests" | "source">): Ticket[] {
+  const { cards, columns, source } = view;
+  const cells = groupCards(cards, columns, view);
   const tickets: Ticket[] = [];
   for (const column of columns) {
     const rows = cells.get(column.id);
