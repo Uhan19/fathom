@@ -758,7 +758,7 @@ code,
   position: relative;
   z-index: 20;
   flex: 1 1 0;
-  min-width: 160px;
+  min-width: 100px;
   max-width: 360px;
   margin-right: auto;
 }
