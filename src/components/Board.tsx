@@ -28,8 +28,11 @@ import type { DropTarget } from "../dropTarget";
 import { startDrag } from "../drag";
 import { tagText, waitsOf, waitTitle } from "../waits";
 import { states } from "../parts";
+import type { MemoryBadge } from "../memory";
 import { useLook } from "../themes/context";
 import { ChevronDown, ChevronLeft, ChevronRight, HandoffIcon, Plus, Sailor, Trash } from "./Icons";
+
+const NO_MEMORY: Record<string, MemoryBadge> = {};
 
 interface BoardProps {
   cards: Card[];
@@ -38,6 +41,7 @@ interface BoardProps {
   overlay: Overlay;
   waits: Record<string, Wait[]>;
   workers: Record<string, Worker>;
+  memory?: Record<string, MemoryBadge>;
   updates: CardUpdates;
   rowNames: Record<RowKey, string>;
   collapsedRows: RowKey[];
@@ -59,7 +63,7 @@ interface BoardProps {
 }
 
 export function Board(props: BoardProps) {
-  const { cards, source, columns, overlay, waits, workers, updates, rowNames, collapsedRows, agentFilter, focus, selectedId, onSelect, onColumnChange, onColumnRename, onPlace, onWatch } =
+  const { cards, source, columns, overlay, waits, workers, memory = NO_MEMORY, updates, rowNames, collapsedRows, agentFilter, focus, selectedId, onSelect, onColumnChange, onColumnRename, onPlace, onWatch } =
     props;
   const focused = focus.length > 0;
   const [liveWidths, setLiveWidths] = useState<Record<number, number>>({});
@@ -276,6 +280,7 @@ export function Board(props: BoardProps) {
                                 request={shownRequest(card.id, overlay.requests)}
                                 waits={waitsOf(waits, card.id)}
                                 worker={workers[card.id]}
+                                memory={workers[card.id] ? memory[card.id] : undefined}
                                 source={source}
                                 unseen={isUnseen(updates, card.id)}
                                 selected={card.id === selectedId}
@@ -564,6 +569,7 @@ interface CardViewProps {
   request: MoveRequest | null;
   waits: Wait[];
   worker?: Worker;
+  memory?: MemoryBadge;
   source: SourceKind;
   unseen: boolean;
   selected: boolean;
@@ -573,19 +579,20 @@ interface CardViewProps {
   onWatch: (card: Card, worker: Worker) => void;
 }
 
-function CardView({ card, request, waits, worker, source, unseen, selected, lifted, onPointerDown, onSelect, onWatch }: CardViewProps) {
+function CardView({ card, request, waits, worker, memory, source, unseen, selected, lifted, onPointerDown, onSelect, onWatch }: CardViewProps) {
   return (
     <div
       className={`card card-${card.row}${unseen ? " unseen" : ""}${selected ? " selected" : ""}${lifted ? " lifted" : ""}`}
       data-part="card"
       data-kind={card.row}
-      data-state={states({ selected, unseen, lifted })}
+      data-state={states({ selected, unseen, lifted, measured: Boolean(memory) })}
       data-id={card.id}
       onPointerDown={onPointerDown}
     >
       <button className="card-open" data-part="card-open" data-control="card-open" onClick={() => onSelect(card)}>
         <CardFace card={card} source={source} request={request} waits={waits} />
         {unseen && <span className="sr-only">New update</span>}
+        {memory && <MemoryTag memory={memory} />}
       </button>
       {worker && (
         <button
@@ -602,6 +609,15 @@ function CardView({ card, request, waits, worker, source, unseen, selected, lift
         </button>
       )}
     </div>
+  );
+}
+
+function MemoryTag({ memory }: { memory: MemoryBadge }) {
+  return (
+    <span className="memory-badge" data-part="memory-badge" data-state={states({ high: memory.high })} title={memory.breakdown}>
+      <span className="sr-only">Memory </span>
+      {memory.text}
+    </span>
   );
 }
 

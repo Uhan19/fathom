@@ -10,6 +10,7 @@ import {
   type Column,
   type HelperStatus,
   type HerdrStatus,
+  type MemorySample,
   type MoveTo,
   type Overlay,
   type Placement,
@@ -54,6 +55,7 @@ import { previewRequests } from "./themes/previews";
 import { RESET_EVENT } from "./themes/reset";
 import { useDetailEscape } from "./overlayDetail";
 import { states } from "./parts";
+import { badgesByTask } from "./memory";
 
 const NO_HELPER: HelperStatus = { terminal: null, status: "", asking: false };
 const NO_WAITS: Waits = { tasks: {}, people: {} };
@@ -80,6 +82,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   const [detailDrag, setDetailDrag] = useState<number | null>(null);
   const [chatDrag, setChatDrag] = useState<number | null>(null);
   const [workers, setWorkers] = useState<Worker[]>([]);
+  const [memory, setMemory] = useState<MemorySample | null>(null);
   const [updates, setUpdates] = useState<CardUpdates>(NO_UPDATES);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [columnError, setColumnError] = useState<string | null>(null);
@@ -125,6 +128,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
       events.settings((s) => alive && setSettings(s)),
       events.helper((h) => alive && setHelper(h)),
       events.themes(() => alive && setThemesChanged((n) => n + 1)),
+      events.memory((m) => alive && setMemory(m)),
     ];
     api
       .cachedBoard()
@@ -143,6 +147,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
       .then((u) => alive && setUpdates(u))
       .catch(() => undefined);
     api.helperStatus().then((h) => alive && setHelper(h));
+    void api.setMetricsDemand({ dashboard: false, badges: true }).catch(() => undefined);
     return () => {
       alive = false;
       unlisten.forEach((p) => void p.then((fn) => fn()));
@@ -363,6 +368,8 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   const overlay: Overlay = { places: view?.places ?? [], requests: view?.requests ?? [] };
   const waits = view?.waits ?? NO_WAITS;
   const workerByTask = useMemo(() => Object.fromEntries(workers.map((w) => [w.taskId, w])) as Record<string, Worker>, [workers]);
+  const memoryBadgeMb = settings?.memoryBadgeMb;
+  const badges = useMemo(() => (memoryBadgeMb ? badgesByTask(memory, memoryBadgeMb) : {}), [memory, memoryBadgeMb]);
   const watchedWorker = watched ? workers.find((w) => w.terminal === watched.terminal) : undefined;
   const applyOverlay = (next: Overlay) => setView((v) => v && { ...v, ...next });
   const changeOverlay = (change: Promise<Overlay>) =>
@@ -568,6 +575,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
                 overlay={overlay}
                 waits={waits.tasks}
                 workers={workerByTask}
+                memory={badges}
                 updates={updates}
                 rowNames={rowNames}
                 collapsedRows={collapsedRows}

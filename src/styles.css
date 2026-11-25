@@ -221,6 +221,9 @@
   --term-bright-magenta: #a21caf;
   --term-bright-cyan: #0891b2;
   --term-bright-white: #c3cce0;
+  --heavy-ink: #b45309;
+  --heavy-bg: #fff1dc;
+  --heavy-line: #f0b25a;
 }
 
 :root[data-mode="dark"] {
@@ -333,6 +336,9 @@
   --term-bright-magenta: #e3beff;
   --term-bright-cyan: #85e6ee;
   --term-bright-white: #ffffff;
+  --heavy-ink: #f5b45a;
+  --heavy-bg: #3a2a12;
+  --heavy-line: #a8671c;
 }
 
 *,
@@ -1521,6 +1527,33 @@ button.column-name:focus-visible,
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.card[data-state~="measured"] {
+  padding-bottom: calc(10px + 20px * var(--board-scale));
+}
+
+.memory-badge {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  font-family: var(--mono);
+  font-size: calc(12px * var(--board-scale));
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  color: var(--card-muted);
+}
+
+.memory-badge[data-state~="high"] {
+  right: 10px;
+  bottom: 9px;
+  padding: 0 6px;
+  border: 1px solid;
+  border-radius: 3px;
+  font-weight: 500;
+  color: var(--heavy-ink);
+  background: var(--heavy-bg);
+  border-color: var(--heavy-line);
 }
 
 .card-ref {

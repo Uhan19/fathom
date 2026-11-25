@@ -1,5 +1,5 @@
 import { AGENTS, type AgentKey } from "../agents";
-import type { Card, Column, Detail, MoveRequest, RowKey, ShellTab, Terminal, Waits, Worker } from "../api";
+import type { Card, Column, Detail, MemoryGroup, MemoryPart, MemorySample, MoveRequest, RowKey, ShellTab, Terminal, Waits, Worker } from "../api";
 import type { CardUpdates } from "../updates";
 
 type Seed = [id: string, project: string, row: RowKey, title: string, extra?: Partial<Card>];
@@ -143,6 +143,57 @@ export const FIXTURE_WORKERS: Worker[] = [
   { taskId: "hrb-16", terminal: "t5", status: "working" },
   { taskId: "pil-08", terminal: "t6", status: "idle" },
 ];
+
+const MB = 1024 * 1024;
+const part = (label: string, mb: number, processes = 1): MemoryPart => ({ label, bytes: mb * MB, processes });
+const memoryGroup = (kind: MemoryGroup["kind"], id: string, name: string, parts: MemoryPart[], worker?: Worker): MemoryGroup => ({
+  kind,
+  id,
+  name,
+  taskId: worker?.taskId ?? null,
+  terminal: worker?.terminal ?? null,
+  bytes: parts.reduce((sum, p) => sum + p.bytes, 0),
+  parts,
+});
+const workerGroup = (worker: Worker, parts: MemoryPart[]) =>
+  memoryGroup("worker", `worker:${worker.taskId}`, FIXTURE_CARDS.find((c) => c.id === worker.taskId)?.title ?? worker.taskId, parts, worker);
+
+export const fixtureMemory = (workers: Worker[], takenAtMs = Date.now()): MemorySample => {
+  const parts: Record<string, MemoryPart[]> = {
+    "atl-09": [part("Agent (Claude Code)", 352, 3), part("Local dev server", 58, 2)],
+    "hrb-18": [part("Agent (Claude Code)", 296, 3)],
+    "hrb-16": [part("Agent (Claude Code)", 300, 3), part("Headless Chrome", 529, 7), part("Browser automation helper", 354, 2), part("Local dev server", 237, 2)],
+    "pil-08": [part("Agent (Codex)", 188, 2), part("Shell", 12, 1)],
+  };
+  const groups = [
+    memoryGroup("fathom", "fathom", "Fathom", [part("Fathom", 640, 4), part("Board assistant", 256, 3)]),
+    memoryGroup("orchestrator", "orchestrator", "Orchestrator", [part("Agent (Claude Code)", 780, 4)]),
+    ...workers.filter((w) => parts[w.taskId]).map((w) => workerGroup(w, parts[w.taskId])),
+    memoryGroup("docker", "docker", "Docker", [part("Docker VM", 1840, 1), part("Docker Desktop", 310, 6)]),
+  ];
+  const total = 32768 * MB;
+  const used = 21504 * MB;
+  const grouped = groups.reduce((sum, g) => sum + g.bytes, 0);
+  return {
+    takenAtMs,
+    total,
+    used,
+    available: total - used,
+    pressure: "normal",
+    activityMonitor: true,
+    herdrConnected: true,
+    groups,
+    rest: {
+      bytes: used - grouped,
+      apps: [
+        { name: "macOS", bytes: 6144 * MB },
+        { name: "Chrome", bytes: 2150 * MB },
+        { name: "Chat app", bytes: 1020 * MB },
+        { name: "Editor", bytes: 860 * MB },
+      ],
+    },
+  };
+};
 
 const FIXTURE_UPDATE_MARKS: Record<string, string> = {
   "atl-09": "3 working [at=1795100000]: read and write paths split, running the invoice tests",

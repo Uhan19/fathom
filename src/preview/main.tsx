@@ -32,6 +32,7 @@ import {
   backlogWorkerScreen,
   fixtureBacklogUpdates,
   fixtureDetail,
+  fixtureMemory,
   fixtureUpdates,
   helperScreen,
   shellScreen,
@@ -128,6 +129,7 @@ let settings: Settings = {
   shortcuts: params.get("shortcuts") === "custom" ? customShortcuts() : defaultShortcuts(mac),
   linearWorkspace: params.has("nolinear") ? "" : "reef-co",
   ticketPrefixes: params.has("nolinear") ? [] : ["ATL", "OPS"],
+  memoryBadgeMb: 1024,
 };
 
 const openChatTerminal = (agent: AgentKey) => {
@@ -316,6 +318,8 @@ const bytes = (text: string) => [...new TextEncoder().encode(text)];
 
 mockWindows("main");
 
+const shownWorkers = () => (empty ? [] : backlog ? FIXTURE_BACKLOG_WORKERS : FIXTURE_WORKERS);
+
 let detailFiles: FileEntry[] = [];
 
 mockIPC(
@@ -383,7 +387,12 @@ mockIPC(
         requests = requests.map((r) => (r.requestId === args.requestId ? { ...r, status: "dismissed" } : r));
         return overlay();
       case "workers":
-        return empty ? [] : backlog ? FIXTURE_BACKLOG_WORKERS : FIXTURE_WORKERS;
+        return shownWorkers();
+      case "set_metrics_demand":
+        setTimeout(() => void emit("metrics://memory", fixtureMemory(shownWorkers())), 0);
+        return null;
+      case "memory_sample":
+        return fixtureMemory(shownWorkers());
       case "card_updates":
         return updates;
       case "mark_seen":

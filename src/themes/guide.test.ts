@@ -11,7 +11,8 @@ import { CardDetail } from "../components/CardDetail";
 import { ChatPanel } from "../components/ChatPanel";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { NO_LINKING } from "../links";
-import { FIXTURE_COLUMNS, FIXTURE_CARDS, FIXTURE_REQUESTS, FIXTURE_TERMINALS, FIXTURE_WAITS, FIXTURE_WORKERS, fixtureUpdates } from "../preview/fixture";
+import { FIXTURE_COLUMNS, FIXTURE_CARDS, FIXTURE_REQUESTS, FIXTURE_TERMINALS, FIXTURE_WAITS, FIXTURE_WORKERS, fixtureMemory, fixtureUpdates } from "../preview/fixture";
+import { badgesByTask } from "../memory";
 import { defaultShortcuts } from "../shortcuts";
 import { LookContext } from "./context";
 import { lookOf, NAUTICAL_LOOK } from "./look";
@@ -50,6 +51,7 @@ const settings: Settings = {
   shortcuts: defaultShortcuts(true),
   linearWorkspace: "reef-co",
   ticketPrefixes: ["ATL"],
+  memoryBadgeMb: 1024,
 };
 
 const board = (collapsedRows: RowKey[]) =>
@@ -60,6 +62,7 @@ const board = (collapsedRows: RowKey[]) =>
     overlay: { places: [], requests: FIXTURE_REQUESTS },
     waits: FIXTURE_WAITS.tasks,
     workers,
+    memory: badgesByTask(fixtureMemory(FIXTURE_WORKERS), 1024),
     updates: fixtureUpdates(true),
     rowNames,
     collapsedRows,

@@ -239,6 +239,43 @@ export interface Settings {
   shortcuts: Shortcuts;
   linearWorkspace: string;
   ticketPrefixes: string[];
+  memoryBadgeMb: number;
+}
+
+export type Pressure = "normal" | "warning" | "critical";
+export type GroupKind = "fathom" | "orchestrator" | "worker" | "docker";
+
+export interface MemoryPart {
+  label: string;
+  bytes: number;
+  processes: number;
+}
+
+export interface MemoryGroup {
+  kind: GroupKind;
+  id: string;
+  name: string;
+  taskId: string | null;
+  terminal: string | null;
+  bytes: number;
+  parts: MemoryPart[];
+}
+
+export interface MemorySample {
+  takenAtMs: number;
+  total: number;
+  used: number;
+  available: number;
+  pressure: Pressure | null;
+  activityMonitor: boolean;
+  herdrConnected: boolean;
+  groups: MemoryGroup[];
+  rest: { bytes: number; apps: { name: string; bytes: number }[] };
+}
+
+export interface MetricsDemand {
+  dashboard: boolean;
+  badges: boolean;
 }
 
 export interface WindowChange {
@@ -386,6 +423,8 @@ export const api = {
   closeShellTab: (terminal: string) => invoke<void>("close_shell_tab", { terminal }),
   attachableTerminals: () => invoke<Terminal[]>("attachable_terminals"),
   launcherFolders: () => invoke<LauncherFolders>("launcher_folders"),
+  setMetricsDemand: (demand: MetricsDemand) => invoke<void>("set_metrics_demand", { demand }),
+  memorySample: () => invoke<MemorySample>("memory_sample"),
   rememberColumnFolder: (column: number, folder: string) => invoke<void>("remember_column_folder", { column, folder }),
 };
 
@@ -402,6 +441,8 @@ export const events = {
   settings: (handler: (settings: Settings) => void): Promise<UnlistenFn> =>
     listen<Settings>("settings://updated", (e) => handler(e.payload)),
   themes: (handler: () => void): Promise<UnlistenFn> => listen("themes://updated", () => handler()),
+  memory: (handler: (sample: MemorySample) => void): Promise<UnlistenFn> =>
+    listen<MemorySample>("metrics://memory", (e) => handler(e.payload)),
   helper: (handler: (helper: HelperStatus) => void): Promise<UnlistenFn> =>
     listen<HelperStatus>("helper://updated", (e) => handler(e.payload)),
   terminalEnded: (handler: (ended: EndedView) => void): Promise<UnlistenFn> =>

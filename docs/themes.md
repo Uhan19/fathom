@@ -115,7 +115,7 @@ Select named parts, never Fathom's class names or ids, which may change in any r
 
 - `[data-part="card"]` is a kind of element, such as a card, a column head or the header.
 - `[data-kind="surface"]` is a variant that does not change, such as a card's or row's stage (`surface`, `shallows`, `deep`, `seabed`, `landed`), a button's style (`header`, `danger`, `dark`) or a tag's kind (`asked`, `failed`, `answered`, `reported`).
-- `[data-state~="selected"]` is a state that changes, such as `selected`, `unseen`, `lifted`, `collapsed`, `closed`, `working`, `idle`, `fill`, `targeted` or `active`.
+- `[data-state~="selected"]` is a state that changes, such as `selected`, `unseen`, `lifted`, `collapsed`, `closed`, `working`, `idle`, `fill`, `targeted`, `active`, `measured` (a card showing its worker's memory) or `high` (a memory badge at the Settings threshold or above).
 - ARIA attributes carry the rest: `[aria-checked="true"]`, `[aria-selected="true"]`, `[aria-expanded="false"]`, `[aria-pressed="true"]` and `:disabled`.
 - `[data-control="open-settings"]` is one control, by a stable id (list below).
   Repeated controls share an id; `data-column`, `data-row`, `data-id` and `data-key` on them or their parents tell them apart.
@@ -204,7 +204,7 @@ filter-part filter-strip font-list font-picker font-picker-head font-row font-sa
 header-toggles herdr-dot herdr-label hold icon icon-button inline-link key-links launcher
 launcher-error launcher-foot launcher-item launcher-list launcher-name launcher-note launcher-path
 launcher-section link-body link-detail link-glyph link-group link-label link-list link-row
-link-sources main mark markdown matrix-cell matrix-grid matrix-head matrix-state md-image meta-text
+link-sources main mark markdown matrix-cell matrix-grid matrix-head matrix-state md-image memory-badge meta-text
 mini-button moment moment-dot moment-head moment-state moment-text moment-time more-link move
 move-actions muted muted-small ok-text opener opener-folder panel-handle path-link phrase picker
 picker-item picker-list picker-meta picker-name picker-reason pill pr-checks pr-line pr-state
@@ -244,7 +244,7 @@ link-open move-dismiss move-resend no-match-clear-focus no-match-show-every-card
 open-blocker open-report open-settings picker-terminal resize-card-panel resize-chat resize-helper
 row-toggle settings-agent-folder settings-board-font settings-board-font-size settings-cancel
 settings-chat-font settings-chat-font-size settings-close settings-export settings-hc-session
-settings-hc-socket settings-home settings-linear-workspace settings-row-name settings-save
+settings-hc-socket settings-home settings-linear-workspace settings-memory-badge settings-row-name settings-save
 settings-terminal-label settings-theme settings-theme-duplicate settings-themes-folder
 settings-ticket-prefixes shell-close-tab shell-reattach shell-retry shortcut-clear shortcut-record
 shortcut-reset shot-all shot-expand shot-open shot-phase shot-phase-option shot-state shot-theme
@@ -266,7 +266,7 @@ worker-reattach worker-retry
 --field-ink --field-line --field-placeholder --focus-glow --focus-ring --folded-ink --handle-bg
 --handle-grip --handle-hover --hazard-gap --hazard-stripe --header-bg --header-blue
 --header-ctrl-fill --header-ctrl-hover --header-ctrl-line --header-ink --header-muted --header-rule
---heading --hold-bg --hold-line --hover-line --info-line --lamp --lamp-glow --lamp-ink --lane-width
+--heading --heavy-bg --heavy-ink --heavy-line --hold-bg --hold-line --hover-line --info-line --lamp --lamp-glow --lamp-ink --lane-width
 --line --link --link-hover --logo --logo-face --logo-shade --mark-landed --mark-shallows
 --mark-surface --moment-tone --mono --move-bg --move-line --muted --note-bg --ok-ink --page
 --page-ink --panel-bg --panel-ink --panel-ink-2 --pill-deep-bg --pill-ink --pill-landed-bg

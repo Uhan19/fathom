@@ -28,6 +28,7 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
   shortcuts: defaultShortcuts(true),
   linearWorkspace: "",
   ticketPrefixes: [],
+  memoryBadgeMb: 1024,
   ...over,
 });
 
