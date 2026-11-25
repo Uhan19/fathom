@@ -27,6 +27,8 @@ import { moveTo } from "./columnOrder";
 import { startDrag } from "./drag";
 import { Board } from "./components/Board";
 import { AgentFilterToggle } from "./components/AgentFilterToggle";
+import { TicketSearch } from "./components/TicketSearch";
+import { boardTickets } from "./ticketSearch";
 import { Switch } from "./components/Switch";
 import { agentFilterText } from "./agentFilter";
 import { Brand } from "./components/Brand";
@@ -380,6 +382,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   };
 
   const columns = shownColumns(view?.columns ?? [], projectFilter);
+  const tickets = boardTickets(cards, columns, overlay, view?.source ?? "firstmate");
   const anyCollapsed = columns.some((c) => c.collapsed) || collapsedRows.length > 0;
   useEffect(() => {
     if (anyCollapsed) setUnfolded(null);
@@ -456,6 +459,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
     <div className="app" data-part="app" ref={appRef}>
       <header className="top" data-part="header" inert={detailAsOverlay}>
         <Brand />
+        <TicketSearch tickets={tickets} onOpen={openCard} />
         <span className="count" data-part="count" data-kind="surface">
           <span className="count-label" data-part="count-label">
             <span className="count-lead" data-part="count-lead">{shownLook.text.surfaceLead}</span>surface
