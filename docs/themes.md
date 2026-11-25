@@ -146,7 +146,7 @@ It compares each view with Nautical on the same sample, control by control:
 
 - every control is present, visible (at least 4 pixels, opacity at least 0.3), reachable (a click at its middle reaches it) and labelled (it has a name, and its text still shows Nautical's label);
 - text is never less readable than in Nautical: text Nautical shows at 3:1 or more must keep at least 3:1 against its background, and text Nautical shows below 3:1 must keep at least Nautical's contrast;
-- text is painted: a transparent `-webkit-text-fill-color` counts as hidden text unless the text is clipped to a painted background (`background-clip: text` on an element with a background image or color) or outlined with a visible `-webkit-text-stroke` at least 0.5 pixels wide, and such text is judged by the contrast of its painted letters; text whose letters a clip, mask or filter removes fails the check;
+- text is painted: a transparent `-webkit-text-fill-color` counts as hidden text unless the text is clipped to a painted background (`background-clip: text` on an element with a background image or color) or outlined with a visible `-webkit-text-stroke` at least 0.5 pixels wide, and such text is judged only by the contrast of its painted letters where the check sees them on screen; text whose letters a clip, mask or filter removes fails the check;
 - what is painted counts: the check takes screenshots, so a control whose box shows nothing, as under an opaque layer with `pointer-events: none`, fails as painted over, and text under a layer is measured against what the layer leaves visible;
 - only a declared option may remove a control: one mode removes the dark mode switch, lanes remove the project width handles, and the overlay detail removes its width handle.
 

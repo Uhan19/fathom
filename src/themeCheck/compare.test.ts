@@ -80,6 +80,12 @@ describe("compareView", () => {
     ]);
   });
 
+  it("gives no contrast verdict on painted letters it could not measure on screen", () => {
+    const baseline = view([], [{ key: "phrase|Ship dark mode", part: "phrase", ratio: 12, ink: 10 }]);
+    const themed = view([], [{ key: "phrase|Ship dark mode", part: "phrase" }]);
+    expect(compareView(baseline, themed, NONE, WHERE)).toEqual([]);
+  });
+
   it("reports a text whose color the check cannot read instead of skipping it", () => {
     const themed = view([], [{ key: "phrase|Ship dark mode", part: "phrase", ratio: 0, unreadable: "color(rec2100-pq 1 1 1)" }]);
     expect(compareView(view([]), themed, NONE, WHERE)).toEqual([

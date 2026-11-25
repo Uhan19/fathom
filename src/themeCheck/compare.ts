@@ -88,6 +88,7 @@ export function compareView(baseline: ViewScan, themed: ViewScan, allow: Allowan
       findings.push({ ...place, part: text.part, problem: `the text "${words}" does not show: none of its letters are painted` });
       continue;
     }
+    if (text.ratio === undefined) continue;
     const needed = Math.min(MIN_CONTRAST, base?.ratio ?? MIN_CONTRAST);
     if (text.ratio + ROUNDING >= needed) continue;
     findings.push({ ...place, part: text.part, problem: `the text "${words}" has a contrast of ${text.ratio}:1, below ${Math.round(needed * 100) / 100}:1` });

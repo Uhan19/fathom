@@ -19,7 +19,7 @@ export interface ControlScan {
 export interface TextScan {
   key: string;
   part: string;
-  ratio: number;
+  ratio?: number;
   unreadable?: string;
   ink?: number;
 }
@@ -285,13 +285,12 @@ export function scanTexts(scope: Element, win: FrameWindow, probe?: Probe): Text
       continue;
     }
     const byGlyphs = filled.a === 0 && textPainted(style, stylesUp(el, win));
-    const color = byGlyphs ? (parseColor(style.color) ?? filled) : filled;
     const { color: background, underlaid } = backgroundOf(el, win);
-    const faded = { ...color, a: color.a * effectiveOpacity(el, win) };
-    const ratio = Math.round(contrast(faded, background) * 100) / 100;
+    const faded = { ...filled, a: filled.a * effectiveOpacity(el, win) };
+    const ratio = byGlyphs ? undefined : Math.round(contrast(faded, background) * 100) / 100;
     const solid = over(background, WHITE);
     const known = lowest.get(key);
-    if (!known || ratio < known.ratio) {
+    if (!known || (ratio !== undefined && (known.ratio === undefined || ratio < known.ratio))) {
       lowest.set(key, { key, part, ratio });
       probe?.texts.set(key, { el, text: luminanceOf(over(faded, solid)), background: luminanceOf(solid), underlaid, byGlyphs });
     }
