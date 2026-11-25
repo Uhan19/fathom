@@ -14,6 +14,9 @@ When an agent reports something new on a card you have not read yet, its colored
 
 To skip the manual steps below, paste the [agent setup sheet](docs/agent-setup.md) into Codex, Claude Code or another coding agent on your computer, and it sets Fathom up for you.
 
+For a tour of everything Fathom does, read [What Fathom does](docs/features.md).
+To fork Fathom or build on it, point your coding agent at [Fathom for agents](docs/features-for-agents.md).
+
 ## Requirements
 
 - macOS, or Linux on x86_64 or arm64.
@@ -193,7 +196,7 @@ open release/<previous version>/Fathom.app
 
 On Linux, install the previous Debian package with `sudo apt install --allow-downgrades ./release/<previous version>/Fathom_<previous version>_<arch>.deb`, or run the previous AppImage.
 
-Both versions share the same database, and migrations only ever add, so an older build still reads it.
+Both versions share the same database, and migrations from `0004` on only ever add, so an older build that includes migration `0003` still reads it.
 
 ## Where the data lives
 
@@ -221,7 +224,7 @@ The database holds Fathom's own backlog and what Fathom adds on top of either ta
 Migrations live in `src-tauri/migrations` and are numbered; the applied version is SQLite's `user_version`.
 
 Settings shows the data size and path.
-"Export as JSON and CSV" in Settings writes everything Fathom stores into a new folder.
+"Export as JSON and CSV" in Settings writes your board, tasks and settings into a new folder; shell tabs, column folders and read marks are left out.
 The same export runs from the command line:
 
 ```sh
@@ -661,7 +664,7 @@ The dot beside Bosun's name is green when it is ready, blue while it works, and 
 Fathom starts Bosun through herdr-core the same way as the [chat terminal](#opening-a-terminal), labeled `fathom.role=helper`, in a `bosun` folder beside the database.
 Claude Code starts with `--model haiku`, `--mcp-config` and `--strict-mcp-config` for `fathom --mcp --helper` alone, `--allowedTools` for the fathom tools, delegation and reading the themes folder, an `--agents` definition, a `--settings` file and a short system prompt.
 The settings file asks before `delete_column`, `delete_theme` and `set_connection`, and its hooks tell Fathom when Claude Code is asking for permission.
-Theme work runs on a stronger model: the system prompt hands every request about how Fathom looks to a `theme-designer` subagent defined with `--agents`, which runs on Sonnet with the theme tools and `Read` for the theme screenshots, while everything else stays on Haiku.
+Theme work runs on a stronger model: the system prompt hands every request about how Fathom looks to a `theme-designer` subagent defined with `--agents`, which runs on Sonnet with the theme tools, `get_settings` and `Read` for the theme screenshots, while everything else stays on Haiku.
 The system prompt names the helper after the selected theme's `text.helper`, from Bosun's next start.
 Fathom writes both files on every start and never changes Claude Code's own configuration.
 
