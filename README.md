@@ -14,6 +14,9 @@ When an agent reports something new on a card you have not read yet, its colored
 
 To skip the manual steps below, paste the [agent setup sheet](docs/agent-setup.md) into Codex, Claude Code or another coding agent on your computer, and it sets Fathom up for you.
 
+For a tour of everything Fathom does, read [What Fathom does](docs/features.md).
+To fork Fathom or build on it, point your coding agent at [Fathom for agents](docs/features-for-agents.md).
+
 ## Requirements
 
 - macOS, or Linux on x86_64 or arm64.
