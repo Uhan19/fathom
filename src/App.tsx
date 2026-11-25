@@ -382,7 +382,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   };
 
   const columns = shownColumns(view?.columns ?? [], projectFilter);
-  const tickets = boardTickets(cards, columns, overlay, view?.source ?? "firstmate");
+  const tickets = boardTickets(cards, view?.columns ?? [], overlay, view?.source ?? "firstmate");
   const anyCollapsed = columns.some((c) => c.collapsed) || collapsedRows.length > 0;
   useEffect(() => {
     if (anyCollapsed) setUnfolded(null);

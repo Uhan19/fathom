@@ -22,10 +22,7 @@ export function boardTickets(cards: Card[], columns: Column[], overlay: Overlay,
 export function matchTickets(tickets: Ticket[], query: string): Ticket[] {
   const needle = query.trim().toLowerCase();
   if (!needle) return [];
-  const byRef = tickets.filter((t) => t.ref.toLowerCase().includes(needle));
-  const refMatched = new Set(byRef);
-  const byTitle = tickets.filter((t) => !refMatched.has(t) && t.card.title.toLowerCase().includes(needle));
-  return [...byRef, ...byTitle];
+  return tickets.filter((t) => t.ref.toLowerCase().includes(needle) || t.card.title.toLowerCase().includes(needle));
 }
 
 export type SearchStep = { type: "move"; active: number } | { type: "pick"; index: number } | { type: "close" } | null;

@@ -87,7 +87,7 @@ export function TicketSearch({ tickets, onOpen }: TicketSearchProps) {
         onKeyDown={onKeyDown}
       />
       {shown && (
-        <ul className="ticket-search-list" data-part="ticket-search-list" id={listId} role="listbox" aria-label="Matching tickets" ref={list} style={place}>
+        <ul className="ticket-search-list" data-part="ticket-search-list" id={listId} role="listbox" aria-label="Matching tickets" ref={list} style={place} onMouseDown={(e) => e.preventDefault()}>
           {matches.length === 0 ? (
             <li className="ticket-search-empty" data-part="ticket-search-empty" role="presentation">
               No matching tickets
@@ -106,7 +106,6 @@ export function TicketSearch({ tickets, onOpen }: TicketSearchProps) {
                 role="option"
                 aria-selected={index === active}
                 title={`${ticket.ref} ${ticket.card.title}`}
-                onMouseDown={(e) => e.preventDefault()}
                 onPointerEnter={() => setChosen(index)}
                 onClick={() => pick(ticket)}
               >

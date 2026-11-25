@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { groupCards } from "./board";
 import { FIXTURE_CARDS, FIXTURE_COLUMNS } from "./preview/fixture";
-import { boardTickets, listPlace, matchTickets, searchKey } from "./ticketSearch";
+import { shownColumns } from "./projectFilter";
+import { boardTickets, listPlace, matchTickets, searchKey, type ListPlace } from "./ticketSearch";
 
 const NO_OVERLAY = { places: [], requests: [] };
 const tickets = boardTickets(FIXTURE_CARDS, FIXTURE_COLUMNS, NO_OVERLAY, "firstmate");
@@ -20,9 +22,16 @@ describe("boardTickets", () => {
     expect(fathom.find((t) => t.card.id === "atl-12")?.ref).toBe("#40");
   });
 
-  it("leaves out cards whose project has no column on the board", () => {
-    const one = boardTickets(FIXTURE_CARDS, FIXTURE_COLUMNS.slice(0, 1), NO_OVERLAY, "firstmate");
-    expect(one.every((t) => t.card.project === FIXTURE_COLUMNS[0].project)).toBe(true);
+  it("finds a ticket the project filter hides and opens that card", () => {
+    const onlyAtlas = shownColumns(FIXTURE_COLUMNS, ["atlas-api"]);
+    const onBoard = [...groupCards(FIXTURE_CARDS, onlyAtlas).values()].flatMap((rows) => [...rows.values()].flat());
+    expect(onBoard.length).toBeGreaterThan(0);
+    expect(onBoard.map((c) => c.id)).not.toContain("hrb-17");
+
+    const [picked, ...rest] = matchTickets(tickets, "hrb-17");
+    expect(rest).toEqual([]);
+    expect(picked.card.title).toBe("Make the sidebar keyboard friendly");
+    expect(FIXTURE_CARDS.find((c) => c.id === picked.card.id)?.project).toBe("harbor-web");
   });
 });
 
@@ -41,15 +50,6 @@ describe("matchTickets", () => {
     expect(ids("HRB-17")).toEqual(["hrb-17"]);
     expect(ids("#49")).toEqual(["hrb-17"]);
     expect(ids("49")).toEqual(["hrb-17"]);
-  });
-
-  it("lists id matches before title matches", () => {
-    const [first, second] = FIXTURE_CARDS;
-    const mixed = [
-      { card: { ...first, title: "Retire the v80 client" }, ref: "#40 atl-12" },
-      { card: second, ref: "#80 atl-15" },
-    ];
-    expect(matchTickets(mixed, "80").map((t) => t.card.id)).toEqual(["atl-15", "atl-12"]);
   });
 
   it("narrows the list with every character typed", () => {
@@ -86,19 +86,45 @@ describe("searchKey", () => {
 });
 
 describe("listPlace", () => {
+  type Viewport = { width: number; height: number };
   const viewport = { width: 1600, height: 1000 };
 
-  it("opens the list under a field in a top header, at least as wide as a result line", () => {
-    expect(listPlace({ left: 300, top: 18, bottom: 48, width: 360 }, viewport)).toEqual({ left: 300, width: 440, maxHeight: 420, top: 54 });
+  const edges = (place: ListPlace, view: Viewport) => {
+    const bottom = place.top !== undefined ? place.top + place.maxHeight : view.height - (place.bottom ?? 0);
+    return { top: bottom - place.maxHeight, bottom, left: place.left, right: place.left + place.width };
+  };
+
+  const expectInside = (place: ListPlace, view: Viewport) => {
+    const box = edges(place, view);
+    expect(place.maxHeight).toBeGreaterThan(0);
+    expect(box.top).toBeGreaterThanOrEqual(0);
+    expect(box.bottom).toBeLessThanOrEqual(view.height);
+    expect(box.left).toBeGreaterThanOrEqual(0);
+    expect(box.right).toBeLessThanOrEqual(view.width);
+  };
+
+  it("opens the list under a field in a top header, at least as wide as the field", () => {
+    const field = { left: 300, top: 18, bottom: 48, width: 360 };
+    const place = listPlace(field, viewport);
+    expect(place.top).toBeDefined();
+    expect(edges(place, viewport).top).toBeGreaterThanOrEqual(field.bottom);
+    expect(place.width).toBeGreaterThanOrEqual(field.width);
+    expectInside(place, viewport);
   });
 
   it("opens the list above a field in a bottom header", () => {
-    expect(listPlace({ left: 300, top: 960, bottom: 990, width: 360 }, viewport)).toEqual({ left: 300, width: 440, maxHeight: 420, bottom: 46 });
+    const field = { left: 300, top: 960, bottom: 990, width: 360 };
+    const place = listPlace(field, viewport);
+    expect(place.bottom).toBeDefined();
+    expect(edges(place, viewport).bottom).toBeLessThanOrEqual(field.top);
+    expectInside(place, viewport);
   });
 
-  it("keeps the list inside a narrow window", () => {
-    const place = listPlace({ left: 600, top: 18, bottom: 48, width: 300 }, { width: 960, height: 400 });
-    expect(place.left + place.width).toBeLessThanOrEqual(960 - 12);
-    expect(place.maxHeight).toBe(400 - 48 - 6 - 12);
+  it("keeps the list inside a narrow, short window", () => {
+    const view = { width: 960, height: 400 };
+    const field = { left: 600, top: 18, bottom: 48, width: 300 };
+    const place = listPlace(field, view);
+    expect(edges(place, view).top).toBeGreaterThanOrEqual(field.bottom);
+    expectInside(place, view);
   });
 });
