@@ -20,6 +20,14 @@ export const ADD_COLUMN_WIDTH = MIN_COLUMN_WIDTH;
 
 export type Cells = Map<number, Map<RowKey, Card[]>>;
 
+export interface Geometry {
+  rowLabel: number;
+  collapsed: number;
+  lane: number;
+}
+
+export const DEFAULT_GEOMETRY: Geometry = { rowLabel: ROW_LABEL_WIDTH, collapsed: COLLAPSED_WIDTH, lane: 260 };
+
 const UNSETTLED: MoveStatus[] = ["sending", "asked", "failed"];
 const SHOWN: MoveStatus[] = [...UNSETTLED, "answered"];
 
@@ -118,13 +126,18 @@ export function rowCounts(cards: Card[]): Record<RowKey, number> {
   return counts;
 }
 
-export function columnTemplate(columns: Column[]): string {
-  const tracks = columns.map((c) => `${c.collapsed ? COLLAPSED_WIDTH : c.width}px`);
-  return [`${ROW_LABEL_WIDTH}px`, ...tracks].join(" ");
+export function columnTemplate(columns: Column[], geometry: Geometry = DEFAULT_GEOMETRY): string {
+  const tracks = columns.map((c) => `${c.collapsed ? geometry.collapsed : c.width}px`);
+  return [`${geometry.rowLabel}px`, ...tracks].join(" ");
 }
 
-export function headTemplate(columns: Column[]): string {
-  return `${columnTemplate(columns)} ${ADD_COLUMN_WIDTH}px`;
+export function headTemplate(columns: Column[], geometry: Geometry = DEFAULT_GEOMETRY): string {
+  return `${columnTemplate(columns, geometry)} ${ADD_COLUMN_WIDTH}px`;
+}
+
+export function laneTemplate(collapsedRows: RowKey[], geometry: Geometry = DEFAULT_GEOMETRY): string {
+  const lanes = ROW_ORDER.map((row) => `${collapsedRows.includes(row) ? geometry.collapsed : geometry.lane}px`);
+  return [`${geometry.rowLabel}px`, ...lanes].join(" ");
 }
 
 export function isUnnamed(column: Pick<Column, "name">): boolean {
@@ -136,18 +149,22 @@ export function renamedColumn(column: Pick<Column, "project" | "name">, input: s
   return name === null || name === column.name ? null : name;
 }
 
-export function boardMinWidth(columns: Column[]): number {
+export function boardMinWidth(columns: Column[], geometry: Geometry = DEFAULT_GEOMETRY): number {
   return columns.reduce(
-    (sum, c) => sum + (c.collapsed ? COLLAPSED_WIDTH : c.width) + COLUMN_GAP,
-    ROW_LABEL_WIDTH + ADD_COLUMN_WIDTH + COLUMN_GAP + 2 * ROW_PADDING,
+    (sum, c) => sum + (c.collapsed ? geometry.collapsed : c.width) + COLUMN_GAP,
+    geometry.rowLabel + ADD_COLUMN_WIDTH + COLUMN_GAP + 2 * ROW_PADDING,
   );
 }
 
-export function oneColumnWidth(columns: Column[]): number {
+export function oneColumnWidth(columns: Column[], geometry: Geometry = DEFAULT_GEOMETRY): number {
   const firstOpen = columns.findIndex((c) => !c.collapsed);
   const shown = firstOpen < 0 ? columns : columns.slice(0, firstOpen + 1);
-  const width = shown.reduce((sum, c) => sum + COLUMN_GAP + (c.collapsed ? COLLAPSED_WIDTH : c.width), ROW_LABEL_WIDTH);
+  const width = shown.reduce((sum, c) => sum + COLUMN_GAP + (c.collapsed ? geometry.collapsed : c.width), geometry.rowLabel);
   return width + 2 * ROW_PADDING;
+}
+
+export function oneLaneWidth(geometry: Geometry = DEFAULT_GEOMETRY): number {
+  return geometry.rowLabel + geometry.lane;
 }
 
 export function cellCount(cells: Cells, column: number): number {

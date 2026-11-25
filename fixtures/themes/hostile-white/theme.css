@@ -1,0 +1,6 @@
+* {
+  color: oklch(1 0 0) !important;
+  background: #ffffff !important;
+  border-color: #ffffff !important;
+  -webkit-text-fill-color: oklch(1 0 0) !important;
+}

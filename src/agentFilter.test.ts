@@ -54,7 +54,7 @@ function board({ workers = FIXTURE_WORKERS, agentFilter = "all", collapsedRows =
   );
 }
 
-const shownCards = (html: string) => [...html.matchAll(/<div class="card[^"]*" data-id="([^"]+)"/g)].map((m) => m[1]).sort();
+const shownCards = (html: string) => [...html.matchAll(/<div class="card[^"]*" data-part="card"[^>]* data-id="([^"]+)"/g)].map((m) => m[1]).sort();
 const rowMarkup = (html: string, row: RowKey) => html.match(new RegExp(`<section class="row row-${row}[^"]*".*?</section>`))?.[0] ?? "";
 
 describe("shownByAgent", () => {
@@ -104,13 +104,13 @@ describe("the agent filter on the board", () => {
   });
 
   it("counts only the shown cards in each column", () => {
-    expect(board({ agentFilter: "withAgent" })).toContain('<span class="column-total">2</span>');
+    expect(board({ agentFilter: "withAgent" })).toContain('<span class="column-total" data-part="column-total">2</span>');
   });
 
   it("says so when no card matches instead of showing an empty board", () => {
     const html = board({ agentFilter: "withActiveAgent", workers: [] });
     expect(html).toContain("No card has an active agent right now.");
-    expect(html).toContain('<button class="mini">Show every card</button>');
+    expect(html).toContain('<button class="mini" data-part="mini-button" data-control="no-match-show-every-card">Show every card</button>');
     expect(html).not.toContain('class="column-heads"');
     expect(board({ agentFilter: "withAgent", projectFilter: ["keel-cli"] })).toContain("No card in the shown projects has an agent right now.");
   });
@@ -118,7 +118,7 @@ describe("the agent filter on the board", () => {
   it("does not call a board empty when its only matches sit in a collapsed row", () => {
     const html = board({ agentFilter: "withActiveAgent", collapsedRows: ["shallows"] });
     expect(html).not.toContain("board-no-match");
-    expect(rowMarkup(html, "shallows")).toContain('<span class="row-count">2</span>');
+    expect(rowMarkup(html, "shallows")).toContain('<span class="row-count" data-part="row-count">2</span>');
   });
 });
 
@@ -147,7 +147,7 @@ describe("the focus on the board", () => {
   it("offers a way back when none of the focused tasks is on the board", () => {
     const html = board({ focus: [9999] });
     expect(html).toContain("None of the focused tasks is on the board.");
-    expect(html).toContain('<button class="mini">Clear focus</button>');
+    expect(html).toContain('<button class="mini" data-part="mini-button" data-control="no-match-clear-focus">Clear focus</button>');
     expect(html).not.toContain('class="column-heads"');
     expect(board({ focus: [numberOf("hrb-17")], projectFilter: ["atlas-api"] })).toContain("None of the focused tasks is in the shown projects.");
   });
@@ -155,12 +155,12 @@ describe("the focus on the board", () => {
 
 describe("task numbers on cards", () => {
   it("show the number, then the Firstmate name, above the title", () => {
-    expect(board({})).toContain(`<span class="card-ref"><span class="card-number">#${numberOf("hrb-17")}</span><span class="card-name">hrb-17</span></span>`);
+    expect(board({})).toContain(`<span class="card-ref" data-part="card-ref"><span class="card-number" data-part="card-number">#${numberOf("hrb-17")}</span><span class="card-name" data-part="card-name">hrb-17</span></span>`);
   });
 
   it("show only the number on Fathom's own tasks", () => {
     const html = board({ cards: FIXTURE_BACKLOG_CARDS, source: "fathom" });
-    expect(html).toContain(`<span class="card-ref"><span class="card-number">#${FIXTURE_BACKLOG_CARDS[0].number}</span></span>`);
+    expect(html).toContain(`<span class="card-ref" data-part="card-ref"><span class="card-number" data-part="card-number">#${FIXTURE_BACKLOG_CARDS[0].number}</span></span>`);
     expect(html).not.toContain("card-name");
   });
 });
@@ -169,11 +169,11 @@ describe("collapsed rows", () => {
   it("shrink to a band with the row's name and card count", () => {
     const html = board({ collapsedRows: ["deep", "landed"] });
     const deep = rowMarkup(html, "deep");
-    expect(deep).toContain('class="row row-deep row-collapsed"');
+    expect(deep).toContain('class="row row-deep row-collapsed" data-part="row" data-kind="deep" data-state="collapsed"');
     expect(deep).toContain('aria-expanded="false" aria-label="Expand Deep, 9 cards" title="Expand Deep"');
-    expect(deep).toContain('<span class="row-label">Deep</span><span class="row-count">9</span>');
+    expect(deep).toContain('<span class="row-label" data-part="row-label">Deep</span><span class="row-count" data-part="row-count">9</span>');
     expect(deep).not.toContain('class="card');
-    expect(rowMarkup(html, "landed")).toContain('<span class="row-count">9</span>');
+    expect(rowMarkup(html, "landed")).toContain('<span class="row-count" data-part="row-count">9</span>');
   });
 
   it("stay drop targets that take a card at the end of the cell", () => {
@@ -186,13 +186,13 @@ describe("collapsed rows", () => {
     const shallows = rowMarkup(html, "shallows");
     expect(shallows).toContain('aria-expanded="true" aria-label="Collapse Shallows" title="Collapse Shallows"');
     expect(shallows).not.toContain("row-count");
-    expect(rowMarkup(html, "seabed")).toContain('class="row row-seabed row-fill"');
-    expect(rowMarkup(board({}), "landed")).toContain('class="row row-landed row-fill"');
+    expect(rowMarkup(html, "seabed")).toContain('class="row row-seabed row-fill" data-part="row" data-kind="seabed" data-state="fill"');
+    expect(rowMarkup(board({}), "landed")).toContain('class="row row-landed row-fill" data-part="row" data-kind="landed" data-state="fill"');
   });
 
   it("count only the cards the filters show", () => {
     const html = board({ collapsedRows: ["shallows"], agentFilter: "withAgent", projectFilter: ["harbor-web"] });
-    expect(rowMarkup(html, "shallows")).toContain('<span class="row-count">2</span>');
+    expect(rowMarkup(html, "shallows")).toContain('<span class="row-count" data-part="row-count">2</span>');
   });
 });
 

@@ -3,6 +3,7 @@ import { relativeTime, exactTime } from "../activity";
 import { api, errorText, type FileEntry, type FilePreview } from "../api";
 import { formatBytes } from "../board";
 import { isMac } from "../bosun";
+import { states } from "../parts";
 import type { Linking } from "../links";
 import { ChevronLeft, FileIcon, FolderIcon, ImageIcon, OpenIcon, PageIcon, RevealIcon } from "./Icons";
 import { Markdown, type PathAction } from "./Markdown";
@@ -59,7 +60,7 @@ function Thumb({ entry }: { entry: FileEntry }) {
     };
   }, [entry.path, wanted]);
   return (
-    <span ref={ref} className={`file-glyph ${src ? "has-thumb" : ""}`}>
+    <span ref={ref} className={`file-glyph ${src ? "has-thumb" : ""}`} data-part="file-glyph" data-state={states({ thumb: src !== null })}>
       {src ? <img src={src} alt="" /> : <Glyph entry={entry} />}
     </span>
   );
@@ -68,12 +69,24 @@ function Thumb({ entry }: { entry: FileEntry }) {
 function FileActions({ entry, wide }: { entry: FileEntry; wide?: boolean }) {
   const name = entry.name;
   return (
-    <div className={`file-actions ${wide ? "wide" : ""}`}>
-      <button type="button" className={wide ? "btn btn-small" : "ico"} title={`Open ${name}`} aria-label={`Open ${name}`} onClick={() => void api.openFile(entry.path)}>
+    <div className={`file-actions ${wide ? "wide" : ""}`} data-part="file-actions" data-kind={wide ? "wide" : undefined}>
+      <button
+        type="button"
+        className={wide ? "btn btn-small" : "ico"}
+        data-part={wide ? "button" : "icon-button"}
+        data-kind={wide ? "small" : undefined}
+        data-control="file-open-app"
+        title={`Open ${name}`} aria-label={`Open ${name}`} onClick={() => void api.openFile(entry.path)}>
         <OpenIcon />
         {wide && <span>Open</span>}
       </button>
-      <button type="button" className={wide ? "btn btn-small" : "ico"} title={`${REVEAL_LABEL}: ${name}`} aria-label={`${REVEAL_LABEL}: ${name}`} onClick={() => void api.revealFile(entry.path)}>
+      <button
+        type="button"
+        className={wide ? "btn btn-small" : "ico"}
+        data-part={wide ? "button" : "icon-button"}
+        data-kind={wide ? "small" : undefined}
+        data-control="file-reveal"
+        title={`${REVEAL_LABEL}: ${name}`} aria-label={`${REVEAL_LABEL}: ${name}`} onClick={() => void api.revealFile(entry.path)}>
         <RevealIcon />
         {wide && <span>{REVEAL_LABEL}</span>}
       </button>
@@ -84,12 +97,14 @@ function FileActions({ entry, wide }: { entry: FileEntry; wide?: boolean }) {
 function FileRow({ entry, now, onPreview }: { entry: FileEntry; now: number; onPreview: (path: string) => void }) {
   const action = isPreviewable(entry) ? "Preview" : entry.kind === "folder" ? "Open folder" : "Open in its app";
   return (
-    <li className="file-row">
-      <button type="button" className="file-main" onClick={() => openEntry(entry, onPreview)} title={`${action}: ${entry.path}`}>
+    <li className="file-row" data-part="file-row" data-key={entry.path}>
+      <button type="button" className="file-main" data-part="file-main" data-control="file-open" onClick={() => openEntry(entry, onPreview)} title={`${action}: ${entry.path}`}>
         <Thumb entry={entry} />
-        <span className="file-text">
-          <span className="file-name">{entry.name}</span>
-          <span className="file-meta" title={entry.modifiedMs !== null ? exactTime(entry.modifiedMs) : undefined}>
+        <span className="file-text" data-part="file-text">
+          <span className="file-name" data-part="file-name">
+            {entry.name}
+          </span>
+          <span className="file-meta" data-part="file-meta" title={entry.modifiedMs !== null ? exactTime(entry.modifiedMs) : undefined}>
             {entryMeta(entry, now, !entry.inTaskFolder)}
           </span>
         </span>
@@ -113,13 +128,18 @@ interface FilesTabProps {
 export function FilesTab({ hasHome, files, error, taskFolder, cardId, selected, linking, onPreview }: FilesTabProps) {
   const now = Date.now();
   if (!hasHome) return <NeedsHome what="Files" />;
-  if (error) return <p className="tab-empty error-text">Could not look for files: {error}</p>;
-  if (!files) return <p className="tab-empty">Looking for files…</p>;
+  if (error)
+    return (
+      <p className="tab-empty error-text" data-part="tab-empty" data-kind="error">
+        Could not look for files: {error}
+      </p>
+    );
+  if (!files) return <p className="tab-empty" data-part="tab-empty">Looking for files…</p>;
   const shown = selected ? files.find((f) => f.path === selected) : null;
   if (shown) return <PreviewPane entry={shown} files={files} now={now} linking={linking} onPreview={onPreview} />;
   if (files.length === 0)
     return (
-      <p className="tab-empty">
+      <p className="tab-empty" data-part="tab-empty">
         No files yet. Files in <code>data/{cardId}/</code> and files named in the note, hold reason or activity show up here.
       </p>
     );
@@ -128,14 +148,14 @@ export function FilesTab({ hasHome, files, error, taskFolder, cardId, selected, 
   return (
     <>
       {inFolder.length > 0 && (
-        <FileGroup title="Task folder" note={taskFolder}>
+        <FileGroup kind="task-folder" title="Task folder" note={taskFolder}>
           {inFolder.map((f) => (
             <FileRow key={f.path} entry={f} now={now} onPreview={onPreview} />
           ))}
         </FileGroup>
       )}
       {elsewhere.length > 0 && (
-        <FileGroup title="Mentioned in this card">
+        <FileGroup kind="mentioned" title="Mentioned in this card">
           {elsewhere.map((f) => (
             <FileRow key={f.path} entry={f} now={now} onPreview={onPreview} />
           ))}
@@ -145,21 +165,25 @@ export function FilesTab({ hasHome, files, error, taskFolder, cardId, selected, 
   );
 }
 
-function FileGroup({ title, note, children }: { title: string; note?: string | null; children: ReactNode }) {
+function FileGroup({ kind, title, note, children }: { kind: string; title: string; note?: string | null; children: ReactNode }) {
   return (
-    <section className="sec">
-      <h3 className="sech">
+    <section className="sec" data-part="file-group" data-kind={kind}>
+      <h3 className="sech" data-part="sech">
         {title}
-        {note && <span className="sech-note">{note}</span>}
+        {note && (
+          <span className="sech-note" data-part="sech-note">
+            {note}
+          </span>
+        )}
       </h3>
-      <ul className="file-list">{children}</ul>
+      <ul className="file-list" data-part="file-list">{children}</ul>
     </section>
   );
 }
 
 export function NeedsHome({ what }: { what: string }) {
   return (
-    <p className="tab-empty">
+    <p className="tab-empty" data-part="tab-empty">
       {what} need a Firstmate home. Set one in Settings to see this card's task folder, the files it mentions and its worker's progress updates.
     </p>
   );
@@ -204,30 +228,38 @@ function PreviewPane({ entry, files, now, linking, onPreview }: PreviewPaneProps
     return listed ? () => openEntry(listed, onPreview) : () => void api.openFile(target);
   };
   return (
-    <div className="file-preview">
-      <div className="preview-head">
-        <button type="button" className="back-link" onClick={onBack}>
+    <div className="file-preview" data-part="file-preview" data-key={entry.path}>
+      <div className="preview-head" data-part="preview-head">
+        <button type="button" className="back-link" data-part="back-link" data-control="file-back" onClick={onBack}>
           <ChevronLeft />
           All files
         </button>
-        <h3 className="preview-name">{entry.name}</h3>
-        <span className="file-meta">{entryMeta(entry, now, true)}</span>
+        <h3 className="preview-name" data-part="preview-name">
+          {entry.name}
+        </h3>
+        <span className="file-meta" data-part="file-meta">
+          {entryMeta(entry, now, true)}
+        </span>
         <FileActions entry={entry} wide />
       </div>
-      {error && <p className="error-text">{error}</p>}
-      {!preview && !error && <p className="muted">Loading the preview…</p>}
+      {error && (
+        <p className="error-text" data-part="error-text">
+          {error}
+        </p>
+      )}
+      {!preview && !error && <p className="muted" data-part="muted">Loading the preview…</p>}
       {preview?.truncated && (
-        <p className="quiet-note">
+        <p className="quiet-note" data-part="quiet-note">
           This file is {formatBytes(preview.size)}; only the start is shown. Open it to read the rest.
         </p>
       )}
       {preview?.kind === "image" && preview.dataUrl && (
-        <div className="preview-image">
+        <div className="preview-image" data-part="preview-image">
           <img src={preview.dataUrl} alt={entry.name} />
         </div>
       )}
       {preview?.kind === "markdown" && preview.text !== null && <Markdown text={preview.text} linking={linking} onPath={onPath} className="md-doc" />}
-      {preview?.kind === "text" && preview.text !== null && <pre className="preview-text">{preview.text}</pre>}
+      {preview?.kind === "text" && preview.text !== null && <pre className="preview-text" data-part="preview-text">{preview.text}</pre>}
     </div>
   );
 }

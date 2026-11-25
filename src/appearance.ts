@@ -74,6 +74,10 @@ export function chatFontStack(appearance: Appearance, platform: Platform = PLATF
   return `${fontChoice(surfaceFonts(appearance, "chat", platform), appearance.chatFont).stack}, ${cssFamily(SYMBOLS_FAMILY)}`;
 }
 
+export function terminalFontStack(appearance: Appearance, themeFont: string | undefined, platform: Platform = PLATFORM): string {
+  return themeFont ? `${themeFont}, ${cssFamily(SYMBOLS_FAMILY)}` : chatFontStack(appearance, platform);
+}
+
 export function addFont(appearance: Appearance, surface: Surface, family: string): Appearance {
   const added = surface === "chat" ? appearance.chatAddedFonts : appearance.boardAddedFonts;
   const list = added.includes(family) ? added : [...added, family];

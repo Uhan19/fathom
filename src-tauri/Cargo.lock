@@ -1107,12 +1107,19 @@ name = "fathom"
 version = "0.3.0"
 dependencies = [
  "base64 0.23.1",
+ "block2",
+ "cairo-rs",
  "csv",
  "fontconfig",
+ "gtk",
  "libc",
  "notify",
+ "objc2",
+ "objc2-app-kit",
  "objc2-core-foundation",
  "objc2-core-text",
+ "objc2-foundation",
+ "objc2-web-kit",
  "portable-pty",
  "rmcp",
  "rusqlite",
@@ -1126,6 +1133,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tempfile",
  "tokio",
+ "webkit2gtk",
 ]
 
 [[package]]

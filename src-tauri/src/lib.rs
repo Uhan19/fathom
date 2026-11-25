@@ -13,11 +13,15 @@ mod requests;
 mod settings;
 mod shell_path;
 mod shell_tabs;
+mod snapshot;
 mod source;
 mod state;
 mod tasks;
 #[cfg(test)]
 mod test_support;
+mod theme_check;
+mod theme_watch;
+mod themes;
 mod toon;
 mod updates;
 mod waits;
@@ -31,6 +35,7 @@ use std::time::Instant;
 use tauri::{Manager, RunEvent};
 
 const EXPORT_FLAG: &str = "--export";
+const DEFAULT_THEME_FLAG: &str = "--default-theme";
 const MAC_DATA_DIR: &str = "Library/Application Support";
 const LINUX_DATA_DIR: &str = ".local/share";
 
@@ -38,6 +43,24 @@ pub fn run() {
     let started = Instant::now();
     let context = tauri::generate_context!();
     let identifier = context.config().identifier.clone();
+
+    let args: Vec<String> = std::env::args().collect();
+    if let Some(request) = theme_check::parse(&args) {
+        let code = match request {
+            Ok(request) => match store_dir(&identifier, &args) {
+                Ok(dir) => theme_check::run_cli(context, request, &dir),
+                Err(error) => {
+                    eprintln!("fathom: {error}");
+                    2
+                }
+            },
+            Err(usage) => {
+                eprintln!("{usage}");
+                2
+            }
+        };
+        std::process::exit(code);
+    }
 
     if let Some(code) = run_helper_asking_flag(&identifier)
         .or_else(|| run_mcp_flag(&identifier))
@@ -50,10 +73,27 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .register_asynchronous_uri_scheme_protocol(
+            themes::scheme::SCHEME,
+            |ctx, request, responder| {
+                let app = ctx.app_handle().clone();
+                let path = request.uri().path().to_string();
+                std::thread::spawn(move || {
+                    let state = app.try_state::<std::sync::Arc<state::AppState>>();
+                    let asset = themes::scheme::serve(&path, |id| {
+                        let state = state.as_ref()?;
+                        state.themes.active(id)?;
+                        Some(state.themes.good_copy(id))
+                    });
+                    responder.respond(asset.into_response());
+                });
+            },
+        )
         .setup(move |app| {
             let data_dir = app.path().app_data_dir()?;
             let log_dir = app.path().app_log_dir()?;
             let db = db::Db::open(&data_dir)?;
+            apply_launch_flags(&db, &std::env::args().collect::<Vec<_>>())?;
             let state = state::AppState::start(app.handle(), db, log_dir, started)?;
             app.manage(state);
             app.manage(std::sync::Arc::new(pulls::PrCache::default()));
@@ -115,6 +155,10 @@ pub fn run() {
             commands::attachable_terminals,
             commands::launcher_folders,
             commands::remember_column_folder,
+            commands::active_theme,
+            commands::list_themes,
+            commands::duplicate_nautical,
+            commands::reveal_themes_folder,
         ])
         .build(context)
         .expect("error while building Fathom");
@@ -127,6 +171,21 @@ pub fn run() {
             state.herdr.stop_events();
         }
     });
+}
+
+fn wants_default_theme(args: &[String]) -> bool {
+    args.iter().any(|a| a == DEFAULT_THEME_FLAG)
+}
+
+fn apply_launch_flags(db: &db::Db, args: &[String]) -> Result<(), String> {
+    if !wants_default_theme(args) {
+        return Ok(());
+    }
+    settings::update(db, |s| {
+        s.theme_id = themes::NAUTICAL.to_string();
+        Ok(())
+    })
+    .map(|_| ())
 }
 
 fn default_data_dir(identifier: &str) -> Result<PathBuf, String> {
@@ -148,6 +207,15 @@ fn data_root(os: &str, home: Option<PathBuf>, xdg_data_home: Option<OsString>) -
             .or_else(|| home.map(|home| home.join(LINUX_DATA_DIR))),
         _ => None,
     }
+}
+
+fn store_dir(identifier: &str, args: &[String]) -> Result<PathBuf, String> {
+    let default = default_data_dir(identifier)?.join(db::FILE_NAME);
+    let store = mcp::store_path(args, mcp::db_env(), default)?;
+    store
+        .parent()
+        .map(PathBuf::from)
+        .ok_or_else(|| format!("{} has no folder", store.display()))
 }
 
 fn run_mcp_flag(identifier: &str) -> Option<i32> {
@@ -235,6 +303,42 @@ mod tests {
             Some(PathBuf::from("/home/sailor/.local/share"))
         );
         assert_eq!(data_root("linux", None, None), None);
+    }
+
+    #[test]
+    fn the_default_theme_flag_starts_with_nautical_even_under_a_hostile_theme() {
+        let args = |words: &[&str]| words.iter().map(|w| w.to_string()).collect::<Vec<_>>();
+        for hostile in ["hostile-hidden", "hostile-white", "hostile-cover"] {
+            let dir = tempfile::tempdir().unwrap();
+            let db = db::Db::open(&dir.path().join("data")).unwrap();
+            let themes = themes::Themes::new(dir.path().join("themes"), &dir.path().join("data"));
+            let folder = themes.root.join(hostile);
+            std::fs::create_dir_all(&folder).unwrap();
+            let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../fixtures/themes")
+                .join(hostile);
+            for file in [themes::MANIFEST_FILE, themes::STYLE_FILE] {
+                std::fs::copy(fixture.join(file), folder.join(file)).unwrap();
+            }
+            let hash = themes::folder_hash(&folder).unwrap();
+            let checked = themes.snapshot(hostile, &folder).unwrap();
+            themes
+                .store_result(hostile, &checked.dir, &hash, vec![], 1)
+                .unwrap();
+            settings::update(&db, |s| {
+                s.theme_id = hostile.into();
+                Ok(())
+            })
+            .unwrap();
+            assert!(themes.active(hostile).is_some(), "{hostile}");
+
+            apply_launch_flags(&db, &args(&["fathom"])).unwrap();
+            assert_eq!(settings::load(&db).unwrap().theme_id, hostile);
+            apply_launch_flags(&db, &args(&["fathom", "--default-theme"])).unwrap();
+            let theme_id = settings::load(&db).unwrap().theme_id;
+            assert_eq!(theme_id, themes::NAUTICAL, "{hostile}");
+            assert!(themes.active(&theme_id).is_none());
+        }
     }
 
     #[test]

@@ -20,8 +20,8 @@ import {
   type WindowChange,
   type Worker,
 } from "./api";
-import { appearanceOf, boardStyle, chatFontStack, type Appearance } from "./appearance";
-import { oneColumnWidth, placeLocally, rowCounts, shownRequest } from "./board";
+import { appearanceOf, boardStyle, terminalFontStack, type Appearance } from "./appearance";
+import { oneColumnWidth, oneLaneWidth, placeLocally, rowCounts, shownRequest } from "./board";
 import { emptyBoardText } from "./source";
 import { moveTo } from "./columnOrder";
 import { startDrag } from "./drag";
@@ -45,6 +45,13 @@ import { comboLabel, listenForShortcuts, type ShortcutAction } from "./shortcuts
 import { chatResizer, detailResizer } from "./windowSettings";
 import { isUnseen, leftCard, NO_UPDATES, seenLocally, type CardUpdates } from "./updates";
 import { waitsOf } from "./waits";
+import { applyLook } from "./themes/apply";
+import { LookContext } from "./themes/context";
+import { isSingleMode, lookOf, NAUTICAL_LOOK, shownMode, type Look } from "./themes/look";
+import { previewRequests } from "./themes/previews";
+import { RESET_EVENT } from "./themes/reset";
+import { useOverlayDetail } from "./overlayDetail";
+import { states } from "./parts";
 
 const NO_HELPER: HelperStatus = { terminal: null, status: "", asking: false };
 const NO_WAITS: Waits = { tasks: {}, people: {} };
@@ -58,7 +65,7 @@ const SHORTCUT = shortcutLabel(MAC);
 
 const withShortcut = (text: string, combo: string | undefined) => (combo ? `${text} (${comboLabel(combo, MAC)})` : text);
 
-export default function App() {
+export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Look }) {
   const [view, setView] = useState<BoardView | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -80,6 +87,9 @@ export default function App() {
   const [bosunHeight, setBosunHeight] = useState(DRAWER_HEIGHT.initial);
   const [activeTabName, setActiveTabName] = useState<string | null>(null);
   const [unfolded, setUnfolded] = useState<Folded | null>(null);
+  const [look, setLook] = useState<Look>(initialLook);
+  const [lookPreview, setLookPreview] = useState<Look | null>(null);
+  const [themesChanged, setThemesChanged] = useState(0);
   const launchLogged = useRef(false);
   const shortcutActions = useRef<Record<ShortcutAction, () => void> | null>(null);
   const mainRef = useRef<HTMLElement>(null);
@@ -111,6 +121,7 @@ export default function App() {
       events.updates((u) => alive && setUpdates(u)),
       events.settings((s) => alive && setSettings(s)),
       events.helper((h) => alive && setHelper(h)),
+      events.themes(() => alive && setThemesChanged((n) => n + 1)),
     ];
     api
       .cachedBoard()
@@ -136,6 +147,67 @@ export default function App() {
   }, [accept]);
 
   const appearance = useMemo(() => preview ?? (settings ? appearanceOf(settings) : null), [preview, settings]);
+  const shownLook = lookPreview ?? look;
+  const themeId = settings?.themeId;
+
+  const [previews] = useState(previewRequests);
+  const endPreview = () => {
+    previews.end();
+    setLookPreview(null);
+  };
+
+  useEffect(() => {
+    if (themeId === undefined) return;
+    let alive = true;
+    void api
+      .activeTheme()
+      .then(lookOf)
+      .catch(() => NAUTICAL_LOOK)
+      .then(async (next) => {
+        if (!alive) return;
+        const shown = !previews.open;
+        if (shown) await applyLook(next);
+        if (!alive) return;
+        setLook(next);
+        if (shown && !previews.open) setLookPreview(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [themeId, themesChanged]);
+
+  useEffect(() => {
+    const reset = (e: Event) => {
+      endPreview();
+      setLook(NAUTICAL_LOOK);
+      setPreview(null);
+      setSettingsOpen(false);
+      const saved = (e as CustomEvent<Settings>).detail;
+      if (saved) setSettings(saved);
+    };
+    window.addEventListener(RESET_EVENT, reset);
+    return () => window.removeEventListener(RESET_EVENT, reset);
+  }, []);
+
+  const previewLook = (id: string | null) => {
+    if (id === null) {
+      previews.end();
+      void applyLook(look).then(() => {
+        if (!previews.open) setLookPreview(null);
+      });
+      return;
+    }
+    const current = previews.start();
+    void api
+      .activeTheme(id)
+      .then(lookOf)
+      .catch(() => NAUTICAL_LOOK)
+      .then(async (next) => {
+        if (!current()) return;
+        await applyLook(next);
+        if (current()) setLookPreview(next);
+      });
+  };
 
   useEffect(() => {
     if (!appearance) return;
@@ -143,13 +215,22 @@ export default function App() {
     Object.entries(boardStyle(appearance)).forEach(([name, value]) => root.setProperty(name, value));
   }, [appearance]);
 
-  const theme = settings?.theme ?? DEFAULT_THEME;
+  const singleMode = isSingleMode(shownLook);
+  const theme = shownMode(shownLook, settings?.theme ?? DEFAULT_THEME);
+  const chatFont = (from: Appearance) => terminalFontStack(from, shownLook.fonts.terminal);
+  const overlayDetail = shownLook.layout.detail === "overlay";
   const chatOpen = settings?.chatOpen ?? true;
   const chatWidth = chatDrag ?? settings?.chatWidth ?? 0;
   const detailWidth = detailDrag ?? settings?.detailWidth ?? 0;
   const projectFilter = settings?.projectFilter ?? [];
   const agentFilter = settings?.agentFilter ?? "all";
   const focus = settings?.focus ?? [];
+
+  const oneVisibleWidth = () => {
+    const { rowLabelWidth: rowLabel, collapsedWidth: collapsed, laneWidth: lane, board } = shownLook.layout;
+    const geometry = { rowLabel, collapsed, lane };
+    return board === "lanes" ? oneLaneWidth(geometry) : oneColumnWidth(columns, geometry);
+  };
 
   const boardRoom = () => {
     const main = mainRef.current;
@@ -159,12 +240,12 @@ export default function App() {
     const scrollbar = scroll ? scroll.getBoundingClientRect().width - scroll.clientWidth : 0;
     return {
       shown: board.getBoundingClientRect().width - (main.scrollWidth - main.clientWidth),
-      min: oneColumnWidth(columns) + scrollbar,
+      min: oneVisibleWidth() + scrollbar,
     };
   };
 
   useLayoutEffect(() => {
-    document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.mode = theme;
   }, [theme]);
 
   useEffect(() => {
@@ -188,7 +269,9 @@ export default function App() {
 
   shortcutActions.current = {
     toggleChat: () => changeWindow({ chatOpen: !chatOpen }),
-    toggleTheme: () => changeWindow({ theme: otherTheme(theme) }),
+    toggleTheme: () => {
+      if (!singleMode) changeWindow({ theme: otherTheme(theme) });
+    },
     openSettings: () => setSettingsOpen(true),
   };
 
@@ -322,6 +405,8 @@ export default function App() {
   const onSettingsSaved = (saved: Settings) => {
     setSettings(saved);
     setPreview(null);
+    if (lookPreview) setLook(lookPreview);
+    endPreview();
     setSettingsOpen(false);
     void api.readBoard().then(accept).catch((e) => setReadError(errorText(e)));
   };
@@ -344,87 +429,109 @@ export default function App() {
   const chatSource = view?.source ?? (settings?.home.trim() ? "firstmate" : "fathom");
   const chatAgent = initialAgent(chatSource, pickedAgent ?? settings?.chatAgent ?? null);
   const chatName = chatTitle(chatSource, chatTerminal, chatAgent);
+  const detailAsOverlay = detailShown && overlayDetail;
+  const appRef = useRef<HTMLDivElement>(null);
+  useOverlayDetail(appRef, detailAsOverlay, () => openCard(null));
+  const chatSide = shownLook.layout.chatSide === "left" ? 1 : -1;
 
   return (
-    <div className="app">
-      <header className="top">
+    <LookContext.Provider value={shownLook}>
+    <div className="app" data-part="app" ref={appRef}>
+      <header className="top" data-part="header" inert={detailAsOverlay}>
         <Brand />
-        <span className="count">
-          <span className="count-label">
-            <span className="count-lead">At the </span>surface
+        <span className="count" data-part="count" data-kind="surface">
+          <span className="count-label" data-part="count-label">
+            <span className="count-lead" data-part="count-lead">{shownLook.text.surfaceLead}</span>surface
           </span>
-          <b className="count-surface">{counts.surface}</b>
+          <b className="count-surface" data-part="count-value">{counts.surface}</b>
         </span>
-        <span className="count">
-          <span className="count-label">
-            <span className="count-lead">In the </span>shallows
+        <span className="count" data-part="count" data-kind="shallows">
+          <span className="count-label" data-part="count-label">
+            <span className="count-lead" data-part="count-lead">{shownLook.text.shallowsLead}</span>shallows
           </span>
-          <b className="count-shallows">{counts.shallows}</b>
+          <b className="count-shallows" data-part="count-value">{counts.shallows}</b>
         </span>
-        <span className={`herdr-dot${herdr.connected ? " up" : ""}`} title={herdr.connected ? "herdr-core connected" : herdr.message}>
-          <span className="herdr-label">herdr-core</span>
+        <span
+          className={`herdr-dot${herdr.connected ? " up" : ""}`}
+          data-part="herdr-dot"
+          data-state={states({ up: herdr.connected })}
+          title={herdr.connected ? "herdr-core connected" : herdr.message}
+        >
+          <span className="herdr-label" data-part="herdr-label">herdr-core</span>
         </span>
-        <div className="header-toggles">
+        <div className="header-toggles" data-part="header-toggles">
           <AgentFilterToggle filter={agentFilter} disabled={!settings} onChange={changeAgentFilter} />
           {(anyCollapsed || unfolded) && (
             <Switch
+              control="expand-all"
               label="Expand all"
               checked={!anyCollapsed}
               title={anyCollapsed ? "Open every folded column and collapsed row" : "Fold back what Expand all opened"}
               onChange={expandAll}
             />
           )}
-          <Switch
-            label="Dark mode"
-            checked={theme === "dark"}
-            disabled={!settings}
-            title={withShortcut("Switch light and dark", shortcuts?.toggleTheme)}
-            onChange={(dark) => changeWindow({ theme: dark ? "dark" : "light" })}
-          />
+          {!singleMode && (
+            <Switch
+              control="toggle-dark-mode"
+              label="Dark mode"
+              checked={theme === "dark"}
+              disabled={!settings}
+              title={withShortcut("Switch light and dark", shortcuts?.toggleTheme)}
+              onChange={(dark) => changeWindow({ theme: dark ? "dark" : "light" })}
+            />
+          )}
         </div>
-        <button className="btn btn-header" onClick={() => setSettingsOpen(true)} disabled={!settings} title={withShortcut("Settings", shortcuts?.openSettings)}>
+        <button
+          className="btn btn-header"
+          data-part="button"
+          data-kind="header"
+          data-control="open-settings"
+          onClick={() => setSettingsOpen(true)}
+          disabled={!settings}
+          title={withShortcut("Settings", shortcuts?.openSettings)}
+        >
           Settings
         </button>
       </header>
       {readError && (
-        <div className="banner" role="status">
+        <div className="banner" data-part="banner" role="status" inert={detailAsOverlay}>
           Could not read tasks: {readError}
         </div>
       )}
       {moveError && (
-        <div className="banner" role="status">
+        <div className="banner" data-part="banner" role="status" inert={detailAsOverlay}>
           Could not save the move: {moveError}
         </div>
       )}
       {columnError && (
-        <div className="banner" role="status">
+        <div className="banner" data-part="banner" role="status" inert={detailAsOverlay}>
           Could not change the columns: {columnError}
         </div>
       )}
-      <main className="main" ref={mainRef}>
-        <div className="board-column" ref={boardColumnRef}>
+      <main className="main" data-part="main" ref={mainRef}>
+        <div className="board-column" data-part="board-column" ref={boardColumnRef} inert={detailAsOverlay}>
           {(focus.length > 0 || projectFilter.length > 0 || agentFilter !== "all") && (
-            <div className="filter-strip" role="status">
+            <div className="filter-strip" data-part="filter-strip" role="status">
               {focus.length > 0 && (
-                <div className="filter-part">
+                <div className="filter-part" data-part="filter-part">
                   <span>{focusText(focus)}</span>
-                  <button className="mini" onClick={clearFocus}>
+                  <button className="mini" data-part="mini-button" data-control="clear-focus" onClick={clearFocus}>
                     Clear focus
                   </button>
                 </div>
               )}
               {projectFilter.length > 0 && (
-                <div className="filter-part">
+                <div className="filter-part" data-part="filter-part">
                   <span>{filterText(projectFilter)}</span>
-                  <button className="mini" onClick={showAllProjects}>
+                  <button className="mini" data-part="mini-button" data-control="show-all-projects" onClick={showAllProjects}>
                     Show all
                   </button>
                 </div>
               )}
               {agentFilter !== "all" && (
-                <div className="filter-part">
+                <div className="filter-part" data-part="filter-part">
                   <span>{agentFilterText(agentFilter)}</span>
-                  <button className="mini" onClick={() => changeAgentFilter("all")}>
+                  <button className="mini" data-part="mini-button" data-control="show-every-card" onClick={() => changeAgentFilter("all")}>
                     Show every card
                   </button>
                 </div>
@@ -460,10 +567,10 @@ export default function App() {
                 onWatch={(card, worker) => setWatched({ taskId: card.id, title: card.title, terminal: worker.terminal })}
               />
             ) : (
-              <div className="board-empty">{emptyBoardText(view.source, view.home)}</div>
+              <div className="board-empty" data-part="board-empty">{emptyBoardText(view.source, view.home)}</div>
             )
           ) : (
-            <div className="board-empty">{readError ? "" : "Reading tasks…"}</div>
+            <div className="board-empty" data-part="board-empty">{readError ? "" : "Reading tasks…"}</div>
           )}
           {settings && (
             <BosunDrawer
@@ -473,7 +580,7 @@ export default function App() {
               helperStarted={settings.helperStarted}
               mac={MAC}
               shortcut={SHORTCUT}
-              fontFamily={chatFontStack(appearance ?? appearanceOf(settings))}
+              fontFamily={chatFont(appearance ?? appearanceOf(settings))}
               fontSize={(appearance ?? settings).chatFontSize}
               theme={theme}
               connectionKey={connectionKey}
@@ -484,8 +591,13 @@ export default function App() {
         </div>
         {detailShown && (
           <>
+            {detailAsOverlay ? (
+              <div className="detail-scrim" data-part="detail-scrim" data-control="close-detail-scrim" aria-hidden="true" onClick={() => openCard(null)} />
+            ) : (
             <div
               className="panel-handle"
+              data-part="panel-handle"
+              data-control="resize-card-panel"
               role="separator"
               aria-label="Resize card panel"
               onPointerDown={(e) => {
@@ -502,7 +614,9 @@ export default function App() {
             >
               <span />
             </div>
+            )}
             <CardDetail
+              overlay={detailAsOverlay}
               card={selected}
               source={view?.source ?? "firstmate"}
               rowNames={rowNames}
@@ -512,7 +626,7 @@ export default function App() {
               width={detailWidth}
               chatTerminal={chatTerminal}
               worker={workerByTask[selected.id] ?? null}
-              fontFamily={chatFontStack(appearance)}
+              fontFamily={chatFont(appearance)}
               fontSize={appearance.chatFontSize}
               theme={theme}
               linking={linking}
@@ -525,22 +639,24 @@ export default function App() {
           </>
         )}
         {settings && (
-          <div className={chatOpen ? "chat-wrap" : "chat-wrap closed"}>
+          <div className={chatOpen ? "chat-wrap" : "chat-wrap closed"} data-part="chat-wrap" data-state={states({ closed: !chatOpen })} inert={detailAsOverlay}>
             <div
               className="panel-handle"
+              data-part="panel-handle"
+              data-control="resize-chat"
               role="separator"
               aria-label="Resize chat"
               onPointerDown={(e) => {
-                const widths = chatResizer({ chat: chatWidth, detail: detailShown ? detailWidth : null }, boardRoom());
+                const widths = chatResizer({ chat: chatWidth, detail: detailShown && !overlayDetail ? detailWidth : null }, boardRoom());
                 startDrag(
                   e,
                   (dx) => {
-                    const next = widths(-dx);
+                    const next = widths(chatSide * dx);
                     setChatDrag(next.chat);
                     setDetailDrag(next.detail);
                   },
                   (dx) => {
-                    const next = widths(-dx);
+                    const next = widths(chatSide * dx);
                     setChatDrag(null);
                     setDetailDrag(null);
                     changeWindow(next.detail === null ? { chatWidth: next.chat } : { chatWidth: next.chat, detailWidth: next.detail });
@@ -557,7 +673,7 @@ export default function App() {
               agent={chatAgent}
               agentFolder={chatAgent === "firstmate" ? settings.home : settings.agentFolder}
               onAgent={setPickedAgent}
-              fontFamily={chatFontStack(appearance ?? appearanceOf(settings))}
+              fontFamily={chatFont(appearance ?? appearanceOf(settings))}
               fontSize={(appearance ?? settings).chatFontSize}
               theme={theme}
               connectionKey={connectionKey}
@@ -571,7 +687,7 @@ export default function App() {
             />
           </div>
         )}
-        {settings && !chatOpen && <ChatRail name={activeTabName ?? chatName} title={withShortcut("Show chat", shortcuts?.toggleChat)} onOpen={() => changeWindow({ chatOpen: true })} />}
+        {settings && !chatOpen && <ChatRail name={activeTabName ?? chatName} title={withShortcut("Show chat", shortcuts?.toggleChat)} inert={detailAsOverlay} onOpen={() => changeWindow({ chatOpen: true })} />}
       </main>
       {watched && settings && (
         <WorkerTerminal
@@ -579,7 +695,7 @@ export default function App() {
           watched={watched}
           source={chatSource}
           status={watchedWorker?.status ?? null}
-          fontFamily={chatFontStack(appearance ?? appearanceOf(settings))}
+          fontFamily={chatFont(appearance ?? appearanceOf(settings))}
           fontSize={(appearance ?? settings).chatFontSize}
           theme={theme}
           onClose={() => setWatched(null)}
@@ -590,14 +706,18 @@ export default function App() {
           settings={settings}
           mac={MAC}
           rowNames={rowNames}
+          look={shownLook}
           onPreview={setPreview}
+          onPreviewTheme={previewLook}
           onSaved={onSettingsSaved}
           onClose={() => {
             setPreview(null);
+            previewLook(null);
             setSettingsOpen(false);
           }}
         />
       )}
     </div>
+    </LookContext.Provider>
   );
 }

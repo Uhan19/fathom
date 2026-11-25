@@ -73,7 +73,7 @@ describe("color literals", () => {
   });
 
   it("allows colors only in custom properties on :root", () => {
-    const css = ':root[data-theme="dark"] { --ink: #fff; }\n.a { color: #fff; --local: red; }\n.b { border: 1px solid rgb(0 0 0); }';
+    const css = ':root[data-mode="dark"] { --ink: #fff; }\n.a { color: #fff; --local: red; }\n.b { border: 1px solid rgb(0 0 0); }';
     expect(cssLiterals("x.css", css).map((f) => f.line)).toEqual([2, 2, 3]);
   });
 

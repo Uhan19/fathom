@@ -7,6 +7,7 @@ import { api, type Size, type View } from "./api";
 import { TERMINAL_OPTIONS, terminalPalette } from "./terminalOptions";
 import { symbolsFontReady } from "./terminalSymbols";
 import type { Theme } from "./theme";
+import { LOOK_EVENT } from "./themes/apply";
 import { forwardClipboardWrites, isShiftEnter, shiftEnterSequence, trackKittyKeyboard } from "./terminalInput";
 
 const FALLBACK_SIZE = { cols: 80, rows: 24 };
@@ -213,6 +214,14 @@ export function useLiveTerminal(view: View, fontFamily: string, fontSize: number
     const term = xtermRef.current;
     if (term) term.options.theme = pagePalette();
   }, [theme]);
+
+  useEffect(() => {
+    const repaint = () => {
+      if (xtermRef.current) xtermRef.current.options.theme = pagePalette();
+    };
+    window.addEventListener(LOOK_EVENT, repaint);
+    return () => window.removeEventListener(LOOK_EVENT, repaint);
+  }, []);
 
   return { hostRef, scrollRef, attach, release, focus, paste, fit: syncSize };
 }

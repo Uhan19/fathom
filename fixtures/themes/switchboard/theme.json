@@ -1,0 +1,14 @@
+{
+  "fathomTheme": 1,
+  "name": "Switchboard",
+  "modes": ["light", "dark"],
+  "fonts": {
+    "body": "\"Helvetica Neue\", Helvetica, Inter, Arial, sans-serif",
+    "heading": "\"Helvetica Neue\", Helvetica, Inter, Arial, sans-serif",
+    "mono": "Menlo, \"JetBrains Mono\", ui-monospace, monospace",
+    "terminal": "Menlo, \"JetBrains Mono\", ui-monospace, monospace"
+  },
+  "text": { "brand": "switchboard", "helper": "Operator", "projects": "Projects ↓", "surfaceLead": "", "shallowsLead": "" },
+  "art": { "brandMark": "art/mark.svg", "sailor": "art/operator.svg", "sailorActive": "art/operator-live.svg" },
+  "layout": { "chatSide": "left", "board": "lanes", "header": "rail", "rowLabelWidth": 160, "laneWidth": 210 }
+}

@@ -44,9 +44,9 @@ function board(updates: CardUpdates, folded: string[] = [], collapsedRows: RowKe
   );
 }
 
-const litCards = (html: string) => [...html.matchAll(/<div class="card [^"]*\bunseen\b[^"]*" data-id="([^"]+)"/g)].map((m) => m[1]).sort();
+const litCards = (html: string) => [...html.matchAll(/<div class="card [^"]*\bunseen\b[^"]*" data-part="card"[^>]* data-id="([^"]+)"/g)].map((m) => m[1]).sort();
 const litRows = (html: string) => [...html.matchAll(/<section class="row row-(\w+) row-collapsed unseen/g)].map((m) => m[1]);
-const litHeads = (html: string) => [...html.matchAll(/<div class="column-head collapsed unseen[^"]*" data-column="(\d+)"/g)].map((m) => Number(m[1]));
+const litHeads = (html: string) => [...html.matchAll(/<div class="column-head collapsed unseen[^"]*" data-part="column-head"[^>]* data-column="(\d+)"/g)].map((m) => Number(m[1]));
 
 describe("isUnseen", () => {
   it("lights a card whose latest update differs from the one last seen", () => {
@@ -96,7 +96,7 @@ describe("the board", () => {
 
   it("marks a lit card for screen readers", () => {
     const html = board(fixtureUpdates(true));
-    const card = html.match(/<div class="card [^"]*" data-id="pil-08".*?<\/button>/)?.[0] ?? "";
+    const card = html.match(/<div class="card [^"]*" data-part="card"[^>]* data-id="pil-08".*?<\/button>/)?.[0] ?? "";
     expect(card).toContain('<span class="sr-only">New update</span>');
   });
 

@@ -111,6 +111,8 @@ function measureRows(board: HTMLElement, draggedId: string): RowBox[] {
           column: Number(cell.dataset.column),
           left: box.left,
           right: box.right,
+          top: box.top,
+          bottom: box.bottom,
           collapsed: cell.dataset.collapsed === "true",
           cardMiddles: [...cell.querySelectorAll<HTMLElement>(".card[data-id]")]
             .filter((el) => el.dataset.id !== draggedId)

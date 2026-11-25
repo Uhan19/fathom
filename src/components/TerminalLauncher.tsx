@@ -103,7 +103,7 @@ export function TerminalLauncher({ mac, tabs, chatTerminal, anchorRef, onOpened,
   };
 
   return (
-    <div ref={popRef} className="launcher" role="dialog" aria-label="Open a terminal" tabIndex={-1} style={place}>
+    <div ref={popRef} className="launcher" data-part="launcher" role="dialog" aria-label="Open a terminal" tabIndex={-1} style={place}>
       <LauncherMenu
         folders={folders}
         folderError={folderError}
@@ -140,41 +140,48 @@ interface LauncherMenuProps {
 
 export function LauncherMenu({ folders, folderError, terminals, terminalError, busy, error, shortcut, onProject, onHome, onOther, onAttach }: LauncherMenuProps) {
   const home = folders?.home ?? "";
-  const item = (key: string, name: string, detail: string | null, onPick: () => void) => (
-    <li key={key}>
-      <button className="launcher-item" disabled={busy !== null} aria-busy={busy === key} onClick={onPick}>
-        <span className="launcher-name">{name}</span>
-        {(detail || busy === key) && <span className="launcher-path">{busy === key ? "Opening…" : detail}</span>}
+  const item = (control: string, key: string, name: string, detail: string | null, onPick: () => void) => (
+    <li key={key} data-key={key}>
+      <button
+        className="launcher-item"
+        data-part="launcher-item"
+        data-control={control}
+        disabled={busy !== null}
+        aria-busy={busy === key}
+        onClick={onPick}
+      >
+        <span className="launcher-name" data-part="launcher-name">{name}</span>
+        {(detail || busy === key) && <span className="launcher-path" data-part="launcher-path">{busy === key ? "Opening…" : detail}</span>}
       </button>
     </li>
   );
   return (
     <>
-      <section className="launcher-section" aria-label="Open a terminal in">
-        <span className="sech">Open a terminal in</span>
-        {folderError && <p className="error-text">{folderError}</p>}
-        {!folders && !folderError && <p className="launcher-note">Listing folders…</p>}
-        <ul className="launcher-list">
-          {folders?.projects.map((p) => item(projectKey(p), p.name, p.path ? shortPath(p.path, home) : "Choose folder…", () => onProject(p)))}
-          {folders && item(HOME_KEY, "Home", "~", () => onHome(folders.home))}
-          {item(OTHER, "Other folder…", null, onOther)}
+      <section className="launcher-section" data-part="launcher-section" aria-label="Open a terminal in">
+        <span className="sech" data-part="sech">Open a terminal in</span>
+        {folderError && <p className="error-text" data-part="error-text">{folderError}</p>}
+        {!folders && !folderError && <p className="launcher-note" data-part="launcher-note">Listing folders…</p>}
+        <ul className="launcher-list" data-part="launcher-list">
+          {folders?.projects.map((p) => item("launcher-folder", projectKey(p), p.name, p.path ? shortPath(p.path, home) : "Choose folder…", () => onProject(p)))}
+          {folders && item("launcher-folder", HOME_KEY, "Home", "~", () => onHome(folders.home))}
+          {item("launcher-folder", OTHER, "Other folder…", null, onOther)}
         </ul>
       </section>
-      <section className="launcher-section" aria-label="Or attach a running terminal">
-        <span className="sech">Or attach a running terminal</span>
-        {terminalError && <p className="error-text">{terminalError}</p>}
-        {!terminals && !terminalError && <p className="launcher-note">Listing terminals…</p>}
-        {terminals?.length === 0 && <p className="launcher-note">No other terminals are running.</p>}
-        <ul className="launcher-list">
-          {terminals?.map((t) => item(t.address, attachName(t), [t.address, shortPath(t.cwd, home)].filter(Boolean).join(" · "), () => onAttach(t)))}
+      <section className="launcher-section" data-part="launcher-section" aria-label="Or attach a running terminal">
+        <span className="sech" data-part="sech">Or attach a running terminal</span>
+        {terminalError && <p className="error-text" data-part="error-text">{terminalError}</p>}
+        {!terminals && !terminalError && <p className="launcher-note" data-part="launcher-note">Listing terminals…</p>}
+        {terminals?.length === 0 && <p className="launcher-note" data-part="launcher-note">No other terminals are running.</p>}
+        <ul className="launcher-list" data-part="launcher-list">
+          {terminals?.map((t) => item("launcher-attach", t.address, attachName(t), [t.address, shortPath(t.cwd, home)].filter(Boolean).join(" · "), () => onAttach(t)))}
         </ul>
       </section>
       {error && (
-        <p className="launcher-error error-text" role="alert">
+        <p className="launcher-error error-text" data-part="launcher-error" role="alert">
           {error}
         </p>
       )}
-      <footer className="launcher-foot">{shortcut} opens this from anywhere</footer>
+      <footer className="launcher-foot" data-part="launcher-foot">{shortcut} opens this from anywhere</footer>
     </>
   );
 }

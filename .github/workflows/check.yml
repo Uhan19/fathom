@@ -19,7 +19,7 @@ jobs:
           fi
           sudo apt-get update
           sudo apt-get install -y build-essential curl wget file pkg-config libxdo-dev libssl-dev \
-            libayatana-appindicator3-dev librsvg2-dev libwebkit2gtk-4.1-dev
+            libayatana-appindicator3-dev librsvg2-dev libwebkit2gtk-4.1-dev xvfb
       - uses: pnpm/action-setup@v6
         with:
           version: 11
@@ -35,6 +35,8 @@ jobs:
           workspaces: src-tauri
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - name: Check the fixture themes
+        run: xvfb-run -a scripts/check-fixture-themes.sh
 
   linux-packages:
     uses: ./.github/workflows/linux-packages.yml

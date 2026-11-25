@@ -11,6 +11,8 @@ import {
   headTemplate,
   holdHeading,
   insertAt,
+  laneTemplate,
+  oneLaneWidth,
   oneColumnWidth,
   outcomeTag,
   renamedColumn,
@@ -264,5 +266,23 @@ describe("renaming a column", () => {
     expect(renamedColumn({ project: "", name: "" }, " Odd jobs ")).toBe("Odd jobs");
     expect(renamedColumn({ project: null, name: "  " }, "Odd jobs")).toBe("Odd jobs");
     expect(renamedColumn({ project: "", name: "" }, "  ")).toBeNull();
+  });
+});
+
+describe("board geometry from a theme", () => {
+  const geometry = { rowLabel: 58, collapsed: 30, lane: 300 };
+  const columns = [
+    { id: 1, project: "atlas-api", name: "atlas-api", position: 0, width: 240, collapsed: false },
+    { id: 2, project: "keel-cli", name: "keel-cli", position: 1, width: 240, collapsed: true },
+  ];
+
+  it("uses the theme's row label and collapsed widths in rows", () => {
+    expect(columnTemplate(columns, geometry)).toBe("58px 240px 30px");
+    expect(boardMinWidth(columns, geometry)).toBe(58 + 180 + 10 + 32 + 250 + 40);
+  });
+
+  it("lays lanes out with one track per stage", () => {
+    expect(laneTemplate(["deep"], geometry)).toBe("58px 300px 300px 30px 300px 300px");
+    expect(oneLaneWidth(geometry)).toBe(358);
   });
 });

@@ -1,0 +1,13 @@
+{
+  "fathomTheme": 1,
+  "name": "Phosphor",
+  "modes": ["dark"],
+  "fonts": {
+    "body": "\"JetBrains Mono\", ui-monospace, monospace",
+    "heading": "\"JetBrains Mono\", ui-monospace, monospace",
+    "mono": "\"JetBrains Mono\", ui-monospace, monospace",
+    "terminal": "\"JetBrains Mono\", ui-monospace, monospace"
+  },
+  "text": { "brand": "fathom:~$", "helper": "Sysop", "projects": "ls ~/projects", "surfaceLead": "", "shallowsLead": "" },
+  "art": { "brandMark": "art/mark.svg", "sailor": "art/sailor.svg", "sailorActive": "art/sailor-active.svg" }
+}

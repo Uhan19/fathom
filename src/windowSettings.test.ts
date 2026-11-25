@@ -17,6 +17,7 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
   agentFolder: "",
   chatAgent: null,
   theme: "light",
+  themeId: "nautical",
   chatOpen: true,
   chatWidth: 600,
   detailWidth: 460,

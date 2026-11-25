@@ -85,8 +85,8 @@ describe("OpenTerminal", () => {
   it("offers Claude Code and Codex on a backlog board with the pick checked", () => {
     const html = opener("fathom", "codex");
     expect(html).toContain('aria-label="Open a terminal"');
-    expect(html).toContain('<button role="radio" aria-checked="false" class="agent-choice">Claude Code</button>');
-    expect(html).toContain('<button role="radio" aria-checked="true" class="agent-choice on">Codex</button>');
+    expect(html).toContain('<button role="radio" aria-checked="false" class="agent-choice" data-part="agent-choice" data-control="agent-choice-option" data-key="claude">Claude Code</button>');
+    expect(html).toContain('<button role="radio" aria-checked="true" class="agent-choice on" data-part="agent-choice" data-control="agent-choice-option" data-key="codex">Codex</button>');
     expect(html).not.toContain("Firstmate");
     expect(html).toContain("Open Codex");
     expect(html).toContain("<code>/home/demo</code>");
@@ -94,13 +94,13 @@ describe("OpenTerminal", () => {
 
   it("adds Firstmate on a Firstmate board", () => {
     const html = opener("firstmate", "firstmate");
-    expect(html).toContain('<button role="radio" aria-checked="true" class="agent-choice on">Firstmate</button>');
+    expect(html).toContain('<button role="radio" aria-checked="true" class="agent-choice on" data-part="agent-choice" data-control="agent-choice-option" data-key="firstmate">Firstmate</button>');
     expect(html).toContain("Starts in the Firstmate home <code>/home/demo</code>.");
     expect(html).toContain("Open Firstmate");
   });
 
   it("shows the missing-tool message", () => {
     const html = opener("fathom", "claude", missingToolText("claude"));
-    expect(html).toContain('<p class="error-text" role="alert">Claude Code is not installed or not on PATH.');
+    expect(html).toContain('<p class="error-text" data-part="error-text" role="alert">Claude Code is not installed or not on PATH.');
   });
 });

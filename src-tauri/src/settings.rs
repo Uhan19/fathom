@@ -8,6 +8,7 @@ use serde_json::json;
 use crate::db::Db;
 use crate::launch::{self, Agent};
 use crate::source::Source;
+use crate::themes;
 
 pub const FIRSTMATE_LABEL: &str = "firstmate.role=primary";
 const DEFAULT_HOME_RELATIVE: &str = "Documents/firstmate";
@@ -26,6 +27,7 @@ const KEY_BOARD_ADDED_FONTS: &str = "boardAddedFonts";
 const KEY_AGENT_FOLDER: &str = "agentFolder";
 const KEY_CHAT_AGENT: &str = "chatAgent";
 const KEY_THEME: &str = "theme";
+const KEY_THEME_ID: &str = "themeId";
 const KEY_CHAT_OPEN: &str = "chatOpen";
 const KEY_CHAT_WIDTH: &str = "chatWidth";
 const KEY_DETAIL_WIDTH: &str = "detailWidth";
@@ -51,6 +53,7 @@ const DEFAULT_BOARD_FONT_SIZE: u16 = 14;
 pub const ADDED_FONT_PREFIX: &str = "family:";
 const FONT_PRESETS: &str = include_str!("../../src/fontPresets.json");
 const SHORTCUT_DEFAULTS: &str = include_str!("../../src/shortcutDefaults.json");
+const RESET_THEME_SHORTCUTS: &str = include_str!("../../src/resetThemeShortcut.json");
 const SHORTCUT_MODIFIERS: [&str; 4] = ["Ctrl", "Alt", "Shift", "Meta"];
 const COMMAND_MODIFIERS: [&str; 3] = ["Ctrl", "Alt", "Meta"];
 
@@ -109,6 +112,8 @@ pub struct Settings {
     #[serde(default)]
     pub chat_agent: Option<Agent>,
     pub theme: Theme,
+    #[serde(default = "nautical")]
+    pub theme_id: String,
     pub chat_open: bool,
     pub chat_width: u32,
     pub detail_width: u32,
@@ -156,6 +161,7 @@ struct StoredShortcuts {
 #[serde(rename_all = "camelCase")]
 pub struct WindowChange {
     pub theme: Option<Theme>,
+    pub theme_id: Option<String>,
     pub chat_open: Option<bool>,
     pub chat_width: Option<u32>,
     pub detail_width: Option<u32>,
@@ -194,6 +200,14 @@ static SHORTCUTS: LazyLock<std::collections::HashMap<String, Shortcuts>> = LazyL
 
 pub fn default_shortcuts() -> &'static Shortcuts {
     &SHORTCUTS[PLATFORM]
+}
+
+static RESET_THEME: LazyLock<std::collections::HashMap<String, String>> = LazyLock::new(|| {
+    serde_json::from_str(RESET_THEME_SHORTCUTS).expect("the reset shortcut is valid JSON")
+});
+
+pub fn reset_theme_shortcut() -> &'static str {
+    &RESET_THEME[PLATFORM]
 }
 
 pub fn is_shortcut(combo: &str) -> bool {
@@ -330,6 +344,11 @@ pub fn load(db: &Db) -> Result<Settings, String> {
             .get(KEY_THEME)
             .and_then(|key| serde_json::from_value(json!(key)).ok())
             .unwrap_or_default(),
+        theme_id: stored
+            .get(KEY_THEME_ID)
+            .map(|id| id.trim().to_string())
+            .filter(|id| themes::check_id(id).is_ok())
+            .unwrap_or_else(nautical),
         chat_open: flag(KEY_CHAT_OPEN, true),
         chat_width: width(KEY_CHAT_WIDTH, &CHAT_WIDTH),
         detail_width: width(KEY_DETAIL_WIDTH, &DETAIL_WIDTH),
@@ -378,6 +397,7 @@ pub fn store(db: &Db, next: &Settings) -> Result<Settings, String> {
         (KEY_BOARD_ADDED_FONTS, names_json(&next.board_added_fonts)),
         (KEY_AGENT_FOLDER, next.agent_folder.trim().to_string()),
         (KEY_THEME, theme.as_str().unwrap_or_default().to_string()),
+        (KEY_THEME_ID, next.theme_id.trim().to_string()),
         (KEY_CHAT_OPEN, next.chat_open.to_string()),
         (KEY_CHAT_WIDTH, next.chat_width.to_string()),
         (KEY_DETAIL_WIDTH, next.detail_width.to_string()),
@@ -407,6 +427,9 @@ pub fn update(
 pub fn change_window(db: &Db, change: &WindowChange) -> Result<Settings, String> {
     update(db, |s| {
         s.theme = change.theme.unwrap_or(s.theme);
+        if let Some(id) = &change.theme_id {
+            s.theme_id = id.clone();
+        }
         s.chat_open = change.chat_open.unwrap_or(s.chat_open);
         s.chat_width = change.chat_width.unwrap_or(s.chat_width);
         s.detail_width = change.detail_width.unwrap_or(s.detail_width);
@@ -441,7 +464,12 @@ fn check(next: &Settings) -> Result<(), String> {
             ));
         }
     }
+    themes::check_id(next.theme_id.trim())?;
     check_shortcuts(&next.shortcuts)
+}
+
+fn nautical() -> String {
+    themes::NAUTICAL.to_string()
 }
 
 fn check_shortcuts(shortcuts: &Shortcuts) -> Result<(), String> {
@@ -453,6 +481,11 @@ fn check_shortcuts(shortcuts: &Shortcuts) -> Result<(), String> {
         if !is_shortcut(combo) {
             return Err(format!(
                 "the shortcut to {name} needs Ctrl, Alt or Meta and one key"
+            ));
+        }
+        if combo.as_str() == reset_theme_shortcut() {
+            return Err(format!(
+                "the shortcut to {name} uses the keys kept for going back to the Nautical theme"
             ));
         }
         if let Some((other, _)) = named[..i].iter().find(|(_, c)| c == combo) {
@@ -610,6 +643,31 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let db = Db::open(dir.path()).unwrap();
         (dir, db)
+    }
+
+    #[test]
+    fn the_reset_theme_keys_are_kept_and_a_theme_id_is_stored() {
+        let (_dir, db) = fresh();
+        let taken = update(&db, |s| {
+            s.shortcuts.open_settings = reset_theme_shortcut().to_string();
+            Ok(())
+        });
+        assert!(taken.unwrap_err().contains("Nautical"));
+        assert_eq!(load(&db).unwrap().theme_id, themes::NAUTICAL);
+        let picked = change_window(
+            &db,
+            &WindowChange {
+                theme_id: Some("riso".into()),
+                ..WindowChange::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(picked.theme_id, "riso");
+        let bad = update(&db, |s| {
+            s.theme_id = "../riso".into();
+            Ok(())
+        });
+        assert!(bad.is_err());
     }
 
     #[test]

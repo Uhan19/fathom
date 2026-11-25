@@ -12,8 +12,8 @@ function themeTokens(selector: string): Map<string, string> {
 }
 
 const PALETTES = {
-  light: terminalPalette((name) => themeTokens(':root,\n:root[data-theme="light"]').get(name) ?? ""),
-  dark: terminalPalette((name) => themeTokens(':root[data-theme="dark"]').get(name) ?? ""),
+  light: terminalPalette((name) => themeTokens(':root,\n:root[data-mode="light"]').get(name) ?? ""),
+  dark: terminalPalette((name) => themeTokens(':root[data-mode="dark"]').get(name) ?? ""),
 };
 
 describe("theme", () => {

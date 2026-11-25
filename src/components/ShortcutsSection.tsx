@@ -18,6 +18,7 @@ import {
   type ShortcutAction,
   type Shortcuts,
 } from "../shortcuts";
+import { states } from "../parts";
 import { Close } from "./Icons";
 
 interface ShortcutsSectionProps {
@@ -43,7 +44,7 @@ export function ShortcutsSection({ shortcuts, mac, onChange }: ShortcutsSectionP
   }, [recording, shortcuts, mac, onChange]);
 
   return (
-    <div className="shortcuts">
+    <div className="shortcuts" data-part="shortcuts">
       {SHORTCUT_ACTIONS.map((action) => (
         <ShortcutRow
           key={action}
@@ -84,22 +85,28 @@ export function ShortcutRow({ action, combo, defaultCombo, recording, mac, onRec
   const canClear = idle && combo !== "";
   const canReset = idle && combo !== defaultCombo;
   return (
-    <div className="shortcut-row">
-      <span className="shortcut-name">{name}</span>
+    <div className="shortcut-row" data-part="shortcut-row" data-key={action}>
+      <span className="shortcut-name" data-part="shortcut-name">{name}</span>
       <button
         type="button"
         className={keyClass}
+        data-part="shortcut-key"
+        data-state={states({ refused: refused !== null && recording?.held.length === 0 })}
+        data-control="shortcut-record"
         aria-label={`${name}: ${label}. Press to record a new shortcut.`}
         aria-pressed={!idle}
         onClick={onRecord}
         onBlur={onStop}
       >
-        {shown.length > 0 ? shown.map((key, i) => <kbd key={i}>{key}</kbd>) : <span className="shortcut-empty">{idle ? "None" : "Press keys…"}</span>}
+        {shown.length > 0 ? shown.map((key, i) => <kbd key={i}>{key}</kbd>) : <span className="shortcut-empty" data-part="shortcut-empty">{idle ? "None" : "Press keys…"}</span>}
       </button>
-      <span className="shortcut-tools">
+      <span className="shortcut-tools" data-part="shortcut-tools">
         <button
           type="button"
           className={canClear ? "ico" : "ico unused"}
+          data-part="icon-button"
+          data-state={states({ unused: !canClear })}
+          data-control="shortcut-clear"
           onClick={onClear}
           aria-label={`Clear the shortcut for ${name}`}
           aria-hidden={!canClear}
@@ -111,6 +118,9 @@ export function ShortcutRow({ action, combo, defaultCombo, recording, mac, onRec
         <button
           type="button"
           className={canReset ? "mini" : "mini unused"}
+          data-part="mini-button"
+          data-state={states({ unused: !canReset })}
+          data-control="shortcut-reset"
           onClick={onReset}
           aria-label={`Reset ${name} to ${comboLabel(defaultCombo, mac)}`}
           aria-hidden={!canReset}
@@ -121,7 +131,7 @@ export function ShortcutRow({ action, combo, defaultCombo, recording, mac, onRec
         </button>
       </span>
       {recording && (
-        <small className={refused ? "shortcut-note error-text" : "shortcut-note"} role="status">
+        <small className={refused ? "shortcut-note error-text" : "shortcut-note"} data-part="shortcut-note" data-state={states({ refused: refused !== null })} role="status">
           {refused ? `${refusalText(refused.refusal, refused.combo, mac)} Press another, or Esc to cancel.` : recordingHint(mac)}
         </small>
       )}

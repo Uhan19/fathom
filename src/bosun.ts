@@ -63,29 +63,29 @@ const DOTS: Record<BosunState, Dot> = {
 
 export const dotOf = (state: BosunState): Dot => DOTS[state];
 
-const SUMMARIES: Record<BosunState, string> = {
-  finding: "Looking for Bosun",
-  notStarted: "Bosun has not started yet",
-  dormant: "Bosun starts when you open it",
-  starting: "Bosun is starting",
+const summaries = (name: string): Record<BosunState, string> => ({
+  finding: `Looking for ${name}`,
+  notStarted: `${name} has not started yet`,
+  dormant: `${name} starts when you open it`,
+  starting: `${name} is starting`,
   signedOut: "Claude Code is signed out",
-  ready: "Bosun is ready",
-  working: "Bosun is working",
-  asking: "Bosun is asking before a change",
-  stopped: "Bosun stopped",
+  ready: `${name} is ready`,
+  working: `${name} is working`,
+  asking: `${name} is asking before a change`,
+  stopped: `${name} stopped`,
   missing: "Claude Code is not installed",
-  failed: "Bosun could not start",
-};
+  failed: `${name} could not start`,
+});
 
-export const summaryOf = (state: BosunState): string => SUMMARIES[state];
+export const summaryOf = (state: BosunState, name: string = BOSUN): string => summaries(name)[state];
 
-const HINTS: Partial<Record<BosunState, string>> = {
-  starting: "If Claude Code asks whether to trust this folder, press Enter: it holds only Bosun's settings.",
+const hints = (name: string): Partial<Record<BosunState, string>> => ({
+  starting: `If Claude Code asks whether to trust this folder, press Enter: it holds only ${name}'s settings.`,
   signedOut: "Claude Code is signed out. Pick the subscription sign-in and finish in your browser.",
   asking: "Claude Code is asking before a change. Answer below.",
-};
+});
 
-export const hintOf = (state: BosunState): string | null => HINTS[state] ?? null;
+export const hintOf = (state: BosunState, name: string = BOSUN): string | null => hints(name)[state] ?? null;
 
 export function shortcutLabel(mac: boolean): string {
   return mac ? "⌘J" : "Ctrl+J";

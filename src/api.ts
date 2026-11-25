@@ -5,6 +5,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { AgentKey } from "./agents";
 import type { Shortcuts } from "./shortcuts";
 import type { Theme } from "./theme";
+import type { ActiveTheme, ThemeList } from "./themes/contract";
 import type { CardUpdates } from "./updates";
 
 export type RowKey = "surface" | "shallows" | "deep" | "seabed" | "landed";
@@ -227,6 +228,7 @@ export interface Settings {
   agentFolder: string;
   chatAgent: AgentKey | null;
   theme: Theme;
+  themeId: string;
   chatOpen: boolean;
   chatWidth: number;
   detailWidth: number;
@@ -241,6 +243,7 @@ export interface Settings {
 
 export interface WindowChange {
   theme?: Theme;
+  themeId?: string;
   chatOpen?: boolean;
   chatWidth?: number;
   detailWidth?: number;
@@ -344,6 +347,10 @@ export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
   changeWindow: (change: WindowChange) => invoke<Settings>("change_window", { change }),
+  activeTheme: (id?: string) => invoke<ActiveTheme | null>("active_theme", { id: id ?? null }),
+  listThemes: () => invoke<ThemeList>("list_themes"),
+  duplicateNautical: (name: string) => invoke<string>("duplicate_nautical", { name }),
+  revealThemes: () => invoke<null>("reveal_themes_folder"),
   showAllProjects: () => invoke<Settings>("show_all_projects"),
   clearFocus: () => invoke<Settings>("clear_focus"),
   setAgentFilter: (filter: AgentFilter) => invoke<Settings>("set_agent_filter", { filter }),
@@ -394,6 +401,7 @@ export const events = {
     listen<CardUpdates>("updates://updated", (e) => handler(e.payload)),
   settings: (handler: (settings: Settings) => void): Promise<UnlistenFn> =>
     listen<Settings>("settings://updated", (e) => handler(e.payload)),
+  themes: (handler: () => void): Promise<UnlistenFn> => listen("themes://updated", () => handler()),
   helper: (handler: (helper: HelperStatus) => void): Promise<UnlistenFn> =>
     listen<HelperStatus>("helper://updated", (e) => handler(e.payload)),
   terminalEnded: (handler: (ended: EndedView) => void): Promise<UnlistenFn> =>

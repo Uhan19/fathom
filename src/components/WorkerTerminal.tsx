@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { errorText, events, type SourceKind, type WorkerStatus } from "../api";
 import { useLiveTerminal } from "../liveTerminal";
+import { states } from "../parts";
 import { workerViewCopy } from "../source";
 import { isPlainEscape } from "../terminalInput";
 import type { Theme } from "../theme";
@@ -72,6 +73,7 @@ export function WorkerTerminal({ watched, source, status, fontFamily, fontSize, 
   return (
     <div
       className="watch-backdrop"
+      data-part="watch-backdrop"
       onMouseDown={(e) => {
         pressedOnBackdrop.current = e.target === e.currentTarget;
       }}
@@ -80,39 +82,45 @@ export function WorkerTerminal({ watched, source, status, fontFamily, fontSize, 
         pressedOnBackdrop.current = false;
       }}
     >
-      <section className="watch" role="dialog" aria-modal="true" aria-label={copy.label}>
-        <header className="watch-head">
-          <span className={`sailor${status ? ` ${status}` : ""}`} aria-hidden="true">
+      <section className="watch" data-part="watch" role="dialog" aria-modal="true" aria-label={copy.label}>
+        <header className="watch-head" data-part="watch-head">
+          <span className={`sailor${status ? ` ${status}` : ""}`} data-part="watch-sailor" data-state={status ?? undefined} aria-hidden="true">
             <Sailor />
           </span>
-          <span className="watch-title" title={watched.title}>
+          <span className="watch-title" data-part="watch-title" title={watched.title}>
             {watched.title}
           </span>
-          <span className="terminal-chip">{watched.taskId}</span>
-          <span className="terminal-chip">{watched.terminal}</span>
-          <span className="watch-status">{status ?? "no longer live"}</span>
-          <span className="spacer" />
-          <button className="ico" onClick={onClose} aria-label={copy.close} title={copy.closeHint}>
+          <span className="terminal-chip" data-part="terminal-chip">{watched.taskId}</span>
+          <span className="terminal-chip" data-part="terminal-chip">{watched.terminal}</span>
+          <span className="watch-status" data-part="watch-status">{status ?? "no longer live"}</span>
+          <span className="spacer" data-part="spacer" />
+          <button className="ico" data-part="icon-button" data-control="close-worker-terminal" onClick={onClose} aria-label={copy.close} title={copy.closeHint}>
             <Close />
           </button>
         </header>
-        <div className="chat-body">
-          <div ref={scrollRef} className={`terminal-scroll${shown ? "" : " hidden"}`} onClick={focus}>
-            <div ref={hostRef} className="terminal-host" />
+        <div className="chat-body" data-part="chat-body">
+          <div
+            ref={scrollRef}
+            className={`terminal-scroll${shown ? "" : " hidden"}`}
+            data-part="terminal-scroll"
+            data-state={states({ hidden: !shown })}
+            onClick={focus}
+          >
+            <div ref={hostRef} className="terminal-host" data-part="terminal-host" />
           </div>
-          {phase.kind === "attaching" && <p className="chat-status">Attaching to {watched.terminal}…</p>}
+          {phase.kind === "attaching" && <p className="chat-status" data-part="chat-status">Attaching to {watched.terminal}…</p>}
           {phase.kind === "failed" && (
-            <div className="chat-status">
-              <p className="error-text">{phase.error}</p>
-              <button className="btn" onClick={() => void attach()}>
+            <div className="chat-status" data-part="chat-status">
+              <p className="error-text" data-part="error-text">{phase.error}</p>
+              <button className="btn" data-part="button" data-control="worker-retry" onClick={() => void attach()}>
                 Try again
               </button>
             </div>
           )}
           {phase.kind === "ended" && (
-            <div className="chat-ended">
+            <div className="chat-ended" data-part="chat-ended">
               <span>Detached from {watched.terminal}.</span>
-              <button className="mini" onClick={() => void attach()}>
+              <button className="mini" data-part="mini-button" data-control="worker-reattach" onClick={() => void attach()}>
                 Reattach
               </button>
             </div>

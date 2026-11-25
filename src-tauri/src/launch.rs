@@ -18,7 +18,31 @@ pub const HELPER_DIR: &str = "bosun";
 const HELPER_MCP_FILE: &str = "mcp.json";
 const HELPER_SETTINGS_FILE: &str = "settings.json";
 const HELPER_MODEL: &str = "haiku";
-const HELPER_ASKS_FIRST: [&str; 2] = ["delete_column", "set_connection"];
+const HELPER_ASKS_FIRST: [&str; 3] = ["delete_column", "delete_theme", "set_connection"];
+pub const DEFAULT_HELPER_NAME: &str = "Bosun";
+const THEME_AGENT: &str = "theme-designer";
+const THEME_AGENT_MODEL: &str = "sonnet";
+const THEME_AGENT_TOOLS: [&str; 8] = [
+    "get_theme_guide",
+    "list_themes",
+    "get_theme",
+    "save_theme",
+    "shot_theme",
+    "use_theme",
+    "delete_theme",
+    "get_settings",
+];
+const DELEGATE_TOOL: &str = "Agent";
+const READ_TOOL: &str = "Read";
+const THEME_AGENT_PROMPT: &str = "\
+You design and change Fathom themes: folders that restyle Fathom's whole window with colors, fonts, art, textures, decorative text and declared layouts.
+Read get_theme_guide before anything else and follow it exactly.
+Start from get_theme with nautical, or from the theme the user names, and save your work with save_theme. save_theme runs Fathom's check and returns every problem: fix them all and save again until the check passes.
+Look at your work with shot_theme and open the screenshots with Read. They show an invented sample board, never the user's real one.
+Switch to a theme with use_theme only when the user asks for it or agrees. use_theme with nautical always goes back to the built-in theme.
+Never change button or control labels; themes change only decorative text through theme.json.
+Keep themes as data: no scripts, no remote URLs.
+Finish with a few lines on what you made and how to go back to Nautical.";
 const HELPER_ASKING_SET: [(&str, Option<&str>); 1] = [("Notification", Some("permission_prompt"))];
 const HELPER_ASKING_CLEARED: [&str; 5] = [
     "PostToolUse",
@@ -28,8 +52,9 @@ const HELPER_ASKING_CLEARED: [&str; 5] = [
     "UserPromptSubmit",
 ];
 const HELPER_PROMPT: &str = "\
-You are Bosun, the helper inside Fathom, the user's task board app.
+You are {name}, the helper inside Fathom, the user's task board app.
 You change Fathom's board layout and settings for the user with the fathom tools, and nothing else.
+For anything about how Fathom looks beyond light and dark mode and the font settings, such as a new theme, colors, art, textures or the window's layout, hand the whole request to the theme-designer agent and pass on its answer; do not use the theme tools yourself.
 Look at the current state with get_board_layout or get_settings before you change it, and name columns the way the board shows them.
 Make the change the user asks for, then say in one short line what changed.
 If a request is unclear, ask one short question instead of guessing.
@@ -230,19 +255,35 @@ pub fn helper_dir(server: &FathomServer) -> PathBuf {
     server.db.with_file_name(HELPER_DIR)
 }
 
-pub fn open_helper(
-    herdr: &Herdr,
-    server: &FathomServer,
-    shell: Option<&Path>,
-    claude: &Path,
-) -> Result<Terminal, LaunchError> {
-    require_herdr_core()?;
-    let dir = helper_dir(server);
-    let mcp = dir.join(HELPER_MCP_FILE);
-    let settings = dir.join(HELPER_SETTINGS_FILE);
-    write_json(&mcp, &helper_mcp_config(server))?;
-    write_json(&settings, &helper_settings(server))?;
-    let command = [
+#[derive(Debug, Clone, PartialEq)]
+pub struct HelperLook {
+    pub name: String,
+    pub themes_root: PathBuf,
+}
+
+pub fn helper_prompt(name: &str) -> String {
+    HELPER_PROMPT.replace("{name}", name)
+}
+
+fn theme_agents() -> String {
+    let tools: Vec<String> = THEME_AGENT_TOOLS
+        .iter()
+        .map(|tool| format!("mcp__{SERVER_NAME}__{tool}"))
+        .chain(std::iter::once(READ_TOOL.to_string()))
+        .collect();
+    json!({
+        THEME_AGENT: {
+            "description": "Designs, edits, checks and switches Fathom themes. Use it for every request about how Fathom looks beyond light and dark mode and the font settings.",
+            "prompt": THEME_AGENT_PROMPT,
+            "tools": tools,
+            "model": THEME_AGENT_MODEL,
+        }
+    })
+    .to_string()
+}
+
+fn helper_command(claude: &Path, mcp: &Path, settings: &Path, look: &HelperLook) -> Vec<String> {
+    vec![
         claude.display().to_string(),
         "--model".into(),
         HELPER_MODEL.into(),
@@ -251,11 +292,31 @@ pub fn open_helper(
         "--strict-mcp-config".into(),
         "--allowedTools".into(),
         format!("mcp__{SERVER_NAME}"),
+        DELEGATE_TOOL.into(),
+        format!("{READ_TOOL}(/{}/**)", look.themes_root.display()),
+        "--agents".into(),
+        theme_agents(),
         "--settings".into(),
         settings.display().to_string(),
         "--append-system-prompt".into(),
-        HELPER_PROMPT.into(),
-    ];
+        helper_prompt(&look.name),
+    ]
+}
+
+pub fn open_helper(
+    herdr: &Herdr,
+    server: &FathomServer,
+    shell: Option<&Path>,
+    claude: &Path,
+    look: &HelperLook,
+) -> Result<Terminal, LaunchError> {
+    require_herdr_core()?;
+    let dir = helper_dir(server);
+    let mcp = dir.join(HELPER_MCP_FILE);
+    let settings = dir.join(HELPER_SETTINGS_FILE);
+    write_json(&mcp, &helper_mcp_config(server))?;
+    write_json(&settings, &helper_settings(server))?;
+    let command = helper_command(claude, &mcp, &settings, look);
     let launch = Launch {
         agent: Agent::Claude,
         role: HELPER_ROLE,
@@ -410,6 +471,48 @@ fn write_json(path: &Path, value: &serde_json::Value) -> Result<(), LaunchError>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_look() -> HelperLook {
+        HelperLook {
+            name: DEFAULT_HELPER_NAME.into(),
+            themes_root: PathBuf::from("/home/sailor/.config/fathom/themes"),
+        }
+    }
+
+    #[test]
+    fn bosun_takes_the_theme_helper_name_and_hands_theme_work_to_a_stronger_model() {
+        let look = HelperLook {
+            name: "Sysop".into(),
+            themes_root: PathBuf::from("/home/sailor/.config/fathom/themes"),
+        };
+        let command = helper_command(
+            Path::new("/bin/claude"),
+            Path::new("/b/mcp.json"),
+            Path::new("/b/settings.json"),
+            &look,
+        );
+        let prompt = command.last().unwrap();
+        assert!(prompt.starts_with("You are Sysop, the helper inside Fathom"));
+        assert!(prompt.contains("theme-designer"));
+        let at = command.iter().position(|a| a == "--agents").unwrap();
+        let agents: serde_json::Value = serde_json::from_str(&command[at + 1]).unwrap();
+        let designer = &agents["theme-designer"];
+        assert_eq!(designer["model"], "sonnet");
+        assert_ne!(designer["model"], HELPER_MODEL);
+        let tools: Vec<&str> = designer["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t.as_str().unwrap())
+            .collect();
+        assert!(tools.contains(&"mcp__fathom__save_theme"));
+        assert!(tools.contains(&"Read"));
+        assert!(command.contains(&"Read(//home/sailor/.config/fathom/themes/**)".to_string()));
+        assert_eq!(
+            command[command.iter().position(|a| a == "--model").unwrap() + 1],
+            HELPER_MODEL
+        );
+    }
     use crate::herdr::Connection;
     use crate::herdr::tests::FAKE_HC;
     use crate::test_support::write_script;
@@ -587,7 +690,14 @@ esac
         let lab = Lab::new(&["hc", "claude"]);
         let herdr = Herdr::new(Connection::default(), Arc::new(|_| {}));
         let claude = lab.bin.path().join("claude");
-        let terminal = open_helper(&herdr, &lab.server(), Some(&lab.shell()), &claude).unwrap();
+        let terminal = open_helper(
+            &herdr,
+            &lab.server(),
+            Some(&lab.shell()),
+            &claude,
+            &test_look(),
+        )
+        .unwrap();
         assert_eq!(terminal.address, "t9");
 
         let dir = lab.data_dir().join("bosun");
@@ -619,10 +729,14 @@ esac
             "--strict-mcp-config",
             "--allowedTools",
             "mcp__fathom",
+            "Agent",
+            &format!("Read(/{}/**)", test_look().themes_root.display()),
+            "--agents",
+            &theme_agents(),
             "--settings",
             &shown(&settings),
             "--append-system-prompt",
-            HELPER_PROMPT,
+            &helper_prompt(DEFAULT_HELPER_NAME),
         ]
         .iter()
         .flat_map(|arg| arg.lines())
@@ -641,7 +755,7 @@ esac
         let written = read_json(&settings);
         assert_eq!(
             written["permissions"],
-            json!({"ask": ["mcp__fathom__delete_column", "mcp__fathom__set_connection"]})
+            json!({"ask": ["mcp__fathom__delete_column", "mcp__fathom__delete_theme", "mcp__fathom__set_connection"]})
         );
         let notification = &written["hooks"]["Notification"][0];
         assert_eq!(notification["matcher"], "permission_prompt");
@@ -673,7 +787,14 @@ esac
             db: lab.data_dir().join("fathom.db"),
         };
         let herdr = Herdr::new(Connection::default(), Arc::new(|_| {}));
-        open_helper(&herdr, &server, None, &lab.bin.path().join("claude")).unwrap();
+        open_helper(
+            &herdr,
+            &server,
+            None,
+            &lab.bin.path().join("claude"),
+            &test_look(),
+        )
+        .unwrap();
         let written = read_json(&lab.data_dir().join("bosun/settings.json"));
         let command = written["hooks"]["Notification"][0]["hooks"][0]["command"]
             .as_str()
@@ -701,7 +822,13 @@ esac
         let herdr = Herdr::new(Connection::default(), Arc::new(|_| {}));
         let missing = FAKE_HC.with(|fake| {
             *fake.borrow_mut() = Some(lab.bin.path().join("hc"));
-            open_helper(&herdr, &lab.server(), None, &lab.bin.path().join("claude"))
+            open_helper(
+                &herdr,
+                &lab.server(),
+                None,
+                &lab.bin.path().join("claude"),
+                &test_look(),
+            )
         });
         assert_eq!(
             missing,
@@ -1132,17 +1259,21 @@ while IFS= read -r line; do printf 'GOT:%s\n' "$line"; done
             "--strict-mcp-config",
             "--allowedTools",
             "mcp__fathom",
+            "Agent",
+            &format!("Read(/{}/**)", test_look().themes_root.display()),
+            "--agents",
+            &theme_agents(),
             "--settings",
             &shown(&folder.join(HELPER_SETTINGS_FILE)),
             "--append-system-prompt",
-            HELPER_PROMPT,
+            &helper_prompt(DEFAULT_HELPER_NAME),
         ]
         .iter()
         .map(|arg| arg.to_string())
         .collect();
 
         assert!(herdr.find_by_label(&helper_label()).unwrap().is_none());
-        let terminal = open_helper(&herdr, &server, Some(&shell), &claude).unwrap();
+        let terminal = open_helper(&herdr, &server, Some(&shell), &claude, &test_look()).unwrap();
         assert_eq!(
             terminal.labels.get(ROLE_KEY).map(String::as_str),
             Some(HELPER_ROLE)

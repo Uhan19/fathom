@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
+import { useEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ROW_ORDER, type AgentFilter, type Card, type Column, type MoveRequest, type MoveTo, type Overlay, type Placement, type RowKey, type SourceKind, type Wait, type Worker } from "../api";
 import {
   boardMinWidth,
@@ -9,6 +9,8 @@ import {
   groupCards,
   headTemplate,
   insertAmongShown,
+  laneTemplate,
+  type Geometry,
   isUnnamed,
   outcomeTag,
   renamedColumn,
@@ -25,6 +27,8 @@ import { useColumnDrag, type ColumnDrag } from "../columnDrag";
 import type { DropTarget } from "../dropTarget";
 import { startDrag } from "../drag";
 import { tagText, waitsOf, waitTitle } from "../waits";
+import { states } from "../parts";
+import { useLook } from "../themes/context";
 import { ChevronDown, ChevronLeft, ChevronRight, HandoffIcon, Plus, Sailor, Trash } from "./Icons";
 
 interface BoardProps {
@@ -66,7 +70,18 @@ export function Board(props: BoardProps) {
   const focusCells = focused ? keepCards(allCells, (card) => isFocused(card, focus)) : allCells;
   const cells = agentFilter === "all" ? focusCells : keepCards(focusCells, (card) => shownByAgent(workers[card.id], agentFilter));
   const shown = focused ? sized.filter((c) => cellCount(cells, c.id) > 0) : sized;
-  const template = columnTemplate(shown);
+  const look = useLook();
+  const lanes = look.layout.board === "lanes";
+  const geometry: Geometry = { rowLabel: look.layout.rowLabelWidth, collapsed: look.layout.collapsedWidth, lane: look.layout.laneWidth };
+  const boardTokens = {
+    "--board-min-width": `${boardMinWidth(shown, geometry)}px`,
+    "--head-template": headTemplate(shown, geometry),
+    "--row-template": columnTemplate(shown, geometry),
+    "--lane-template": laneTemplate(collapsedRows, geometry),
+    "--board-columns": String(shown.length + (props.onColumnAdd ? 1 : 0)),
+    "--board-projects": String(shown.length),
+    "--board-stages": String(ROW_ORDER.length),
+  } as CSSProperties;
   const scroller = useRef<HTMLDivElement>(null);
 
   const idsIn = (from: typeof cells, column: number, row: RowKey) => (from.get(column)?.get(row) ?? []).map((c) => c.id);
@@ -84,11 +99,13 @@ export function Board(props: BoardProps) {
       order: insertAmongShown(idsIn(allCells, target.column, target.row), idsAt(target.column, target.row), card.id, target.index),
     });
   });
-  const columnDrag = useColumnDrag(scroller, (column, index) => props.onColumnMove(column.id, index, shown));
+  const columnDrag = useColumnDrag(scroller, (column, index) => props.onColumnMove(column.id, index, shown), lanes ? "y" : "x");
   const liftedColumn = columnDrag.drag?.column.id;
   const headClass = (column: Column, unseen = false) =>
     `column-head${column.collapsed ? " collapsed" : ""}${unseen ? " unseen" : ""}${column.id === liftedColumn ? " column-lifted" : ""}`;
-  const headProps = (column: Column) => ({
+  const headProps = (column: Column, unseen = false) => ({
+    "data-part": "column-head",
+    "data-state": states({ collapsed: column.collapsed, unseen, lifted: column.id === liftedColumn }),
     "data-column": column.id,
     onPointerDown: (e: React.PointerEvent<HTMLElement>) => columnDrag.begin(e, column),
   });
@@ -116,9 +133,9 @@ export function Board(props: BoardProps) {
 
   if (focused && !anyCard(focusCells)) {
     return (
-      <div className="board-empty board-no-match" role="status">
+      <div className="board-empty board-no-match" data-part="board-empty" data-kind="no-match" role="status">
         <p>{focusMissText(props.projectsFiltered)}</p>
-        <button className="mini" onClick={props.onClearFocus}>
+        <button className="mini" data-part="mini-button" data-control="no-match-clear-focus" onClick={props.onClearFocus}>
           Clear focus
         </button>
       </div>
@@ -127,9 +144,9 @@ export function Board(props: BoardProps) {
 
   if (agentFilter !== "all" && !anyCard(cells)) {
     return (
-      <div className="board-empty board-no-match" role="status">
+      <div className="board-empty board-no-match" data-part="board-empty" data-kind="no-match" role="status">
         <p>{noMatchText(agentFilter, props.projectsFiltered, focused)}</p>
-        <button className="mini" onClick={props.onShowEveryCard}>
+        <button className="mini" data-part="mini-button" data-control="no-match-show-every-card" onClick={props.onShowEveryCard}>
           Show every card
         </button>
       </div>
@@ -137,21 +154,24 @@ export function Board(props: BoardProps) {
   }
 
   return (
-    <div className="board-scroll" ref={scroller}>
-      <div className="board" style={{ minWidth: boardMinWidth(shown) }}>
-        <div className="column-heads" style={{ gridTemplateColumns: headTemplate(shown) }}>
-          <span className="column-heads-label">Projects →</span>
+    <div className="board-scroll" data-part="board-scroll" ref={scroller}>
+      <div className="board" data-part="board" style={boardTokens}>
+        <div className="column-heads" data-part="column-heads">
+          <span className="column-heads-label" data-part="column-heads-label">{look.text.projects}</span>
           {shown.map((column) => {
             const total = cellCount(cells, column.id);
             const unseen = column.collapsed && columnHasUnseen(cells, column.id, updates);
             const expand = unseen ? `Expand ${column.name}, it has a new update` : `Expand ${column.name}`;
             return column.collapsed ? (
-              <div key={column.id} className={headClass(column, unseen)} {...headProps(column)}>
-                <span className="count-badge" aria-label={`${total} cards in ${column.name}${unseen ? ", with a new update" : ""}`}>
+              <div key={column.id} className={headClass(column, unseen)} {...headProps(column, unseen)}>
+                <span className="count-badge" data-part="count-badge" aria-label={`${total} cards in ${column.name}${unseen ? ", with a new update" : ""}`}>
                   {total}
                 </span>
                 <button
                   className="ico wide"
+                  data-part="icon-button"
+                  data-kind="wide"
+                  data-control="column-expand"
                   onClick={() => onColumnChange(column.id, { collapsed: false })}
                   aria-label={expand}
                   title={expand}
@@ -162,9 +182,11 @@ export function Board(props: BoardProps) {
             ) : (
               <div key={column.id} className={headClass(column)} {...headProps(column)}>
                 <ColumnName column={column} onRename={(name) => onColumnRename(column.id, name)} />
-                <span className="column-total">{total}</span>
+                <span className="column-total" data-part="column-total">{total}</span>
                 <button
                   className="ico column-delete"
+                  data-part="icon-button"
+                  data-control="column-delete"
                   onClick={() => setDeletingId(column.id)}
                   aria-label={`Delete ${column.name}`}
                   title={`Delete ${column.name}`}
@@ -173,18 +195,24 @@ export function Board(props: BoardProps) {
                 </button>
                 <button
                   className="ico"
+                  data-part="icon-button"
+                  data-control="column-collapse"
                   onClick={() => onColumnChange(column.id, { collapsed: true })}
                   aria-label={`Collapse ${column.name}`}
                   title={`Collapse ${column.name}`}
                 >
                   <ChevronLeft />
                 </button>
-                <div
-                  className="col-handle"
-                  role="separator"
-                  aria-label={`Resize ${column.name}`}
-                  onPointerDown={(e) => resize(e, column)}
-                />
+                {!lanes && (
+                  <div
+                    className="col-handle"
+                    data-part="col-handle"
+                    data-control="column-resize"
+                    role="separator"
+                    aria-label={`Resize ${column.name}`}
+                    onPointerDown={(e) => resize(e, column)}
+                  />
+                )}
               </div>
             );
           })}
@@ -201,21 +229,25 @@ export function Board(props: BoardProps) {
             <section
               key={row}
               className={`row row-${row}${folded ? " row-collapsed" : ""}${unseen ? " unseen" : ""}${fill ? " row-fill" : ""}`}
+              data-part="row"
+              data-kind={row}
+              data-state={states({ collapsed: folded, unseen, fill })}
               data-row={row}
               aria-label={name}
-              style={{ gridTemplateColumns: template }}
             >
-              <h2 className="row-name">
+              <h2 className="row-name" data-part="row-name">
                 <button
                   className="row-toggle"
+                  data-part="row-toggle"
+                  data-control="row-toggle"
                   aria-expanded={!folded}
                   aria-label={folded ? `Expand ${name}, ${cardsText}${unseen ? ", it has a new update" : ""}` : `Collapse ${name}`}
                   title={folded ? `Expand ${name}${unseen ? ", it has a new update" : ""}` : `Collapse ${name}`}
                   onClick={() => props.onRowCollapse(row, !folded)}
                 >
                   {folded ? <ChevronRight /> : <ChevronDown />}
-                  <span className="row-label">{name}</span>
-                  {folded && <span className="row-count">{total}</span>}
+                  <span className="row-label" data-part="row-label">{name}</span>
+                  {folded && <span className="row-count" data-part="row-count">{total}</span>}
                 </button>
               </h2>
               {shown.map((column) => {
@@ -225,6 +257,8 @@ export function Board(props: BoardProps) {
                   <div
                     key={column.id}
                     className={`cell${column.collapsed ? " cell-collapsed" : ""}${targeted ? " drop-target" : ""}${column.id === liftedColumn ? " column-lifted" : ""}`}
+                    data-part="cell"
+                    data-state={states({ collapsed: column.collapsed, targeted, lifted: column.id === liftedColumn })}
                     data-column={column.id}
                     data-row={row}
                     data-collapsed={column.collapsed || folded}
@@ -233,7 +267,7 @@ export function Board(props: BoardProps) {
                     {folded
                       ? null
                       : column.collapsed
-                        ? here.length > 0 && <span className="vname">{column.name}</span>
+                        ? here.length > 0 && <span className="vname" data-part="vname">{column.name}</span>
                         : withSlot(
                             here.map((card) => (
                               <CardView
@@ -261,8 +295,8 @@ export function Board(props: BoardProps) {
             </section>
           );
         })}
-        {columnDrag.drag?.slotX != null && (
-          <div className="drop-slot column-slot" style={{ left: columnDrag.drag.slotX }} aria-hidden="true" />
+        {columnDrag.drag?.slot != null && (
+          <div className="drop-slot column-slot" data-part="column-slot" style={lanes ? { top: columnDrag.drag.slot } : { left: columnDrag.drag.slot }} aria-hidden="true" />
         )}
       </div>
       {drag && (
@@ -288,10 +322,12 @@ function AddColumn({ onAdd }: { onAdd: (name: string) => void }) {
   const cancelled = useRef(false);
 
   return (
-    <div className="column-head">
+    <div className="column-head" data-part="column-add-head">
       {editing ? (
         <input
           className="column-name column-name-input"
+          data-part="column-name-input"
+          data-control="column-add-input"
           aria-label="Name of the new column"
           placeholder="Column name"
           autoFocus
@@ -312,7 +348,7 @@ function AddColumn({ onAdd }: { onAdd: (name: string) => void }) {
           }}
         />
       ) : (
-        <button className="column-add" onClick={() => setEditing(true)}>
+        <button className="column-add" data-part="column-add" data-control="column-add" onClick={() => setEditing(true)}>
           <Plus />
           Add column
         </button>
@@ -343,7 +379,7 @@ function DeleteColumnDialog({ column, source, held, targets, onDelete, onClose }
   };
 
   return (
-    <dialog ref={dialogRef} className="confirm" onCancel={onClose} aria-label={`Delete ${column.name}`}>
+    <dialog ref={dialogRef} className="confirm" data-part="confirm" onCancel={onClose} aria-label={`Delete ${column.name}`}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -357,11 +393,13 @@ function DeleteColumnDialog({ column, source, held, targets, onDelete, onClose }
               {held === 1 ? "It holds 1 card, which moves" : `It holds ${held} cards, which move`} to the end of the column you pick. Then this
               column is deleted.
             </p>
-            <div className="confirm-move">
-              <label className="field">
+            <div className="confirm-move" data-part="confirm-move">
+              <label className="field" data-part="field">
                 <span>Move the cards to</span>
                 <select
                   className="text-input"
+                  data-part="text-input"
+                  data-control="column-delete-target"
                   value={String(choice)}
                   disabled={draft.busy}
                   autoFocus
@@ -378,6 +416,8 @@ function DeleteColumnDialog({ column, source, held, targets, onDelete, onClose }
               {choice === NEW_COLUMN && (
                 <input
                   className="text-input"
+                  data-part="text-input"
+                  data-control="column-delete-new-name"
                   aria-label="Name of the new column"
                   placeholder="Column name"
                   value={draft.name}
@@ -395,21 +435,21 @@ function DeleteColumnDialog({ column, source, held, targets, onDelete, onClose }
             "The column leaves the board for good."
           ) : (
             <>
-              The column leaves the board. {projectTasks(source)} for <span className="confirm-name">{column.project}</span> are not changed. It
-              comes back only if a new <span className="confirm-name">{column.project}</span> task has no other column to show in.
+              The column leaves the board. {projectTasks(source)} for <span className="confirm-name" data-part="confirm-name">{column.project}</span> are not changed. It
+              comes back only if a new <span className="confirm-name" data-part="confirm-name">{column.project}</span> task has no other column to show in.
             </>
           )}
         </p>
         {draft.error && (
-          <div className="error-text" role="alert">
+          <div className="error-text" data-part="error-text" role="alert">
             Could not delete the column: {draft.error}
           </div>
         )}
-        <div className="confirm-foot">
-          <button type="button" className="btn" onClick={onClose} autoFocus={!moving}>
+        <div className="confirm-foot" data-part="confirm-foot">
+          <button type="button" className="btn" data-part="button" data-control="column-delete-cancel" onClick={onClose} autoFocus={!moving}>
             Cancel
           </button>
-          <button type="submit" className="btn btn-danger" disabled={!ready}>
+          <button type="submit" className="btn btn-danger" data-part="button" data-kind="danger" data-control="column-delete-confirm" disabled={!ready}>
             {moving ? "Move and delete" : "Delete column"}
           </button>
         </div>
@@ -420,7 +460,7 @@ function DeleteColumnDialog({ column, source, held, targets, onDelete, onClose }
 
 function withSlot(views: ReactNode[], cards: Card[], drag: CardDrag | null, slot: number): ReactNode[] {
   if (!drag || slot < 0) return views;
-  const placeholder = <div key="drop-slot" className="drop-slot" style={{ height: drag.height }} aria-hidden="true" />;
+  const placeholder = <div key="drop-slot" className="drop-slot" data-part="drop-slot" style={{ height: drag.height }} aria-hidden="true" />;
   const out: ReactNode[] = [];
   let seen = 0;
   cards.forEach((card, i) => {
@@ -438,14 +478,16 @@ function Ghost({ drag, source, request, waits, worker }: { drag: CardDrag; sourc
   return (
     <div
       className={`card card-${drag.card.row} card-ghost`}
+      data-part="card-ghost"
+      data-kind={drag.card.row}
       style={{ left: drag.x - drag.offsetX, top: drag.y - drag.offsetY, width: drag.width }}
       aria-hidden="true"
     >
-      <span className="card-open">
+      <span className="card-open" data-part="card-open">
         <CardFace card={drag.card} source={source} request={request} waits={waits} />
       </span>
       {worker && (
-        <span className={`sailor ${worker.status}`}>
+        <span className={`sailor ${worker.status}`} data-part="sailor" data-state={worker.status}>
           <Sailor />
         </span>
       )}
@@ -457,10 +499,11 @@ function ColumnGhost({ drag }: { drag: ColumnDrag }) {
   return (
     <div
       className="column-head column-ghost card-ghost"
+      data-part="column-ghost"
       style={{ left: drag.x - drag.offsetX, top: drag.y - drag.offsetY, minWidth: drag.width }}
       aria-hidden="true"
     >
-      <span className="column-name">{drag.column.name}</span>
+      <span className="column-name" data-part="column-name">{drag.column.name}</span>
     </div>
   );
 }
@@ -476,6 +519,9 @@ function ColumnName({ column, onRename }: { column: Column; onRename: (name: str
     return (
       <button
         className={unnamed ? "column-name unnamed" : "column-name"}
+        data-part="column-name"
+        data-state={states({ unnamed })}
+        data-control="column-rename"
         title={unnamed ? "Rename this unnamed column" : `Rename ${column.name}`}
         onClick={() => setEditing(true)}
       >
@@ -487,6 +533,8 @@ function ColumnName({ column, onRename }: { column: Column; onRename: (name: str
   return (
     <input
       className="column-name column-name-input"
+      data-part="column-name-input"
+      data-control="column-rename-input"
       aria-label={unnamed ? "Name of this unnamed column" : `Name of ${column.name}`}
       placeholder="Column name"
       defaultValue={column.name}
@@ -529,16 +577,22 @@ function CardView({ card, request, waits, worker, source, unseen, selected, lift
   return (
     <div
       className={`card card-${card.row}${unseen ? " unseen" : ""}${selected ? " selected" : ""}${lifted ? " lifted" : ""}`}
+      data-part="card"
+      data-kind={card.row}
+      data-state={states({ selected, unseen, lifted })}
       data-id={card.id}
       onPointerDown={onPointerDown}
     >
-      <button className="card-open" onClick={() => onSelect(card)}>
+      <button className="card-open" data-part="card-open" data-control="card-open" onClick={() => onSelect(card)}>
         <CardFace card={card} source={source} request={request} waits={waits} />
         {unseen && <span className="sr-only">New update</span>}
       </button>
       {worker && (
         <button
           className={`sailor ${worker.status}`}
+          data-part="sailor"
+          data-state={worker.status}
+          data-control="card-sailor"
           aria-label={sailorLabel(source, worker.status)}
           title={sailorLabel(source, worker.status)}
           onPointerDown={(e) => e.stopPropagation()}
@@ -557,17 +611,17 @@ function CardFace({ card, source, request, waits }: { card: Card; source: Source
   const name = taskName(card, source);
   return (
     <>
-      <span className="bar" aria-hidden="true" />
-      <span className="card-body">
+      <span className="bar" data-part="bar" aria-hidden="true" />
+      <span className="card-body" data-part="card-body">
         {(card.number !== null || name) && (
-          <span className="card-ref">
-            {card.number !== null && <span className="card-number">#{card.number}</span>}
-            {name && <span className="card-name">{name}</span>}
+          <span className="card-ref" data-part="card-ref">
+            {card.number !== null && <span className="card-number" data-part="card-number">#{card.number}</span>}
+            {name && <span className="card-name" data-part="card-name">{name}</span>}
           </span>
         )}
-        <span className="phrase">{card.title}</span>
-        {note && <span className="card-note">{note}</span>}
-        {tag && <span className="mark mark-reported">{tag}</span>}
+        <span className="phrase" data-part="phrase">{card.title}</span>
+        {note && <span className="card-note" data-part="card-note">{note}</span>}
+        {tag && <span className="mark mark-reported" data-part="mark" data-kind="reported">{tag}</span>}
         {request && <RequestMark request={request} />}
         {waits.length > 0 && <WaitTag waits={waits} />}
       </span>
@@ -578,10 +632,10 @@ function CardFace({ card, source, request, waits }: { card: Card; source: Source
 function WaitTag({ waits }: { waits: Wait[] }) {
   const { names, more } = tagText(waits);
   return (
-    <span className={names ? "wait-tag" : "wait-tag unnamed"} title={waitTitle(waits)}>
+    <span className={names ? "wait-tag" : "wait-tag unnamed"} data-part="wait-tag" data-state={states({ unnamed: !names })} title={waitTitle(waits)}>
       <HandoffIcon size={13} />
-      {names && <span className="wait-names">{names}</span>}
-      {more > 0 && <span className="wait-more">+{more}</span>}
+      {names && <span className="wait-names" data-part="wait-names">{names}</span>}
+      {more > 0 && <span className="wait-more" data-part="wait-more">+{more}</span>}
     </span>
   );
 }
@@ -590,14 +644,14 @@ function RequestMark({ request }: { request: MoveRequest }) {
   switch (request.status) {
     case "sending":
     case "asked":
-      return <span className="mark mark-asked">asked</span>;
+      return <span className="mark mark-asked" data-part="mark" data-kind="asked">asked</span>;
     case "failed":
-      return <span className="mark mark-failed">not sent</span>;
+      return <span className="mark mark-failed" data-part="mark" data-kind="failed">not sent</span>;
     case "answered":
       return (
-        <span className="answer">
-          <span className="mark mark-answered">answered</span>
-          <span className="answer-text">{request.answer}</span>
+        <span className="answer" data-part="answer">
+          <span className="mark mark-answered" data-part="mark" data-kind="answered">answered</span>
+          <span className="answer-text" data-part="answer-text">{request.answer}</span>
         </span>
       );
     default:
