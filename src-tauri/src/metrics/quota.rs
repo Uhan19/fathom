@@ -63,6 +63,7 @@ pub struct QuotaReport {
     pub last_seen_ms: Option<i64>,
     pub five_hour: Option<Window>,
     pub seven_day: Option<Window>,
+    pub record_line: String,
 }
 
 pub fn run_record(dir: Result<std::path::PathBuf, String>, now_ms: i64) -> i32 {
@@ -156,7 +157,15 @@ pub fn report(snapshots: &[Snapshot], now_ms: i64) -> QuotaReport {
         last_seen_ms,
         five_hour,
         seven_day,
+        record_line: String::new(),
     }
+}
+
+pub fn record_line(program: &str) -> String {
+    format!(
+        "echo \"$input\" | {} {RECORD_FLAG} &",
+        crate::launch::shell_quote(program)
+    )
 }
 
 fn window(
@@ -385,5 +394,17 @@ mod tests {
         assert!(!read(dir.path(), NOW).available);
         record(dir.path(), &status_line(5.0, 6.0), NOW - MINUTE).unwrap();
         assert!(read(dir.path(), NOW).available);
+    }
+
+    #[test]
+    fn the_record_line_pipes_the_status_line_input_to_this_program() {
+        assert_eq!(
+            record_line("/Applications/Fathom.app/Contents/MacOS/fathom"),
+            r#"echo "$input" | '/Applications/Fathom.app/Contents/MacOS/fathom' --quota-record &"#
+        );
+        assert_eq!(
+            record_line("/Users/a b/it's/fathom"),
+            r#"echo "$input" | '/Users/a b/it'\''s/fathom' --quota-record &"#
+        );
     }
 }

@@ -12,6 +12,7 @@ import {
   type HerdrStatus,
   type MemoryGroup,
   type MemorySample,
+  type QuotaReport,
   type TokenReport,
   type MoveTo,
   type Overlay,
@@ -31,6 +32,7 @@ import { startDrag } from "./drag";
 import { Board } from "./components/Board";
 import { Dashboard, ViewSwitch } from "./components/Dashboard";
 import { Machine, type StopState } from "./components/Machine";
+import { QuotaCard } from "./components/QuotaCard";
 import { Tokens } from "./components/Tokens";
 import { withPoint, type Point } from "./machine";
 import { AgentFilterToggle } from "./components/AgentFilterToggle";
@@ -91,6 +93,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   const [memory, setMemory] = useState<MemorySample | null>(null);
   const [memoryHistory, setMemoryHistory] = useState<Point[]>([]);
   const [tokenReport, setTokenReport] = useState<TokenReport | null>(null);
+  const [quotaReport, setQuotaReport] = useState<QuotaReport | null>(null);
   const [stops, setStops] = useState<Record<string, StopState>>({});
   const [updates, setUpdates] = useState<CardUpdates>(NO_UPDATES);
   const [moveError, setMoveError] = useState<string | null>(null);
@@ -143,6 +146,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
         setMemoryHistory((h) => withPoint(h, m));
       }),
       events.tokens((r) => alive && setTokenReport(r)),
+      events.quota((r) => alive && setQuotaReport(r)),
     ];
     api
       .cachedBoard()
@@ -164,6 +168,10 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
     api
       .tokenReport()
       .then((r) => alive && r && setTokenReport(r))
+      .catch(() => undefined);
+    api
+      .quotaReport()
+      .then((r) => alive && setQuotaReport(r))
       .catch(() => undefined);
     return () => {
       alive = false;
@@ -581,7 +589,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
           {onDashboard && (
             <Dashboard
               mac={MAC}
-              tokens={<Tokens report={tokenReport} mode={settings?.tokenMode ?? "raw"} onMode={(tokenMode) => changeWindow({ tokenMode })} />}
+              tokens={<Tokens report={tokenReport} mode={settings?.tokenMode ?? "raw"} onMode={(tokenMode) => changeWindow({ tokenMode })} quota={<QuotaCard report={quotaReport} />} />}
               machine={
               <Machine
                 sample={memory}

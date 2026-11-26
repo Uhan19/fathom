@@ -286,6 +286,22 @@ export interface TokenReport {
   pricesError: string | null;
 }
 
+export interface QuotaWindow {
+  usedPercent: number;
+  resetsAtMs: number;
+  percentPerHour: number | null;
+  runsOutAtMs: number | null;
+}
+
+export interface QuotaReport {
+  takenAtMs: number;
+  available: boolean;
+  lastSeenMs: number | null;
+  fiveHour: QuotaWindow | null;
+  sevenDay: QuotaWindow | null;
+  recordLine: string;
+}
+
 export type Pressure = "normal" | "warning" | "critical";
 export type GroupKind = "fathom" | "orchestrator" | "worker" | "docker";
 
@@ -481,6 +497,7 @@ export const api = {
   setMetricsDemand: (demand: MetricsDemand) => invoke<void>("set_metrics_demand", { demand }),
   memorySample: () => invoke<MemorySample>("memory_sample"),
   tokenReport: () => invoke<TokenReport | null>("token_report"),
+  quotaReport: () => invoke<QuotaReport>("quota_report"),
   stopWorker: (taskId: string, title: string) => invoke<StopOutcome>("stop_worker", { taskId, title }),
   rememberColumnFolder: (column: number, folder: string) => invoke<void>("remember_column_folder", { column, folder }),
 };
@@ -502,6 +519,8 @@ export const events = {
     listen<MemorySample>("metrics://memory", (e) => handler(e.payload)),
   tokens: (handler: (report: TokenReport) => void): Promise<UnlistenFn> =>
     listen<TokenReport>("metrics://tokens", (e) => handler(e.payload)),
+  quota: (handler: (report: QuotaReport) => void): Promise<UnlistenFn> =>
+    listen<QuotaReport>("metrics://quota", (e) => handler(e.payload)),
   helper: (handler: (helper: HelperStatus) => void): Promise<UnlistenFn> =>
     listen<HelperStatus>("helper://updated", (e) => handler(e.payload)),
   terminalEnded: (handler: (ended: EndedView) => void): Promise<UnlistenFn> =>

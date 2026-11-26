@@ -42,17 +42,23 @@ export function Tokens({ report, mode, onMode, quota }: TokensProps) {
         </span>
       </SectionHead>
       {!report ? (
-        <section className="dash-card" data-part="dash-card" data-kind="tiles">
-          <p className="dash-muted" data-part="dash-muted">
-            Reading Claude Code transcripts…
-          </p>
-        </section>
+        <>
+          <section className="dash-card" data-part="dash-card" data-kind="tiles">
+            <p className="dash-muted" data-part="dash-muted">
+              Reading Claude Code transcripts…
+            </p>
+          </section>
+          {quota}
+        </>
       ) : isEmpty(report) ? (
-        <section className="dash-card" data-part="dash-card" data-kind="tiles">
-          <p className="dash-muted" data-part="dash-muted">
-            No Claude Code usage in the last 30 days.
-          </p>
-        </section>
+        <>
+          <section className="dash-card" data-part="dash-card" data-kind="tiles">
+            <p className="dash-muted" data-part="dash-muted">
+              No Claude Code usage in the last 30 days.
+            </p>
+          </section>
+          {quota}
+        </>
       ) : (
         <>
           <Tiles report={report} mode={mode} />

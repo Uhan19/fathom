@@ -66,7 +66,13 @@ impl Metrics {
     }
 
     pub fn quota(&self) -> QuotaReport {
-        quota::read(&self.data_dir, now_ms())
+        let program = std::env::current_exe()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| "fathom".to_string());
+        QuotaReport {
+            record_line: quota::record_line(&program),
+            ..quota::read(&self.data_dir, now_ms())
+        }
     }
 
     pub fn tokens(&self) -> Option<TokenReport> {

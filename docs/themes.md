@@ -115,7 +115,7 @@ Select named parts, never Fathom's class names or ids, which may change in any r
 
 - `[data-part="card"]` is a kind of element, such as a card, a column head or the header.
 - `[data-kind="surface"]` is a variant that does not change, such as a card's or row's stage (`surface`, `shallows`, `deep`, `seabed`, `landed`), a button's style (`header`, `danger`, `dark`) or a tag's kind (`asked`, `failed`, `answered`, `reported`).
-- `[data-state~="selected"]` is a state that changes, such as `selected`, `unseen`, `lifted`, `collapsed`, `closed`, `working`, `idle`, `fill`, `targeted`, `active`, `measured` (a card showing its worker's memory), `high` (a memory badge at the Settings threshold or above), and on the Dashboard's memory map `heavy` (a block at that threshold or above), `idle` (a worker past its prompt cache that still holds memory) `roomy` (a block wide enough for larger text) `single` (the Selected card alone, with no idle worker beside it), and on the daily token chart `today` (today's bar, drawn lighter because the day is not over).
+- `[data-state~="selected"]` is a state that changes, such as `selected`, `unseen`, `lifted`, `collapsed`, `closed`, `working`, `idle`, `fill`, `targeted`, `active`, `measured` (a card showing its worker's memory), `high` (a memory badge at the Settings threshold or above), and on the Dashboard's memory map `heavy` (a block at that threshold or above), `idle` (a worker past its prompt cache that still holds memory) `roomy` (a block wide enough for larger text) `single` (the Selected card alone, with no idle worker beside it), on the daily token chart `today` (today's bar, drawn lighter because the day is not over), and on the plan limits card `short` (a window whose runway ends before its reset, drawn amber), `empty` (a window with no current reading) and `unavailable` (both windows greyed out while there is no quota data).
 - ARIA attributes carry the rest: `[aria-checked="true"]`, `[aria-selected="true"]`, `[aria-expanded="false"]`, `[aria-pressed="true"]` and `:disabled`.
 - `[data-control="open-settings"]` is one control, by a stable id (list below).
   Repeated controls share an id; `data-column`, `data-row`, `data-id` and `data-key` on them or their parents tell them apart.
@@ -156,7 +156,7 @@ The check does not judge state markers either, so keep them visible yourself.
 In particular a card with an unread agent update, `[data-part="card"][data-state~="unseen"]`, must stand out from read cards, as Nautical's blinking `bar` does.
 
 Then it plays the interactions: dragging a card to another stage, at full size and by scrolling at the board's edge in the smallest window, moving a project both ways by its header, widening the chat, narrowing the card panel, closing it with Escape and clicking back into the ticket search after picking a match (or, for the overlay, Escape, the scrim and focus), raising the helper drawer, switching light and dark, and the reset shortcut.
-The sample includes long titles, many projects, a folded row, every tag, an error banner and an empty board.
+The sample includes long titles, many projects, a folded row, every tag, an error banner, an empty board, and an empty Dashboard with no workers and no plan limits recorded yet.
 
 It exits 0 when the theme passes and 1 with its problems, each with the control or part, what failed and a screenshot in `.shots/check/`.
 Add `--json` for a JSON result.
@@ -208,7 +208,7 @@ link-sources main map-block map-cell map-label map-name map-note map-size map-ta
 mini-button mix-bar mix-seg moment moment-dot moment-head moment-state moment-text moment-time more-link move
 move-actions muted muted-small ok-text opener opener-folder overhead-item overhead-line panel-handle path-link phrase picker
 picker-item picker-list picker-meta picker-name picker-reason pill pr-checks pr-line pr-state
-pressure-pill preview-head preview-image preview-name preview-text prices-note proc-bar proc-fill proc-name proc-row proc-size prose quiet-note rec-tag recipient-sailor
+pressure-pill preview-head preview-image preview-name preview-text prices-note proc-bar proc-fill proc-name proc-row proc-size prose quiet-note quota-bar quota-command quota-fill quota-head quota-name quota-note quota-notice quota-notice-body quota-notice-icon quota-notice-title quota-seen quota-used quota-window quota-windows rec-tag recipient-sailor
 result result-foot result-points result-prs result-watch result-watch-head result-watch-text
 rich-text row row-count row-label row-name row-names row-toggle sailor sailor-art sailor-visor sech
 sech-note seg seg-option segmented segmented-option segmented-thumb selected-head selected-meta selected-name selected-size send-field send-note send-row
@@ -242,7 +242,7 @@ file-back file-open file-open-app file-reveal font-add font-picker-done font-rem
 helper-check-again helper-close helper-copy-install helper-open helper-restart helper-retry
 helper-start helper-start-again helper-stop idle-more launcher-attach launcher-folder launcher-toggle
 link-open map-block move-dismiss move-resend no-match-clear-focus no-match-show-every-card open-agent
-open-blocker open-report open-settings picker-terminal resize-card-panel resize-chat resize-helper
+open-blocker open-report open-settings picker-terminal quota-copy-line resize-card-panel resize-chat resize-helper
 row-toggle settings-agent-folder settings-board-font settings-board-font-size settings-cancel
 settings-chat-font settings-chat-font-size settings-close settings-export settings-hc-session
 settings-hc-socket settings-home settings-linear-workspace settings-memory-badge settings-row-name settings-save
@@ -274,7 +274,7 @@ wait-link worker-reattach worker-retry
 --page-ink --panel-bg --panel-ink --panel-ink-2 --pill-deep-bg --pill-ink --pill-landed-bg
 --pill-landed-line --pill-seabed-bg --pill-shallows-bg --pill-surface-bg --pr-closed-bg
 --pr-closed-ink --pr-draft-bg --pr-draft-ink --pr-merged-bg --pr-merged-ink --pr-open-bg
---pr-open-ink --pressure-critical --pressure-critical-ink --pressure-ok-bg --pressure-ok-ink --quiet-bg --quiet-hover-line --rail-width --refused-glow --row-deep --row-deep-edge
+--pr-open-ink --pressure-critical --pressure-critical-ink --pressure-ok-bg --pressure-ok-ink --quiet-bg --quiet-hover-line --quota-ok --quota-warn --rail-width --refused-glow --row-deep --row-deep-edge
 --row-hover --row-ink --row-label-width --row-landed --row-seabed --row-seabed-edge --row-shallows
 --row-shallows-edge --row-surface --sailor-badge --sailor-badge-anchor --sailor-brim --sailor-cap
 --sailor-cap-shine --sailor-coat --sailor-collar --sailor-ear --sailor-face --sailor-grille

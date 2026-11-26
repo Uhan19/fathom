@@ -1,5 +1,5 @@
 import { AGENTS, type AgentKey } from "../agents";
-import type { AgentSession, Card, Column, Detail, MemoryGroup, MemoryPart, MemorySample, TokenDay, TokenReport, MoveRequest, RowKey, ShellTab, Terminal, Waits, Worker } from "../api";
+import type { AgentSession, Card, Column, Detail, MemoryGroup, MemoryPart, MemorySample, MoveRequest, QuotaReport, RowKey, ShellTab, Terminal, TokenDay, TokenReport, Waits, Worker } from "../api";
 import type { CardUpdates } from "../updates";
 
 type Seed = [id: string, project: string, row: RowKey, title: string, extra?: Partial<Card>];
@@ -251,6 +251,26 @@ export const fixtureTokens = (takenAtMs = Date.now()): TokenReport => {
     overhead: { assistantTokens: 2_900_000, assistantQuestions: 30, moveRequests: [1_100_000, 2_400_000, 1_700_000], weekTokens, weekOverheadTokens: Math.round(weekTokens * 0.0029) },
     unpriced: [],
     pricesError: null,
+  };
+};
+
+export type QuotaFixture = "live" | "never" | "stale";
+
+const FIXTURE_FATHOM = "/Applications/Fathom.app/Contents/MacOS/fathom";
+
+export const fixtureQuota = (kind: QuotaFixture, takenAtMs = Date.now()): QuotaReport => {
+  const minute = 60_000;
+  const recordLine = `echo "$input" | '${FIXTURE_FATHOM}' --quota-record &`;
+  if (kind !== "live") {
+    return { takenAtMs, available: false, lastSeenMs: kind === "stale" ? takenAtMs - 134 * minute : null, fiveHour: null, sevenDay: null, recordLine };
+  }
+  return {
+    takenAtMs,
+    available: true,
+    lastSeenMs: takenAtMs - minute,
+    fiveHour: { usedPercent: 62, resetsAtMs: takenAtMs + 112 * minute, percentPerHour: 32.6, runsOutAtMs: takenAtMs + 70 * minute },
+    sevenDay: { usedPercent: 48, resetsAtMs: takenAtMs + 4 * DAY_MS + 3 * 60 * minute, percentPerHour: 0.5, runsOutAtMs: null },
+    recordLine,
   };
 };
 

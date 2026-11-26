@@ -33,7 +33,9 @@ import {
   fixtureBacklogUpdates,
   fixtureDetail,
   fixtureMemory,
+  fixtureQuota,
   fixtureTokens,
+  type QuotaFixture,
   fixtureUpdates,
   helperScreen,
   shellScreen,
@@ -58,6 +60,7 @@ const noLabel = params.has("nolabel");
 const stress = params.has("stress");
 const failing = params.has("error") || stress;
 const empty = params.has("empty");
+const quotaKind = (params.get("quota") as QuotaFixture | null) ?? (empty ? "never" : "live");
 const backlog = params.has("backlog");
 const unfiled = params.has("unfiled");
 const otherClient = params.get("other")?.match(/^(\d+)x(\d+)$/);
@@ -402,11 +405,15 @@ mockIPC(
             void emit("metrics://memory", { ...past, used: past.used + Math.round(Math.sin(i / 3) * 400 + i * 12) * MB });
           }
           void emit("metrics://memory", fixtureMemory(shownWorkers(), now));
-          if ((args.demand as { dashboard?: boolean } | undefined)?.dashboard && !empty) void emit("metrics://tokens", fixtureTokens(now));
+          const dashboard = (args.demand as { dashboard?: boolean } | undefined)?.dashboard;
+          if (dashboard && !empty) void emit("metrics://tokens", fixtureTokens(now));
+          if (dashboard) void emit("metrics://quota", fixtureQuota(quotaKind, now));
         }, 0);
         return null;
       case "token_report":
         return null;
+      case "quota_report":
+        return fixtureQuota(quotaKind);
       case "stop_worker":
         console.info("stop_worker", args.taskId);
         return backlog ? { kind: "stopped" } : { kind: "asked", noteId: "n-preview" };

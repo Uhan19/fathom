@@ -3,7 +3,7 @@ import { ground, luminances, ratioOf, spread, type Pixels } from "./pixels";
 
 type FrameWindow = Window & typeof globalThis;
 
-export type ViewName = "board" | "detail" | "settings" | "helper" | "dashboard" | "empty";
+export type ViewName = "board" | "detail" | "settings" | "helper" | "dashboard" | "empty" | "empty-dashboard";
 export type ControlState = "ok" | "hidden" | "tiny" | "faint" | "offscreen" | "covered" | "unlabelled";
 
 export interface ControlScan {
