@@ -24,6 +24,14 @@ const ACK_MARK: &str = "acked ";
 const WAKE_MARK: &str = "WAKE_ACK_REQUIRED";
 const NUDGE_SINGLE: &str = "board request waiting";
 const NUDGE_PLURAL: &str = "board requests waiting";
+const INJECTED_TAGS: [&str; 6] = [
+    "<task-notification>",
+    "<command-name>",
+    "<command-message>",
+    "<local-command-stdout>",
+    "<bash-input>",
+    "<bash-stdout>",
+];
 const NOTE_TURN: &str = "note:";
 const NUDGE_TURN: &str = "nudge:";
 const SYNTHETIC_MODEL: &str = "<synthetic>";
@@ -182,13 +190,15 @@ pub fn parse_chunk(bytes: &[u8], turn: &str) -> Chunk {
 }
 
 fn read_user(line: &str, chunk: &mut Chunk) {
-    let tool_result = line.contains(TOOL_RESULT_MARK);
-    let prompt = !tool_result && !line.contains(META_MARK) && !line.contains(SIDECHAIN_MARK);
-    let value = if prompt {
+    let typed = !line.contains(TOOL_RESULT_MARK)
+        && !line.contains(META_MARK)
+        && !line.contains(SIDECHAIN_MARK);
+    let value = if typed {
         serde_json::from_str::<Value>(line).ok()
     } else {
         None
     };
+    let prompt = typed && !value.as_ref().is_some_and(injected);
     if let Some(note) = note_move(line) {
         chunk.turn = format!("{NOTE_TURN}{note}");
     } else if let Some(nudge) = value.as_ref().and_then(nudge_move) {
@@ -196,9 +206,20 @@ fn read_user(line: &str, chunk: &mut Chunk) {
     } else if prompt || ends_note_turn(line, &chunk.turn) {
         chunk.turn.clear();
     }
-    if let Some(asked) = value.as_ref().and_then(prompt_of) {
+    if let Some(asked) = value.as_ref().filter(|_| prompt).and_then(prompt_of) {
         chunk.prompts.push(asked);
     }
+}
+
+fn injected(value: &Value) -> bool {
+    value
+        .get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(Value::as_str)
+        .is_some_and(|content| {
+            let content = content.trim_start();
+            INJECTED_TAGS.iter().any(|tag| content.starts_with(tag))
+        })
 }
 
 fn prompt_of(value: &Value) -> Option<Prompt> {
@@ -1209,6 +1230,43 @@ mod tests {
             .map(|p| (p.id.as_str(), p.session.as_str(), p.at_ms))
             .collect();
         assert_eq!(asked, [("u-1", "s1", DAY0), ("u-2", "s1", DAY0 + 1000)]);
+    }
+
+    #[test]
+    fn lines_claude_code_injects_are_not_questions_and_keep_the_turn() {
+        let at = "2026-11-24T10:00:00.000Z";
+        let reply = |id: &str| assistant_line(id, "s1", at, "claude-opus-5-5", USAGE);
+        let lines = [
+            prompt_line("s1", "u-1", DAY0, r#""1 board request waiting""#),
+            reply("m1"),
+            prompt_line(
+                "s1",
+                "u-2",
+                DAY0 + 1000,
+                r#""<task-notification>\n<task-id>b7</task-id>\n<status>completed</status>\n</task-notification>""#,
+            ),
+            reply("m2"),
+            prompt_line(
+                "s1",
+                "u-3",
+                DAY0 + 2000,
+                r#""<command-name>/clear</command-name>""#,
+            ),
+            prompt_line(
+                "s1",
+                "u-4",
+                DAY0 + 2100,
+                r#""<local-command-stdout></local-command-stdout>""#,
+            ),
+            prompt_line("s1", "u-5", DAY0 + 2200, r#""<bash-input>ls</bash-input>""#),
+            reply("m3"),
+            prompt_line("s1", "u-6", DAY0 + 3000, r#""which card is next?""#),
+            reply("m4"),
+        ];
+        assert_eq!(tagged(&lines), ["nudge:u-1", "nudge:u-1", "nudge:u-1", ""]);
+        let chunk = parse_chunk((lines.join("\n") + "\n").as_bytes(), "");
+        let asked: Vec<&str> = chunk.prompts.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(asked, ["u-1", "u-6"]);
     }
 
     #[test]
