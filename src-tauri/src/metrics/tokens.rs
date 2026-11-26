@@ -17,6 +17,7 @@ const ASSISTANT_MARK: &str = r#""type":"assistant""#;
 const USER_MARK: &str = r#""type":"user""#;
 const TOOL_RESULT_MARK: &str = r#""tool_result""#;
 const META_MARK: &str = r#""isMeta":true"#;
+const COMPACT_MARK: &str = r#""isCompactSummary":true"#;
 const SIDECHAIN_MARK: &str = r#""isSidechain":true"#;
 const NOTE_MARK: &str = "inbox note ";
 const NOTE_MOVE_MARK: &str = " - Fathom board request: move";
@@ -201,7 +202,10 @@ fn read_user(line: &str, chunk: &mut Chunk) {
     };
     let starts = |tags: &[&str]| value.as_ref().is_some_and(|v| starts_with_any(v, tags));
     let new_work = typed && !starts(&LOCAL_ECHO_TAGS);
-    let prompt = new_work && !starts(&TASK_NOTICE_TAGS) && !value.as_ref().is_some_and(interrupted);
+    let prompt = new_work
+        && !line.contains(COMPACT_MARK)
+        && !starts(&TASK_NOTICE_TAGS)
+        && !value.as_ref().is_some_and(interrupted);
     if let Some(note) = note_move(line) {
         chunk.turn = format!("{NOTE_TURN}{note}");
     } else if let Some(nudge) = value.as_ref().and_then(nudge_move) {
@@ -1800,7 +1804,7 @@ mod tests {
     }
 
     #[test]
-    fn an_interrupted_answer_is_not_another_question() {
+    fn interrupts_and_compaction_summaries_are_not_questions() {
         let projects = tempfile::tempdir().unwrap();
         let data = tempfile::tempdir().unwrap();
         let mut store = Store::open(&data.path().join(STORE_FILE)).unwrap();
@@ -1831,6 +1835,11 @@ mod tests {
                     "q3",
                     r#"[{"type":"text","text":"[Request interrupted by user]"}]"#,
                 ),
+                ask(
+                    "q3b",
+                    r#""This session is being continued from a previous conversation that ran out of context.""#,
+                )
+                .replace(r#""type":"user""#, r#""type":"user","isCompactSummary":true"#),
                 ask("q4", r#""where is reef-7, in one line?""#),
                 answer("a4", 300),
             ],
