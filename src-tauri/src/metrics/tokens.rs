@@ -30,6 +30,9 @@ const SYNTHETIC_MODEL: &str = "<synthetic>";
 const WORKER_BRANCH: &str = "fm/";
 const PIPELINE_WORKTREES: &str = "/.no-mistakes/worktrees/";
 const PIPELINE_PROJECT: &str = "no-mistakes";
+const PIPELINE_REPOS: &str = "repos";
+const DETACHED_BRANCH: &str = "HEAD";
+const ORIGIN_SECTION: &str = r#"[remote "origin"]"#;
 const TOP_CONSUMERS: usize = 8;
 const TOP_PROJECTS: usize = 8;
 const PER_MILLION: f64 = 1_000_000.0;
@@ -610,25 +613,74 @@ fn projects(sessions: &HashMap<String, Session>) -> HashMap<String, String> {
                 |root| base(&root.to_string_lossy()).to_string(),
             )
     };
-    let by_branch: HashMap<&str, String> = sessions
-        .values()
-        .filter(|s| !s.branch.is_empty() && !s.cwd.contains(PIPELINE_WORKTREES))
-        .map(|s| (s.branch.as_str(), named(s)))
-        .collect();
+    let mut by_branch: HashMap<&str, Option<String>> = HashMap::new();
+    for s in sessions.values() {
+        if s.branch.is_empty() || s.branch == DETACHED_BRANCH || s.cwd.contains(PIPELINE_WORKTREES)
+        {
+            continue;
+        }
+        let name = named(s);
+        by_branch
+            .entry(s.branch.as_str())
+            .and_modify(|known| {
+                if known.as_ref() != Some(&name) {
+                    *known = None;
+                }
+            })
+            .or_insert(Some(name));
+    }
+    let mut origins: HashMap<PathBuf, Option<String>> = HashMap::new();
     sessions
         .iter()
         .map(|(id, s)| {
-            let project = if s.cwd.contains(PIPELINE_WORKTREES) {
-                by_branch
-                    .get(s.branch.as_str())
-                    .cloned()
-                    .unwrap_or_else(|| PIPELINE_PROJECT.to_string())
-            } else {
-                named(s)
+            let project = match pipeline_clone_config(&s.cwd) {
+                Some(config) => origins
+                    .entry(config)
+                    .or_insert_with_key(|config| origin_name(config))
+                    .clone()
+                    .or_else(|| by_branch.get(s.branch.as_str()).cloned().flatten())
+                    .unwrap_or_else(|| PIPELINE_PROJECT.to_string()),
+                None => named(s),
             };
             (id.clone(), project)
         })
         .collect()
+}
+
+fn pipeline_clone_config(cwd: &str) -> Option<PathBuf> {
+    let at = cwd.find(PIPELINE_WORKTREES)?;
+    let id = cwd[at + PIPELINE_WORKTREES.len()..]
+        .split('/')
+        .next()
+        .filter(|id| !id.is_empty())?;
+    let pipeline_home = Path::new(&cwd[..at + PIPELINE_WORKTREES.len()]).parent()?;
+    Some(
+        pipeline_home
+            .join(PIPELINE_REPOS)
+            .join(format!("{id}.git"))
+            .join("config"),
+    )
+}
+
+fn origin_name(config: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(config).ok()?;
+    let mut in_origin = false;
+    for line in text.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_origin = line == ORIGIN_SECTION;
+            continue;
+        }
+        let Some((key, url)) = line.split_once('=') else {
+            continue;
+        };
+        if in_origin && key.trim() == "url" {
+            let url = url.trim().trim_end_matches('/');
+            let last = url.rsplit(['/', ':']).next()?;
+            let name = last.strip_suffix(".git").unwrap_or(last);
+            return (!name.is_empty()).then(|| name.to_string());
+        }
+    }
+    None
 }
 
 pub fn price_for<'a>(prices: &'a Prices, model: &str) -> Option<&'a Price> {
@@ -1147,14 +1199,34 @@ mod tests {
                 "orphan",
                 session("/u/.no-mistakes/worktrees/abc/run2", "fm/lost", ""),
             ),
+            ("tide", session("/pool/5/tide", "HEAD", "/pool/5/tide")),
+            (
+                "detached",
+                session("/u/.no-mistakes/worktrees/abc/run3", "HEAD", ""),
+            ),
+            ("tide-main", session("/pool/5/tide", "main", "/pool/5/tide")),
+            (
+                "shared-branch",
+                session("/u/.no-mistakes/worktrees/abc/run4", "main", ""),
+            ),
         ]
         .into_iter()
         .map(|(id, s)| (id.to_string(), s))
         .collect();
         let found = projects(&sessions);
         assert_eq!(
-            ["root", "sub", "gone", "mate", "loose", "review", "orphan"]
-                .map(|id| found[id].as_str()),
+            [
+                "root",
+                "sub",
+                "gone",
+                "mate",
+                "loose",
+                "review",
+                "orphan",
+                "detached",
+                "shared-branch"
+            ]
+            .map(|id| found[id].as_str()),
             [
                 "fathom",
                 "fathom",
@@ -1162,8 +1234,53 @@ mod tests {
                 "mate",
                 "scratch",
                 "fathom",
+                PIPELINE_PROJECT,
+                PIPELINE_PROJECT,
                 PIPELINE_PROJECT
             ]
+        );
+    }
+
+    #[test]
+    fn a_pipeline_session_belongs_to_the_repository_its_clone_came_from() {
+        let home = tempfile::tempdir().unwrap();
+        let pipeline = home.path().join(".no-mistakes");
+        let clone = |id: &str, config: &str| {
+            let dir = pipeline.join(PIPELINE_REPOS).join(format!("{id}.git"));
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("config"), config).unwrap();
+        };
+        clone(
+            "abc",
+            "[core]\n\tbare = true\n[remote \"fork\"]\n\turl = https://example.com/someone/fork.git\n[remote \"origin\"]\n\turl = https://example.com/reef/tide.git\n",
+        );
+        clone("def", "[remote \"origin\"]\n\turl = git@example.com:kelp\n");
+        clone("ghi", "[core]\n\tbare = true\n");
+        let run = |id: &str| {
+            let cwd = pipeline
+                .join("worktrees")
+                .join(id)
+                .join("01RUN")
+                .join("packages/app");
+            session(&cwd.to_string_lossy(), "HEAD", "")
+        };
+        let sessions: HashMap<String, Session> = [
+            ("tide-run", run("abc")),
+            ("tide-run-again", run("abc")),
+            ("kelp-run", run("def")),
+            ("unnamed-run", run("ghi")),
+            (
+                "fathom",
+                session("/pool/2/fathom", "HEAD", "/pool/2/fathom"),
+            ),
+        ]
+        .into_iter()
+        .map(|(id, s)| (id.to_string(), s))
+        .collect();
+        let found = projects(&sessions);
+        assert_eq!(
+            ["tide-run", "tide-run-again", "kelp-run", "unnamed-run"].map(|id| found[id].as_str()),
+            ["tide", "tide", "kelp", PIPELINE_PROJECT]
         );
     }
 
