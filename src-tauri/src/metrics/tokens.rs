@@ -32,6 +32,7 @@ const LOCAL_ECHO_TAGS: [&str; 5] = [
     "<bash-input>",
     "<bash-stdout>",
 ];
+const INTERRUPT_MARK: &str = "[Request interrupted by user";
 const NOTE_TURN: &str = "note:";
 const NUDGE_TURN: &str = "nudge:";
 const SYNTHETIC_MODEL: &str = "<synthetic>";
@@ -200,7 +201,7 @@ fn read_user(line: &str, chunk: &mut Chunk) {
     };
     let starts = |tags: &[&str]| value.as_ref().is_some_and(|v| starts_with_any(v, tags));
     let new_work = typed && !starts(&LOCAL_ECHO_TAGS);
-    let prompt = new_work && !starts(&TASK_NOTICE_TAGS);
+    let prompt = new_work && !starts(&TASK_NOTICE_TAGS) && !value.as_ref().is_some_and(interrupted);
     if let Some(note) = note_move(line) {
         chunk.turn = format!("{NOTE_TURN}{note}");
     } else if let Some(nudge) = value.as_ref().and_then(nudge_move) {
@@ -211,6 +212,21 @@ fn read_user(line: &str, chunk: &mut Chunk) {
     if let Some(asked) = value.as_ref().filter(|_| prompt).and_then(prompt_of) {
         chunk.prompts.push(asked);
     }
+}
+
+fn interrupted(value: &Value) -> bool {
+    value
+        .get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(Value::as_array)
+        .is_some_and(|blocks| {
+            blocks.iter().any(|block| {
+                block
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .is_some_and(|text| text.starts_with(INTERRUPT_MARK))
+            })
+        })
 }
 
 fn starts_with_any(value: &Value, tags: &[&str]) -> bool {
@@ -1779,6 +1795,46 @@ mod tests {
         let mut store = Store::open(&data.path().join(STORE_FILE)).unwrap();
         let today = DAY0 + 29 * MS_PER_DAY;
         assistant_day(projects.path(), today);
+        store.scan(projects.path(), today, &no_repo).unwrap();
+        assert_eq!(assistant_overhead(&store, today), (400, 2));
+    }
+
+    #[test]
+    fn an_interrupted_answer_is_not_another_question() {
+        let projects = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&data.path().join(STORE_FILE)).unwrap();
+        let today = DAY0 + 29 * MS_PER_DAY;
+        let ask = |id: &str, text: &str| prompt_line("bosun", id, today, text);
+        let answer = |id: &str, tokens: u64| {
+            line(
+                id,
+                "bosun",
+                "/data/bosun",
+                "",
+                today,
+                "claude-haiku-5-5",
+                tokens,
+            )
+        };
+        write(
+            projects.path(),
+            "p/bosun.jsonl",
+            &[
+                ask("q1", r#""where is reef-7?""#),
+                answer("a1", 100),
+                ask(
+                    "q2",
+                    r#"[{"type":"text","text":"[Request interrupted by user for tool use]"}]"#,
+                ),
+                ask(
+                    "q3",
+                    r#"[{"type":"text","text":"[Request interrupted by user]"}]"#,
+                ),
+                ask("q4", r#""where is reef-7, in one line?""#),
+                answer("a4", 300),
+            ],
+        );
         store.scan(projects.path(), today, &no_repo).unwrap();
         assert_eq!(assistant_overhead(&store, today), (400, 2));
     }
