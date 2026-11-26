@@ -24,8 +24,8 @@ const ACK_MARK: &str = "acked ";
 const WAKE_MARK: &str = "WAKE_ACK_REQUIRED";
 const NUDGE_SINGLE: &str = "board request waiting";
 const NUDGE_PLURAL: &str = "board requests waiting";
-const INJECTED_TAGS: [&str; 6] = [
-    "<task-notification>",
+const TASK_NOTICE_TAGS: [&str; 1] = ["<task-notification>"];
+const LOCAL_ECHO_TAGS: [&str; 5] = [
     "<command-name>",
     "<command-message>",
     "<local-command-stdout>",
@@ -198,12 +198,14 @@ fn read_user(line: &str, chunk: &mut Chunk) {
     } else {
         None
     };
-    let prompt = typed && !value.as_ref().is_some_and(injected);
+    let starts = |tags: &[&str]| value.as_ref().is_some_and(|v| starts_with_any(v, tags));
+    let new_work = typed && !starts(&LOCAL_ECHO_TAGS);
+    let prompt = new_work && !starts(&TASK_NOTICE_TAGS);
     if let Some(note) = note_move(line) {
         chunk.turn = format!("{NOTE_TURN}{note}");
     } else if let Some(nudge) = value.as_ref().and_then(nudge_move) {
         chunk.turn = format!("{NUDGE_TURN}{nudge}");
-    } else if prompt || ends_note_turn(line, &chunk.turn) {
+    } else if new_work || ends_note_turn(line, &chunk.turn) {
         chunk.turn.clear();
     }
     if let Some(asked) = value.as_ref().filter(|_| prompt).and_then(prompt_of) {
@@ -211,14 +213,14 @@ fn read_user(line: &str, chunk: &mut Chunk) {
     }
 }
 
-fn injected(value: &Value) -> bool {
+fn starts_with_any(value: &Value, tags: &[&str]) -> bool {
     value
         .get("message")
         .and_then(|m| m.get("content"))
         .and_then(Value::as_str)
         .is_some_and(|content| {
             let content = content.trim_start();
-            INJECTED_TAGS.iter().any(|tag| content.starts_with(tag))
+            tags.iter().any(|tag| content.starts_with(tag))
         })
 }
 
@@ -1233,40 +1235,64 @@ mod tests {
     }
 
     #[test]
-    fn lines_claude_code_injects_are_not_questions_and_keep_the_turn() {
+    fn injected_lines_are_not_questions_and_only_a_task_notice_ends_the_turn() {
         let at = "2026-11-24T10:00:00.000Z";
         let reply = |id: &str| assistant_line(id, "s1", at, "claude-opus-5-5", USAGE);
+        let notice = |id: &str, at_ms: i64| {
+            prompt_line(
+                "s1",
+                id,
+                at_ms,
+                r#""<task-notification>\n<task-id>b7</task-id>\n<status>completed</status>\n</task-notification>""#,
+            )
+        };
+        let echo = |id: &str, at_ms: i64, content: &str| prompt_line("s1", id, at_ms, content);
         let lines = [
             prompt_line("s1", "u-1", DAY0, r#""1 board request waiting""#),
             reply("m1"),
-            prompt_line(
-                "s1",
-                "u-2",
-                DAY0 + 1000,
-                r#""<task-notification>\n<task-id>b7</task-id>\n<status>completed</status>\n</task-notification>""#,
-            ),
+            notice("u-2", DAY0 + 1000),
             reply("m2"),
-            prompt_line(
-                "s1",
-                "u-3",
-                DAY0 + 2000,
-                r#""<command-name>/clear</command-name>""#,
-            ),
-            prompt_line(
-                "s1",
+            prompt_line("s1", "u-3", DAY0 + 2000, r#""2 board requests waiting""#),
+            echo(
                 "u-4",
                 DAY0 + 2100,
+                r#""<command-message>clear</command-message>""#,
+            ),
+            echo(
+                "u-5",
+                DAY0 + 2200,
+                r#""<command-name>/clear</command-name>""#,
+            ),
+            echo(
+                "u-6",
+                DAY0 + 2300,
                 r#""<local-command-stdout></local-command-stdout>""#,
             ),
-            prompt_line("s1", "u-5", DAY0 + 2200, r#""<bash-input>ls</bash-input>""#),
+            echo("u-7", DAY0 + 2400, r#""<bash-input>ls</bash-input>""#),
+            echo(
+                "u-8",
+                DAY0 + 2500,
+                r#""<bash-stdout>notes.md</bash-stdout>""#,
+            ),
             reply("m3"),
-            prompt_line("s1", "u-6", DAY0 + 3000, r#""which card is next?""#),
+            prompt_line("s1", "u-9", DAY0 + 3000, r#""which card is next?""#),
             reply("m4"),
         ];
-        assert_eq!(tagged(&lines), ["nudge:u-1", "nudge:u-1", "nudge:u-1", ""]);
+        assert_eq!(tagged(&lines), ["nudge:u-1", "", "nudge:u-3", ""]);
         let chunk = parse_chunk((lines.join("\n") + "\n").as_bytes(), "");
         let asked: Vec<&str> = chunk.prompts.iter().map(|p| p.id.as_str()).collect();
-        assert_eq!(asked, ["u-1", "u-6"]);
+        assert_eq!(asked, ["u-1", "u-3", "u-9"]);
+
+        let noted = [
+            user_line(
+                "s1",
+                r#"[{"type":"tool_result","content":"inbox note 9-x - Fathom board request: move a from deep to landed"}]"#,
+            ),
+            reply("m5"),
+            notice("u-10", DAY0 + 4000),
+            reply("m6"),
+        ];
+        assert_eq!(tagged(&noted), ["note:9-x", ""]);
     }
 
     #[test]
