@@ -67,6 +67,7 @@ Add `?unseen` to light the cards that have an update you have not read, and `?fo
 Add `?narrow=pilot-infra` to start those columns at the minimum width, and `?nowaits` to leave out the invented waits so an external hold shows its own box.
 Add `?bosun=` with `notstarted`, `dormant`, `starting`, `ready`, `working`, `asking`, `signedout`, `missing`, `failed` or `stopped` to see that Bosun state; open the drawer with the Bosun rail under the board.
 Add `?look=` with `phosphor`, `switchboard` or `riso` to see one of the fixture [themes](#themes) from `fixtures/themes`, and `?stress` for the sample board the theme check uses.
+Add `?view=dashboard` to start on the [Dashboard](#dashboard), `?tokens=cost` to start its token figures cost-weighted, and `?quota=never` or `?quota=stale` to see the plan limits card with nothing recorded yet or with only an old recording.
 
 ## Run the checks
 
@@ -236,6 +237,7 @@ On Linux, run `fathom --export <directory>` after installing the Debian package,
 
 [Bosun](#bosun) keeps its own folder, `bosun`, beside the database.
 The last version of each [theme](#themes) that passed its check is kept in a `themes` folder beside the database, with its check result; Fathom shows themes from there.
+The [Dashboard](#dashboard) keeps three files beside the database: `tokens.db`, the token use it has read from Claude Code's session logs, `prices.json`, the price list it weighs tokens by, and `quota.json`, the plan limits recorded from Claude Code's status line.
 
 Deleting the database resets Fathom; nothing in Firstmate's home is affected.
 
@@ -251,7 +253,7 @@ With the home left empty it reads its own backlog; see [Fathom's own backlog](#f
 - Fathom reads tasks only through `<firstmate home>/bin/fm-tasks-axi.sh list` and `show`.
   It never parses `data/backlog.md`.
 - Fathom never writes files in Firstmate's home itself.
-  The only thing it sends is a move request, through `bin/fm-inbox.sh note`.
+  The only things it sends are requests, through `bin/fm-inbox.sh note`: a move request, or a request from the [Dashboard](#dashboard) to stop an idle worker.
 - A home with no `data/` folder yet, such as a fresh clone, holds no tasks, so its board is empty instead of showing a read error.
   Fathom does not create the folder; it watches the home until Firstmate creates `data/`, then re-reads and watches the task list as usual.
 - It watches the task list file and `data/waits.json` and listens to herdr-core events; any of them triggers a re-read.
@@ -537,6 +539,7 @@ Fathom asks your login shell for its PATH once at startup and uses it to find he
   Empty means the default for the board: `firstmate.role=primary` with a Firstmate home, and Fathom's own `fathom.role=chat` on the backlog.
 - Agent folder, default your home directory: the folder Claude Code and Codex start in when the chat panel opens them.
 - herdr-core session and socket; empty means herdr-core's defaults.
+- Memory: the size at which a card's [memory badge](#dashboard) turns amber, from 512 MB to 8 GB, default 1 GB.
 - Row names.
 - Appearance: the [theme](#themes), a font and a size for the chat, and a font and a size for the board.
   A theme's fonts win over these menus, and a menu shows "Set by the theme" once the theme sets every font it drives.
@@ -550,7 +553,7 @@ The foot of the Settings dialog names the installed release, such as "Fathom 0.3
 
 The "Dark mode" switch in the header turns the panels, cards and terminals dark, and switching it off turns them light again.
 The board rows keep their light bands in both modes.
-Fathom remembers the theme, light or dark mode, whether the chat panel is open, the chat and card panel widths, which rows are collapsed, the agent filter and the task focus across launches.
+Fathom remembers the theme, light or dark mode, whether the chat panel is open, the chat and card panel widths, which rows are collapsed, the agent filter, the task focus, whether the Board or the Dashboard is open and the Dashboard's token measure across launches.
 The selected card and the crewmate view you are watching are not remembered.
 
 ## Themes
@@ -591,7 +594,7 @@ On macOS the program is `Fathom.app/Contents/MacOS/fathom`.
 fathom theme shot <folder> [--mode light|dark] [--size desktop|min]
 ```
 
-This renders the same invented sample board with the theme and writes PNG screenshots of the board, a card's detail, Settings and the chat with the helper drawer into the theme's `.shots/`.
+This renders the same invented sample with the theme and writes PNG screenshots of its main views into the theme's `.shots/`; the [theme guide](docs/themes.md#shots) lists them.
 Agents look at a theme only this way: neither the check nor the screenshots ever show the real board, so no real task, terminal or name reaches a model.
 
 ## Searching tickets
@@ -639,6 +642,30 @@ The project and agent filters still apply while the focus is on, and the strip t
 "Add column" is hidden while the focus is on.
 When none of the focused tasks is on the board any more, the board says so and offers "Clear focus".
 Fathom remembers the focus across launches until it is cleared.
+
+## Dashboard
+
+The Board and Dashboard switch beside the name in the header swaps the board for the Dashboard, which shows what is using the computer's memory and how many tokens your agents spend.
+The chat panel and [Bosun](#bosun) stay available beside it.
+Every number is computed locally from the computer's own data; nothing on the Dashboard asks a model or the network.
+While the Dashboard is open, memory refreshes every 3 seconds and tokens every minute.
+
+- **Machine** shows the memory in use (on macOS the same total as Activity Monitor's "Memory Used") and the memory pressure, above a map of what holds it: Fathom with Bosun, the orchestrator, one block per worker named by its task, Docker, and everything else.
+  A worker's block counts its agent and everything the agent started, such as a headless browser or a dev server.
+  Click a block to see its processes.
+- A worker counts as idle once its Claude Code session has gone past its prompt cache, 5 minutes or 1 hour for a session that writes 1-hour cache, while it still holds memory.
+  "Stop worker" frees that memory after asking: on Fathom's own backlog it ends the worker's terminal, and with Firstmate it asks Firstmate to stop the worker.
+  The card keeps its row either way.
+- **Tokens** reads Claude Code's session logs in `~/.claude/projects`, or under `$CLAUDE_CONFIG_DIR` when that is set: today, the last 7 and 30 days, a daily chart, this week's use by model, by top consumer and, when the Dashboard is wide enough, by project, and Fathom's own overhead.
+  "Cost-weighted" weighs tokens by the prices in `prices.json` (see [Where the data lives](#where-the-data-lives)), which you can edit; Fathom never fetches prices.
+- **Plan limits** shows the 5-hour and weekly windows of your Claude plan.
+  Claude Code hands these only to its status line command, so the card shows them once your status line script records them with `fathom --quota-record`.
+  Until then it shows the exact line to add to the script, with a copy button; Fathom never edits Claude Code's settings or your script.
+  When nothing was recorded in the last hour, the card greys out its bars and says when it last saw them.
+
+On the board, a card with a running worker shows the worker's memory in its corner, amber at the size set in [Settings](#settings), and hovering it lists the processes.
+When herdr-core is not reachable, workers cannot be told apart, so their memory shows under everything else.
+On Linux the memory comes from `/proc`, and there is no pressure reading.
 
 ## Bosun
 

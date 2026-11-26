@@ -41,6 +41,19 @@ For the technical version of this list, written for an agent that will work on F
 - **Agents keep running when Fathom quits.**
   Terminals live in herdr-core, so closing Fathom never stops your agents, and Fathom finds them again next time.
 
+## See what your agents cost
+
+- **What is using your memory.**
+  The Dashboard maps your computer's memory by agent: the orchestrator, each worker with the browsers and dev servers it started, Docker and everything else, and each card shows its worker's memory.
+- **Free memory from idle workers.**
+  A worker that has sat idle past its prompt cache is marked, and one click, after a confirmation, stops it without moving its card.
+- **Where your tokens go.**
+  Tokens per day, per model and per session, raw or weighed by cost, with Fathom's own overhead on its own line.
+- **How much of your plan is left.**
+  The 5-hour and weekly limits, as Claude Code's status line reports them, when they reset, and whether you reach them first at the current pace.
+- **Counted on your computer.**
+  Every number comes from local data, never from a model or the network.
+
 ## Steer by dragging
 
 - **Change the plan by moving cards.**
@@ -108,7 +121,7 @@ The task folder, screenshots and progress reports come from Firstmate's records,
 ## Yours, local and quick
 
 - **Fathom stores everything on your computer.**
-  Everything Fathom keeps lives in one small local database, with no account and no Fathom cloud.
+  Everything Fathom keeps lives in small local files, with no account and no Fathom cloud.
   Bosun and any agent you connect read your board, and send what they read to their own model provider.
 - **Fathom never edits your agent's files.**
   With Firstmate, it reads the task list through Firstmate's own commands and only ever sends requests.
