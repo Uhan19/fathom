@@ -17,7 +17,7 @@ import { SettingsDialog } from "../components/SettingsDialog";
 import { NO_LINKING } from "../links";
 import { FIXTURE_COLUMNS, FIXTURE_CARDS, FIXTURE_REQUESTS, FIXTURE_TERMINALS, FIXTURE_WAITS, FIXTURE_WORKERS, fixtureMemory, fixtureQuota, fixtureTokens, fixtureUpdates } from "../preview/fixture";
 import { badgesByTask } from "../memory";
-import { withPoint } from "../machine";
+import { stopKey, withPoint } from "../machine";
 import { defaultShortcuts } from "../shortcuts";
 import { LookContext } from "./context";
 import { lookOf, NAUTICAL_LOOK } from "./look";
@@ -28,6 +28,8 @@ const ignore = () => undefined;
 const reject = () => Promise.reject(new Error("not in this test"));
 const rowNames = Object.fromEntries(ROW_ORDER.map((row) => [row, row])) as Record<RowKey, string>;
 const workers = Object.fromEntries(FIXTURE_WORKERS.map((w) => [w.taskId, w]));
+const machineSample = fixtureMemory(FIXTURE_WORKERS, 1_900_000_000_000);
+const failedStop = machineSample.groups.find((g) => g.taskId === "hrb-18")!;
 const columns = FIXTURE_COLUMNS.map((c, i) => (i === 1 ? { ...c, collapsed: true } : c));
 const lanes = lookOf({ id: "lanes", version: "1", base: "/t/", manifest: { fathomTheme: 1, name: "Lanes", layout: { board: "lanes", detail: "overlay" } } });
 
@@ -100,14 +102,14 @@ const VIEWS: ReactElement[] = [
   createElement(QuotaCard, { report: fixtureQuota("stale", 1_900_000_000_000) }),
   createElement(QuotaCard, { report: { ...fixtureQuota("live", 1_900_000_000_000), sevenDay: null } }),
   createElement(Machine, {
-    sample: { ...fixtureMemory(FIXTURE_WORKERS, 1_900_000_000_000), herdrConnected: false },
-    history: withPoint([], fixtureMemory(FIXTURE_WORKERS, 1_900_000_000_000)),
+    sample: { ...machineSample, herdrConnected: false },
+    history: withPoint([], machineSample),
     workers: FIXTURE_WORKERS,
     source: "firstmate",
     herdr: { connected: false, message: "no socket" },
     thresholdMb: 1024,
     mac: true,
-    stops: { "hrb-18": { kind: "failed", error: "no inbox" } },
+    stops: { [stopKey(failedStop)]: { kind: "failed", error: "no inbox" } },
     onStop: ignore,
   }),
   board(["landed"]),
