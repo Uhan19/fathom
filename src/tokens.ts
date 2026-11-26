@@ -1,6 +1,7 @@
 import type { ConsumerShare, Costs, TokenDay, TokenMode, TokenReport, TokenShare } from "./api";
 
 export const WEEK = 7;
+export const TOP = 8;
 export const KINDS = ["cacheRead", "cacheWrite", "output", "input"] as const;
 export type Kind = (typeof KINDS)[number];
 
@@ -51,6 +52,10 @@ export function shareValue(share: TokenShare, mode: TokenMode): number {
 
 export function byValue<T extends TokenShare>(shares: T[], mode: TokenMode): T[] {
   return [...shares].sort((a, b) => shareValue(b, mode) - shareValue(a, mode));
+}
+
+export function top<T extends TokenShare>(shares: T[], mode: TokenMode): T[] {
+  return byValue(shares, mode).slice(0, TOP);
 }
 
 export function sum(days: TokenDay[], mode: TokenMode, kind?: Kind): number {
@@ -112,13 +117,12 @@ export function axisLabels(days: TokenDay[]): string[] {
 
 export function overheadText(report: TokenReport) {
   const { assistantTokens, assistantQuestions, moveRequests, weekTokens, weekOverheadTokens } = report.overhead;
-  const perQuestion = assistantQuestions ? assistantTokens / assistantQuestions : 0;
   const low = Math.min(...moveRequests);
   const high = Math.max(...moveRequests);
   const share = weekTokens ? (weekOverheadTokens / weekTokens) * 100 : 0;
   return {
-    assistant: tokensShort(assistantTokens),
-    perQuestion: assistantQuestions ? tokensShort(perQuestion) : "",
+    assistant: assistantTokens ? tokensShort(assistantTokens) : "",
+    perQuestion: assistantTokens && assistantQuestions ? tokensShort(assistantTokens / assistantQuestions) : "",
     moves: moveRequests.length === 0 ? "" : low === high || moveRequests.length === 1 ? tokensShort(high) : `${tokensShort(low)}–${tokensShort(high)}`,
     shareLead: share > 0 && share < 0.1 ? "under " : "",
     share: share === 0 ? "0%" : share < 0.1 ? "0.1%" : `${share < 10 ? share.toFixed(2) : Math.round(share)}%`,

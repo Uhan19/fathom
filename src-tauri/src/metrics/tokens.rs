@@ -33,9 +33,8 @@ const PIPELINE_PROJECT: &str = "no-mistakes";
 const PIPELINE_REPOS: &str = "repos";
 const DETACHED_BRANCH: &str = "HEAD";
 const ORIGIN_SECTION: &str = r#"[remote "origin"]"#;
-const TOP_CONSUMERS: usize = 8;
-const TOP_PROJECTS: usize = 8;
 const PER_MILLION: f64 = 1_000_000.0;
+const PROMPTS_VERSION: i64 = 1;
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS files (
     path TEXT PRIMARY KEY,
@@ -46,8 +45,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     cwd TEXT NOT NULL DEFAULT '',
     branch TEXT NOT NULL DEFAULT '',
-    repo TEXT NOT NULL DEFAULT '',
-    prompts INTEGER NOT NULL DEFAULT 0
+    repo TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
@@ -62,6 +60,12 @@ CREATE TABLE IF NOT EXISTS messages (
     turn TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS messages_at ON messages (at_ms);
+CREATE TABLE IF NOT EXISTS prompts (
+    id TEXT PRIMARY KEY,
+    session TEXT NOT NULL,
+    at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS prompts_at ON prompts (at_ms);
 ";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
@@ -140,10 +144,17 @@ pub struct Message {
     pub branch: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Prompt {
+    pub id: String,
+    pub session: String,
+    pub at_ms: i64,
+}
+
 #[derive(Debug, Default, PartialEq)]
 pub struct Chunk {
     pub messages: Vec<Message>,
-    pub prompts: HashMap<String, u64>,
+    pub prompts: Vec<Prompt>,
     pub turn: String,
     pub consumed: usize,
 }
@@ -185,9 +196,17 @@ fn read_user(line: &str, chunk: &mut Chunk) {
     } else if prompt || ends_note_turn(line, &chunk.turn) {
         chunk.turn.clear();
     }
-    if let Some(session) = value.as_ref().and_then(|v| text(v, "sessionId")) {
-        *chunk.prompts.entry(session).or_default() += 1;
+    if let Some(asked) = value.as_ref().and_then(prompt_of) {
+        chunk.prompts.push(asked);
     }
+}
+
+fn prompt_of(value: &Value) -> Option<Prompt> {
+    Some(Prompt {
+        id: text(value, "uuid")?,
+        session: text(value, "sessionId")?,
+        at_ms: parse_timestamp(value.get("timestamp")?.as_str()?)?,
+    })
 }
 
 fn note_move(line: &str) -> Option<String> {
@@ -303,23 +322,33 @@ impl Store {
         let mut files = Vec::new();
         transcripts(root, &mut files);
         let tx = self.conn.transaction().map_err(|e| e.to_string())?;
+        let version: i64 = tx
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        if version < PROMPTS_VERSION {
+            backfill_prompts(&tx, now_ms)?;
+            tx.pragma_update(None, "user_version", PROMPTS_VERSION)
+                .map_err(|e| e.to_string())?;
+        }
         for path in files {
             if let Err(error) = scan_file(&tx, &path, now_ms, is_repo) {
                 eprintln!("fathom: cannot read {}: {error}", path.display());
             }
         }
-        tx.execute(
-            "DELETE FROM messages WHERE at_ms < ?1",
-            params![now_ms - RETAIN_MS],
-        )
-        .map_err(|e| e.to_string())?;
+        for table in ["messages", "prompts"] {
+            tx.execute(
+                &format!("DELETE FROM {table} WHERE at_ms < ?1"),
+                params![now_ms - RETAIN_MS],
+            )
+            .map_err(|e| e.to_string())?;
+        }
         tx.commit().map_err(|e| e.to_string())
     }
 
     fn sessions(&self) -> Result<HashMap<String, Session>, String> {
         let mut statement = self
             .conn
-            .prepare("SELECT id, cwd, branch, repo, prompts FROM sessions")
+            .prepare("SELECT id, cwd, branch, repo FROM sessions")
             .map_err(|e| e.to_string())?;
         let rows = statement
             .query_map([], |r| {
@@ -329,9 +358,21 @@ impl Store {
                         cwd: r.get(1)?,
                         branch: r.get(2)?,
                         repo: r.get(3)?,
-                        prompts: r.get::<_, i64>(4)? as u64,
                     },
                 ))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    fn prompts_since(&self, since_ms: i64) -> Result<HashMap<String, u64>, String> {
+        let mut statement = self
+            .conn
+            .prepare("SELECT session, COUNT(*) FROM prompts WHERE at_ms >= ?1 GROUP BY session")
+            .map_err(|e| e.to_string())?;
+        let rows = statement
+            .query_map(params![since_ms], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64))
             })
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
@@ -411,13 +452,7 @@ fn scan_file(
         None => (0, String::new()),
     };
     if offset < size {
-        let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-        file.seek(SeekFrom::Start(offset))
-            .map_err(|e| e.to_string())?;
-        let mut bytes = Vec::with_capacity((size - offset) as usize);
-        file.take(size - offset)
-            .read_to_end(&mut bytes)
-            .map_err(|e| e.to_string())?;
+        let bytes = read_span(path, offset, size)?;
         let chunk = parse_chunk(&bytes, &turn);
         save_chunk(tx, &chunk, is_repo)?;
         offset += chunk.consumed as u64;
@@ -429,6 +464,41 @@ fn scan_file(
         params![key, offset as i64, turn],
     )
     .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn read_span(path: &Path, from: u64, to: u64) -> Result<Vec<u8>, String> {
+    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    file.seek(SeekFrom::Start(from))
+        .map_err(|e| e.to_string())?;
+    let length = to.saturating_sub(from);
+    let mut bytes = Vec::with_capacity(length as usize);
+    file.take(length)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    Ok(bytes)
+}
+
+fn backfill_prompts(tx: &rusqlite::Transaction, now_ms: i64) -> Result<(), String> {
+    let read: Vec<(String, i64)> = {
+        let mut statement = tx
+            .prepare("SELECT path, offset FROM files")
+            .map_err(|e| e.to_string())?;
+        let rows = statement
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+    };
+    for (path, offset) in read {
+        let path = Path::new(&path);
+        let recent = std::fs::metadata(path)
+            .ok()
+            .and_then(|meta| modified_ms(&meta))
+            .is_some_and(|ms| ms >= now_ms - RETAIN_MS);
+        if let (true, Ok(bytes)) = (recent, read_span(path, 0, offset as u64)) {
+            save_prompts(tx, &parse_chunk(&bytes, "").prompts)?;
+        }
+    }
     Ok(())
 }
 
@@ -487,15 +557,16 @@ fn save_chunk(tx: &rusqlite::Transaction, chunk: &Chunk, is_repo: IsRepo) -> Res
             .execute(params![m.session, m.cwd, m.branch, repo.as_str()])
             .map_err(|e| e.to_string())?;
     }
-    let mut prompts = tx
-        .prepare_cached(
-            "INSERT INTO sessions (id, prompts) VALUES (?1, ?2)
-             ON CONFLICT(id) DO UPDATE SET prompts = prompts + excluded.prompts",
-        )
+    save_prompts(tx, &chunk.prompts)
+}
+
+fn save_prompts(tx: &rusqlite::Transaction, prompts: &[Prompt]) -> Result<(), String> {
+    let mut insert = tx
+        .prepare_cached("INSERT OR IGNORE INTO prompts (id, session, at_ms) VALUES (?1, ?2, ?3)")
         .map_err(|e| e.to_string())?;
-    for (id, count) in &chunk.prompts {
-        prompts
-            .execute(params![id, *count as i64])
+    for p in prompts {
+        insert
+            .execute(params![p.id, p.session, p.at_ms])
             .map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -506,7 +577,6 @@ struct Session {
     cwd: String,
     branch: String,
     repo: String,
-    prompts: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -548,11 +618,15 @@ const ASSISTANT_NAME: &str = "Board assistant";
 const MOVES_NAME: &str = "Board move requests";
 
 impl Roles {
+    fn assistant(&self, session: &Session) -> bool {
+        Path::new(&session.cwd) == self.assistant_folder
+    }
+
     fn consumer(&self, session: &Session, project: &str) -> Consumer {
-        let cwd = Path::new(&session.cwd);
-        if cwd == self.assistant_folder {
+        if self.assistant(session) {
             return consumer(Role::Assistant, ASSISTANT_NAME, None);
         }
+        let cwd = Path::new(&session.cwd);
         if let Some(task) = session.branch.strip_prefix(WORKER_BRANCH) {
             let name = self.titles.get(task).map_or(task, String::as_str);
             return consumer(Role::Worker, name, Some(task));
@@ -836,10 +910,11 @@ pub fn report(
         }
         consumers.entry(who).or_default().add(&message.usage, &cost);
     }
-    overhead.assistant_questions = sessions
-        .values()
-        .filter(|s| Path::new(&s.cwd) == roles.assistant_folder)
-        .map(|s| s.prompts)
+    overhead.assistant_questions = store
+        .prompts_since(first)?
+        .into_iter()
+        .filter(|(id, _)| sessions.get(id).is_some_and(|s| roles.assistant(s)))
+        .map(|(_, count)| count)
         .sum();
     overhead.move_requests = moves.into_values().collect();
 
@@ -858,7 +933,7 @@ pub fn report(
                 cost: t.cost,
             })
             .collect(),
-        models: ranked(models.into_iter(), usize::MAX),
+        models: ranked(models.into_iter()),
         consumers: {
             let mut list: Vec<ConsumerShare> = consumers
                 .into_iter()
@@ -871,17 +946,16 @@ pub fn report(
                 })
                 .collect();
             list.sort_by(|a, b| b.tokens.cmp(&a.tokens).then(a.name.cmp(&b.name)));
-            list.truncate(TOP_CONSUMERS);
             list
         },
-        projects: ranked(by_project.into_iter(), TOP_PROJECTS),
+        projects: ranked(by_project.into_iter()),
         overhead,
         unpriced: unpriced.into_keys().collect(),
         prices_error: None,
     })
 }
 
-fn ranked(items: impl Iterator<Item = (String, Tally)>, limit: usize) -> Vec<Share> {
+fn ranked(items: impl Iterator<Item = (String, Tally)>) -> Vec<Share> {
     let mut list: Vec<Share> = items
         .map(|(name, t)| Share {
             name,
@@ -890,7 +964,6 @@ fn ranked(items: impl Iterator<Item = (String, Tally)>, limit: usize) -> Vec<Sha
         })
         .collect();
     list.sort_by(|a, b| b.tokens.cmp(&a.tokens).then(a.name.cmp(&b.name)));
-    list.truncate(limit);
     list
 }
 
@@ -997,6 +1070,16 @@ mod tests {
     fn user_line(session: &str, content: &str) -> String {
         format!(
             r#"{{"type":"user","sessionId":"{session}","message":{{"role":"user","content":{content}}}}}"#
+        )
+    }
+
+    fn prompt_line(session: &str, id: &str, at_ms: i64, content: &str) -> String {
+        user_line(session, content).replace(
+            r#""type":"user""#,
+            &format!(
+                r#""type":"user","uuid":"{id}","timestamp":"{}""#,
+                stamp(at_ms)
+            ),
         )
     }
 
@@ -1111,17 +1194,21 @@ mod tests {
         let at = "2026-11-24T10:00:00.000Z";
         let reply = |id: &str| assistant_line(id, "s1", at, "claude-opus-5-5", USAGE);
         let lines = [
-            user_line("s1", r#""2 board requests waiting""#)
-                .replace(r#""type":"user""#, r#""type":"user","uuid":"u-1""#),
+            prompt_line("s1", "u-1", DAY0, r#""2 board requests waiting""#),
             reply("m1"),
             user_line("s1", r#"[{"type":"tool_result","content":"accepted"}]"#),
             reply("m2"),
-            user_line("s1", r#""thanks, now chart the reef""#),
+            prompt_line("s1", "u-2", DAY0 + 1000, r#""thanks, now chart the reef""#),
             reply("m3"),
         ];
         assert_eq!(tagged(&lines), ["nudge:u-1", "nudge:u-1", ""]);
         let chunk = parse_chunk((lines.join("\n") + "\n").as_bytes(), "");
-        assert_eq!(chunk.prompts.get("s1"), Some(&2));
+        let asked: Vec<(&str, &str, i64)> = chunk
+            .prompts
+            .iter()
+            .map(|p| (p.id.as_str(), p.session.as_str(), p.at_ms))
+            .collect();
+        assert_eq!(asked, [("u-1", "s1", DAY0), ("u-2", "s1", DAY0 + 1000)]);
     }
 
     #[test]
@@ -1165,7 +1252,6 @@ mod tests {
             cwd: cwd.into(),
             branch: branch.into(),
             repo: repo.into(),
-            prompts: 0,
         }
     }
 
@@ -1558,6 +1644,77 @@ mod tests {
         assert_eq!(roles_seen, [(Role::Move, 70), (Role::Worker, 30)]);
         assert_eq!(report.overhead.move_requests, [70]);
         assert_eq!(report.overhead.week_overhead_tokens, 70);
+    }
+
+    fn assistant_day(projects: &Path, today: i64) {
+        let earlier = DAY0 - MS_PER_DAY / 2;
+        let ask = |id: &str, at: i64| prompt_line("bosun", id, at, r#""where is reef-7?""#);
+        let answer = |id: &str, at: i64, tokens: u64| {
+            line(
+                id,
+                "bosun",
+                "/data/bosun",
+                "",
+                at,
+                "claude-haiku-5-5",
+                tokens,
+            )
+        };
+        write(
+            projects,
+            "p/bosun.jsonl",
+            &[
+                ask("q1", earlier),
+                answer("a1", earlier, 6_000),
+                ask("q2", earlier),
+                answer("a2", earlier, 6_000),
+                ask("q3", today),
+                answer("a3", today, 100),
+                ask("q4", today),
+                answer("a4", today, 300),
+            ],
+        );
+    }
+
+    fn assistant_overhead(store: &Store, today: i64) -> (u64, u64) {
+        let roles = Roles {
+            assistant_folder: "/data/bosun".into(),
+            ..Roles::default()
+        };
+        let report = report(store, &roles, &default_prices(), &days(), today).unwrap();
+        (
+            report.overhead.assistant_tokens,
+            report.overhead.assistant_questions,
+        )
+    }
+
+    #[test]
+    fn the_assistant_counts_only_the_questions_asked_in_the_days_its_tokens_cover() {
+        let projects = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&data.path().join(STORE_FILE)).unwrap();
+        let today = DAY0 + 29 * MS_PER_DAY;
+        assistant_day(projects.path(), today);
+        store.scan(projects.path(), today, &no_repo).unwrap();
+        assert_eq!(assistant_overhead(&store, today), (400, 2));
+    }
+
+    #[test]
+    fn a_store_read_before_questions_had_times_learns_them_from_what_it_already_read() {
+        let projects = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&data.path().join(STORE_FILE)).unwrap();
+        let today = DAY0 + 29 * MS_PER_DAY;
+        assistant_day(projects.path(), today);
+        store.scan(projects.path(), today, &no_repo).unwrap();
+        store
+            .conn
+            .execute_batch("DELETE FROM prompts; PRAGMA user_version = 0;")
+            .unwrap();
+        store.scan(projects.path(), today, &no_repo).unwrap();
+        assert_eq!(assistant_overhead(&store, today), (400, 2));
+        store.scan(projects.path(), today, &no_repo).unwrap();
+        assert_eq!(assistant_overhead(&store, today), (400, 2));
     }
 
     #[test]

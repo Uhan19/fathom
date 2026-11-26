@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MemoryGroup, MemorySample, Worker } from "./api";
-import { blockLines, causeText, defaultSelection, durationText, idleWorkers, mapItems, percentOf, sparkPath, splitTotals, squarify, thresholdText, tokensText, withPoint } from "./machine";
+import { blockLines, causeText, defaultSelection, durationText, idleWorkers, mapItems, percentOf, sparkPath, splitTotals, squarify, stopKey, thresholdText, tokensText, withPoint } from "./machine";
 
 const MB = 1024 * 1024;
 const NOW = 1_900_000_000_000;
@@ -109,6 +109,12 @@ describe("idle workers", () => {
   it("never offers a worker that is still working, however long its tool runs", () => {
     const groups = [group({ taskId: "a", session: session(120) })];
     expect(idleWorkers(sample(groups), [worker("a", "working")], NOW)).toEqual([]);
+  });
+
+  it("keeps a stop with one idle spell, so a worker that replies again or starts again on the task can be stopped again", () => {
+    const stopped = group({ taskId: "a", session: session(125) });
+    expect(stopKey({ ...stopped, bytes: 900 * MB })).toBe(stopKey(stopped));
+    expect(stopKey(group({ taskId: "a", terminal: "t2", session: session(30) }))).not.toBe(stopKey(stopped));
   });
 });
 

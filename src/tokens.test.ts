@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TokenDay, TokenReport } from "./api";
-import { axisLabels, byValue, consumerName, dollars, mix, modelName, overheadText, periods, shareText, sum, tokensShort, valueText } from "./tokens";
+import { axisLabels, byValue, consumerName, dollars, mix, modelName, overheadText, periods, shareText, sum, tokensShort, top, valueText } from "./tokens";
 
 const day = (date: string, read: number, cost = 1): TokenDay => ({
   date,
@@ -84,11 +84,25 @@ describe("token numbers", () => {
     expect(byValue(shares, "cost").map((s) => s.name)).toEqual(["b", "a"]);
   });
 
+  it("picks the top eight by the shown measure, so a costly ninth by tokens still shows when weighted by cost", () => {
+    const shares = Array.from({ length: 9 }, (_, i) => ({ name: `w${i}`, tokens: 1_000 - i, cost: i === 8 ? 50 : 1 }));
+    expect(top(shares, "raw").map((s) => s.name)).toEqual(["w0", "w1", "w2", "w3", "w4", "w5", "w6", "w7"]);
+    expect(top(shares, "cost")[0].name).toBe("w8");
+    expect(top(shares, "cost")).toHaveLength(8);
+  });
+
   it("sums up Fathom's own overhead", () => {
     expect(overheadText(report())).toEqual({ assistant: "2.9M", perQuestion: "97k", moves: "1.2M–2.4M", shareLead: "", share: "0.27%" });
     const tiny = overheadText(report({ overhead: { assistantTokens: 0, assistantQuestions: 0, moveRequests: [], weekTokens: 10_000, weekOverheadTokens: 1 } }));
     expect([tiny.shareLead, tiny.share]).toEqual(["under ", "0.1%"]);
     const quiet = overheadText(report({ overhead: { assistantTokens: 0, assistantQuestions: 0, moveRequests: [], weekTokens: 0, weekOverheadTokens: 0 } }));
-    expect(quiet).toEqual({ assistant: "0", perQuestion: "", moves: "", shareLead: "", share: "0%" });
+    expect(quiet).toEqual({ assistant: "", perQuestion: "", moves: "", shareLead: "", share: "0%" });
+  });
+
+  it("calls the board assistant unused when it spent no tokens in the window, even with questions", () => {
+    const asked = overheadText(report({ overhead: { assistantTokens: 0, assistantQuestions: 4, moveRequests: [], weekTokens: 0, weekOverheadTokens: 0 } }));
+    expect([asked.assistant, asked.perQuestion]).toEqual(["", ""]);
+    const answered = overheadText(report({ overhead: { assistantTokens: 400_000, assistantQuestions: 0, moveRequests: [], weekTokens: 0, weekOverheadTokens: 0 } }));
+    expect([answered.assistant, answered.perQuestion]).toEqual(["400k", ""]);
   });
 });

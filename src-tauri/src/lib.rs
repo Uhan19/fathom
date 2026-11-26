@@ -168,7 +168,6 @@ pub fn run() {
             commands::duplicate_nautical,
             commands::reveal_themes_folder,
             commands::set_metrics_demand,
-            commands::memory_sample,
             commands::token_report,
             commands::quota_report,
             commands::stop_worker,

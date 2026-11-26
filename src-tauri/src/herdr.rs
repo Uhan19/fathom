@@ -37,7 +37,6 @@ const WORKER_EVENTS: [&str; 8] = [
     "status",
     "turn",
 ];
-const LIVE_STATE: &str = "live";
 const RECONNECT_DELAY: Duration = Duration::from_secs(2);
 const ATTACH_READ_BUFFER: usize = 16 * 1024;
 const PTY_ATTEMPTS: u32 = 4;
@@ -777,7 +776,7 @@ pub fn apply_event(terminals: &mut BTreeMap<String, Terminal>, message: &Value) 
                 .and_then(|pid| u32::try_from(pid).ok());
             if let (Some(pid), Some(t)) = (pid, terminals.get_mut(&address)) {
                 t.pid = pid;
-                t.state = LIVE_STATE.to_string();
+                t.state = crate::workers::LIVE.to_string();
             }
         }
         "status" | "turn" => {

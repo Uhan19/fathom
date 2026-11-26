@@ -128,6 +128,10 @@ export function idleWorkers(sample: MemorySample, workers: Worker[], now: number
     .sort((a, b) => b.group.bytes - a.group.bytes);
 }
 
+export function stopKey(group: MemoryGroup): string {
+  return `${group.id}@${group.session?.lastReplyMs ?? ""}`;
+}
+
 export function splitTotals(sample: MemorySample) {
   const sum = (kinds: ItemKind[]) => sample.groups.filter((g) => kinds.includes(g.kind)).reduce((s, g) => s + g.bytes, 0);
   return {

@@ -13,7 +13,6 @@ use crate::export;
 use crate::fonts;
 use crate::herdr::{Terminal, View};
 use crate::launch::{Agent, LaunchError};
-use crate::metrics::memory::MemorySample;
 use crate::metrics::quota::QuotaReport;
 use crate::metrics::tokens::TokenReport;
 use crate::metrics::{Demand, Metrics};
@@ -498,16 +497,6 @@ pub fn reveal_themes_folder(state: AppStateRef) -> Result<(), String> {
 #[tauri::command]
 pub fn set_metrics_demand(metrics: State<'_, Arc<Metrics>>, demand: Demand) {
     metrics.set_demand(demand);
-}
-
-#[tauri::command]
-pub async fn memory_sample(
-    state: AppStateRef<'_>,
-    metrics: State<'_, Arc<Metrics>>,
-) -> Result<MemorySample, String> {
-    let state = Arc::clone(&state);
-    let metrics = Arc::clone(&metrics);
-    blocking(move || metrics.memory(&state)).await
 }
 
 #[tauri::command]

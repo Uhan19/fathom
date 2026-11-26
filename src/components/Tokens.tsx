@@ -17,6 +17,7 @@ import {
   shareText,
   shareValue,
   sum,
+  top,
   valueText,
 } from "../tokens";
 import { SectionHead } from "./Dashboard";
@@ -182,14 +183,14 @@ function Breakdown({ report, mode }: { report: TokenReport; mode: TokenMode }) {
         <h3 className="dash-label" data-part="dash-label">
           By model, this week
         </h3>
-        <Bars shares={report.models} mode={mode} kind="models" name={(s) => modelName(s.name)} />
+        <Bars shares={byValue(report.models, mode)} mode={mode} kind="models" name={(s) => modelName(s.name)} />
       </div>
       <div className="breakdown-col" data-part="breakdown-col" data-kind="consumers">
         <h3 className="dash-label" data-part="dash-label">
           Top consumers, this week
         </h3>
         <div className="consumer-list" data-part="consumer-list">
-          {byValue(report.consumers, mode).map((c) => (
+          {top(report.consumers, mode).map((c) => (
             <div key={`${c.role}:${c.name}`} className="consumer-row" data-part="consumer-row" data-kind={c.role}>
               <span className="consumer-name" data-part="consumer-name" title={consumerName(c)}>
                 {consumerName(c)}
@@ -208,7 +209,7 @@ function Breakdown({ report, mode }: { report: TokenReport; mode: TokenMode }) {
         <h3 className="dash-label" data-part="dash-label">
           By project, this week
         </h3>
-        <Bars shares={report.projects} mode={mode} kind="projects" name={(s) => s.name} />
+        <Bars shares={top(report.projects, mode)} mode={mode} kind="projects" name={(s) => s.name} />
       </div>
     </section>
   );
@@ -218,7 +219,7 @@ function Bars({ shares, mode, kind, name }: { shares: TokenShare[]; mode: TokenM
   const largest = Math.max(1e-9, ...shares.map((s) => shareValue(s, mode)));
   return (
     <div className="share-list" data-part="share-list">
-      {byValue(shares, mode).map((share) => (
+      {shares.map((share) => (
         <div key={share.name} className="share-row" data-part="share-row" data-kind={kind}>
           <span className="share-name" data-part="share-name" title={name(share)}>
             {name(share)}
@@ -243,9 +244,9 @@ function Overhead({ report }: { report: TokenReport }) {
         Fathom’s own overhead
       </span>
       <span className="overhead-item" data-part="overhead-item">
-        {text.perQuestion ? (
+        {text.assistant ? (
           <>
-            Board assistant <b>{text.assistant}</b> total, about {text.perQuestion} per question
+            Board assistant <b>{text.assistant}</b> total{text.perQuestion && `, about ${text.perQuestion} per question`}
           </>
         ) : (
           "Board assistant not used in the last 30 days"
@@ -257,7 +258,7 @@ function Overhead({ report }: { report: TokenReport }) {
             Board move requests <b>{text.moves}</b> each
           </>
         ) : (
-          "No board move requests this month"
+          "No board move requests this week"
         )}
       </span>
       <span className="overhead-item" data-part="overhead-item" data-kind="share">

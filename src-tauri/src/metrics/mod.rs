@@ -44,7 +44,6 @@ pub struct Demand {
 pub struct Metrics {
     demand: Mutex<Demand>,
     wake: Condvar,
-    latest: Mutex<Option<MemorySample>>,
     latest_tokens: Mutex<Option<TokenReport>>,
     data_dir: PathBuf,
     sessions: session::Sessions,
@@ -84,13 +83,6 @@ impl Metrics {
         self.wake.notify_all();
     }
 
-    pub fn memory(&self, state: &AppState) -> Result<MemorySample, String> {
-        if let Some(latest) = self.latest.lock().unwrap().clone() {
-            return Ok(latest);
-        }
-        self.sample(state)
-    }
-
     fn sample(&self, state: &AppState) -> Result<MemorySample, String> {
         let mut sample = sample_memory(state)?;
         if let Some(claude) = claude_dir() {
@@ -108,12 +100,9 @@ impl Metrics {
                 match self.sample(state) {
                     Ok(sample) => {
                         let _ = app.emit(EVENT_MEMORY, &sample);
-                        *self.latest.lock().unwrap() = Some(sample);
                     }
                     Err(error) => eprintln!("fathom: cannot read memory: {error}"),
                 }
-            } else {
-                *self.latest.lock().unwrap() = None;
             }
             demand = self.wait(MEMORY_EVERY);
         }

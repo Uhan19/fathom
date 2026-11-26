@@ -11,6 +11,7 @@ import {
   percentOf,
   sparkPath,
   splitTotals,
+  stopKey,
   tokensText,
   type IdleWorker,
   type MapItem,
@@ -53,11 +54,12 @@ export function Machine({ sample, history, workers, source, herdr, thresholdMb, 
   const selected = items.find((i) => i.id === selectedId) ?? null;
   const idle = idleWorkers(sample, workers, sample.takenAtMs);
   const anyWorker = sample.groups.some((g) => g.kind === "worker");
+  const ungrouped = sample.groups.some((g) => g.kind === "orchestrator") ? "workers" : "workers and the orchestrator";
   return (
     <>
       {!sample.herdrConnected && (
         <p className="dash-notice" data-part="dash-notice" role="status">
-          herdr-core is not reachable ({herdr.message || "not connected"}), so workers and the orchestrator show under Everything else.
+          herdr-core is not reachable ({herdr.message || "not connected"}), so {ungrouped} show under Everything else.
         </p>
       )}
       <Summary sample={sample} history={history} mac={mac} />
@@ -209,7 +211,7 @@ function Idle({ idle, source, stops, onStop }: { idle: IdleWorker[]; source: Sou
   return (
     <section className="dash-card" data-part="dash-card" data-kind="idle">
       {idle.slice(0, idle.length - hidden).map(({ group, idleForMs }) => {
-        const stop = group.taskId ? stops[group.taskId] : undefined;
+        const stop = stops[stopKey(group)];
         return (
           <div key={group.id} className="idle-item" data-part="idle-item" data-id={group.taskId ?? group.id}>
             <span className="idle-tag" data-part="idle-tag">
@@ -225,23 +227,22 @@ function Idle({ idle, source, stops, onStop }: { idle: IdleWorker[]; source: Sou
             <p className="dash-muted" data-part="dash-muted">
               Stopping frees the memory. The task stays on the board and can start again.
             </p>
-            {stop?.kind === "asked" ? (
+            {stop?.kind === "asked" && (
               <p className="dash-muted" data-part="dash-muted" role="status">
                 Asked Firstmate to stop it.
               </p>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-stop"
-                data-part="button"
-                data-kind="stop"
-                data-control="stop-worker"
-                disabled={stop?.kind === "sending"}
-                onClick={() => setConfirming(group)}
-              >
-                {stop?.kind === "sending" ? "Stopping…" : "Stop worker"}
-              </button>
             )}
+            <button
+              type="button"
+              className="btn btn-stop"
+              data-part="button"
+              data-kind="stop"
+              data-control="stop-worker"
+              disabled={stop?.kind === "sending"}
+              onClick={() => setConfirming(group)}
+            >
+              {stop?.kind === "sending" ? "Stopping…" : "Stop worker"}
+            </button>
             {stop?.kind === "failed" && (
               <p className="error-text" data-part="error-text" role="alert">
                 Could not stop it: {stop.error}

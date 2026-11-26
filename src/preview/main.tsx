@@ -417,8 +417,6 @@ mockIPC(
       case "stop_worker":
         console.info("stop_worker", args.taskId);
         return backlog ? { kind: "stopped" } : { kind: "asked", noteId: "n-preview" };
-      case "memory_sample":
-        return fixtureMemory(shownWorkers());
       case "card_updates":
         return updates;
       case "mark_seen":

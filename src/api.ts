@@ -495,7 +495,6 @@ export const api = {
   attachableTerminals: () => invoke<Terminal[]>("attachable_terminals"),
   launcherFolders: () => invoke<LauncherFolders>("launcher_folders"),
   setMetricsDemand: (demand: MetricsDemand) => invoke<void>("set_metrics_demand", { demand }),
-  memorySample: () => invoke<MemorySample>("memory_sample"),
   tokenReport: () => invoke<TokenReport | null>("token_report"),
   quotaReport: () => invoke<QuotaReport>("quota_report"),
   stopWorker: (taskId: string, title: string) => invoke<StopOutcome>("stop_worker", { taskId, title }),

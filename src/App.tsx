@@ -34,7 +34,7 @@ import { Dashboard, ViewSwitch } from "./components/Dashboard";
 import { Machine, type StopState } from "./components/Machine";
 import { QuotaCard } from "./components/QuotaCard";
 import { Tokens } from "./components/Tokens";
-import { withPoint, type Point } from "./machine";
+import { stopKey, withPoint, type Point } from "./machine";
 import { AgentFilterToggle } from "./components/AgentFilterToggle";
 import { TicketSearch } from "./components/TicketSearch";
 import { boardTickets } from "./ticketSearch";
@@ -398,11 +398,13 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   const stopWorker = (group: MemoryGroup) => {
     const taskId = group.taskId;
     if (!taskId) return;
-    setStops((s) => ({ ...s, [taskId]: { kind: "sending" } }));
+    const key = stopKey(group);
+    const settle = (stop: StopState) => setStops((s) => ({ ...s, [key]: stop }));
+    settle({ kind: "sending" });
     api
       .stopWorker(taskId, group.name)
-      .then((outcome) => setStops((s) => ({ ...s, [taskId]: { kind: outcome.kind === "asked" ? "asked" : "sending" } })))
-      .catch((e) => setStops((s) => ({ ...s, [taskId]: { kind: "failed", error: errorText(e) } })));
+      .then((outcome) => settle({ kind: outcome.kind === "asked" ? "asked" : "sending" }))
+      .catch((e) => settle({ kind: "failed", error: errorText(e) }));
   };
   const settingsLoaded = settings !== null;
   useEffect(() => {
