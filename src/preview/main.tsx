@@ -32,6 +32,10 @@ import {
   backlogWorkerScreen,
   fixtureBacklogUpdates,
   fixtureDetail,
+  fixtureMemory,
+  fixtureQuota,
+  fixtureTokens,
+  type QuotaFixture,
   fixtureUpdates,
   helperScreen,
   shellScreen,
@@ -56,6 +60,7 @@ const noLabel = params.has("nolabel");
 const stress = params.has("stress");
 const failing = params.has("error") || stress;
 const empty = params.has("empty");
+const quotaKind = (params.get("quota") as QuotaFixture | null) ?? (empty ? "never" : "live");
 const backlog = params.has("backlog");
 const unfiled = params.has("unfiled");
 const otherClient = params.get("other")?.match(/^(\d+)x(\d+)$/);
@@ -128,6 +133,9 @@ let settings: Settings = {
   shortcuts: params.get("shortcuts") === "custom" ? customShortcuts() : defaultShortcuts(mac),
   linearWorkspace: params.has("nolinear") ? "" : "reef-co",
   ticketPrefixes: params.has("nolinear") ? [] : ["ATL", "OPS"],
+  memoryBadgeMb: 1024,
+  view: params.get("view") === "dashboard" ? "dashboard" : "board",
+  tokenMode: params.get("tokens") === "cost" ? "cost" : "raw",
 };
 
 const openChatTerminal = (agent: AgentKey) => {
@@ -316,6 +324,11 @@ const bytes = (text: string) => [...new TextEncoder().encode(text)];
 
 mockWindows("main");
 
+const HISTORY_POINTS = 20;
+const HISTORY_STEP_MS = 3 * 60 * 1000;
+const MB = 1024 * 1024;
+const shownWorkers = () => (empty ? [] : backlog ? FIXTURE_BACKLOG_WORKERS : FIXTURE_WORKERS);
+
 let detailFiles: FileEntry[] = [];
 
 mockIPC(
@@ -383,7 +396,27 @@ mockIPC(
         requests = requests.map((r) => (r.requestId === args.requestId ? { ...r, status: "dismissed" } : r));
         return overlay();
       case "workers":
-        return empty ? [] : backlog ? FIXTURE_BACKLOG_WORKERS : FIXTURE_WORKERS;
+        return shownWorkers();
+      case "set_metrics_demand":
+        setTimeout(() => {
+          const now = Date.now();
+          for (let i = HISTORY_POINTS; i > 0; i--) {
+            const past = fixtureMemory(shownWorkers(), now - i * HISTORY_STEP_MS);
+            void emit("metrics://memory", { ...past, used: past.used + Math.round(Math.sin(i / 3) * 400 + i * 12) * MB });
+          }
+          void emit("metrics://memory", fixtureMemory(shownWorkers(), now));
+          const dashboard = (args.demand as { dashboard?: boolean } | undefined)?.dashboard;
+          if (dashboard && !empty) void emit("metrics://tokens", fixtureTokens(now));
+          if (dashboard) void emit("metrics://quota", fixtureQuota(quotaKind, now));
+        }, 0);
+        return null;
+      case "token_report":
+        return null;
+      case "quota_report":
+        return fixtureQuota(quotaKind);
+      case "stop_worker":
+        console.info("stop_worker", args.taskId);
+        return backlog ? { kind: "stopped" } : { kind: "asked", noteId: "n-preview" };
       case "card_updates":
         return updates;
       case "mark_seen":

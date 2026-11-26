@@ -40,6 +40,9 @@ const KEY_HELPER_ASKING: &str = "helperAsking";
 const KEY_SHORTCUTS: &str = "shortcuts";
 const KEY_LINEAR_WORKSPACE: &str = "linearWorkspace";
 const KEY_TICKET_PREFIXES: &str = "ticketPrefixes";
+const KEY_MEMORY_BADGE_MB: &str = "memoryBadgeMb";
+const KEY_VIEW: &str = "view";
+const KEY_TOKEN_MODE: &str = "tokenMode";
 const LINEAR_HOST: &str = "linear.app/";
 const MAX_PREFIX_LEN: usize = 10;
 
@@ -65,6 +68,10 @@ pub const DETAIL_WIDTH: Span = Span {
     default: 460,
     range: 340..=900,
 };
+pub const MEMORY_BADGE_MB: Span = Span {
+    default: 1024,
+    range: 128..=65536,
+};
 
 pub struct Span {
     pub default: u32,
@@ -86,6 +93,22 @@ pub enum AgentFilter {
     All,
     WithAgent,
     WithActiveAgent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum TokenMode {
+    #[default]
+    Raw,
+    Cost,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum View {
+    #[default]
+    Board,
+    Dashboard,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -129,6 +152,16 @@ pub struct Settings {
     pub linear_workspace: String,
     #[serde(default)]
     pub ticket_prefixes: Vec<String>,
+    #[serde(default = "memory_badge_mb")]
+    pub memory_badge_mb: u32,
+    #[serde(default)]
+    pub view: View,
+    #[serde(default)]
+    pub token_mode: TokenMode,
+}
+
+fn memory_badge_mb() -> u32 {
+    MEMORY_BADGE_MB.default
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -165,6 +198,8 @@ pub struct WindowChange {
     pub chat_open: Option<bool>,
     pub chat_width: Option<u32>,
     pub detail_width: Option<u32>,
+    pub view: Option<View>,
+    pub token_mode: Option<TokenMode>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -372,6 +407,15 @@ pub fn load(db: &Db) -> Result<Settings, String> {
             .and_then(|v| serde_json::from_str::<Vec<String>>(v).ok())
             .and_then(|v| ticket_prefixes(&v).ok())
             .unwrap_or_default(),
+        memory_badge_mb: width(KEY_MEMORY_BADGE_MB, &MEMORY_BADGE_MB),
+        view: stored
+            .get(KEY_VIEW)
+            .and_then(|key| serde_json::from_value(json!(key)).ok())
+            .unwrap_or_default(),
+        token_mode: stored
+            .get(KEY_TOKEN_MODE)
+            .and_then(|key| serde_json::from_value(json!(key)).ok())
+            .unwrap_or_default(),
     })
 }
 
@@ -384,6 +428,8 @@ pub fn store(db: &Db, next: &Settings) -> Result<Settings, String> {
     let shortcuts = serde_json::to_string(&next.shortcuts).map_err(|e| e.to_string())?;
     let agent_filter = serde_json::to_value(next.agent_filter).map_err(|e| e.to_string())?;
     let focus = serde_json::to_string(&next.focus).map_err(|e| e.to_string())?;
+    let view = serde_json::to_value(next.view).map_err(|e| e.to_string())?;
+    let token_mode = serde_json::to_value(next.token_mode).map_err(|e| e.to_string())?;
     let pairs = [
         (KEY_HOME, next.home.trim().to_string()),
         (KEY_LABEL, next.terminal_label.trim().to_string()),
@@ -406,6 +452,12 @@ pub fn store(db: &Db, next: &Settings) -> Result<Settings, String> {
         (KEY_SHORTCUTS, shortcuts),
         (KEY_LINEAR_WORKSPACE, workspace),
         (KEY_TICKET_PREFIXES, prefixes),
+        (KEY_MEMORY_BADGE_MB, next.memory_badge_mb.to_string()),
+        (KEY_VIEW, view.as_str().unwrap_or_default().to_string()),
+        (
+            KEY_TOKEN_MODE,
+            token_mode.as_str().unwrap_or_default().to_string(),
+        ),
         (
             KEY_AGENT_FILTER,
             agent_filter.as_str().unwrap_or_default().to_string(),
@@ -433,6 +485,8 @@ pub fn change_window(db: &Db, change: &WindowChange) -> Result<Settings, String>
         s.chat_open = change.chat_open.unwrap_or(s.chat_open);
         s.chat_width = change.chat_width.unwrap_or(s.chat_width);
         s.detail_width = change.detail_width.unwrap_or(s.detail_width);
+        s.view = change.view.unwrap_or(s.view);
+        s.token_mode = change.token_mode.unwrap_or(s.token_mode);
         Ok(())
     })
 }
@@ -463,6 +517,13 @@ fn check(next: &Settings) -> Result<(), String> {
                 span.range.end()
             ));
         }
+    }
+    if !MEMORY_BADGE_MB.range.contains(&next.memory_badge_mb) {
+        return Err(format!(
+            "the memory badge threshold must be between {} MB and {} GB",
+            MEMORY_BADGE_MB.range.start(),
+            MEMORY_BADGE_MB.range.end() / 1024
+        ));
     }
     themes::check_id(next.theme_id.trim())?;
     check_shortcuts(&next.shortcuts)
@@ -985,6 +1046,56 @@ mod tests {
             assert!(check_shortcuts(defaults).is_ok(), "{platform}");
             assert!(defaults.named().iter().all(|(_, c)| is_shortcut(c)));
         }
+    }
+
+    #[test]
+    fn the_open_view_starts_on_the_board_and_is_remembered() {
+        let (_dir, db) = fresh();
+        assert_eq!(load(&db).unwrap().view, View::Board);
+        let change = WindowChange {
+            view: Some(View::Dashboard),
+            ..WindowChange::default()
+        };
+        assert_eq!(change_window(&db, &change).unwrap().view, View::Dashboard);
+        assert_eq!(load(&db).unwrap().view, View::Dashboard);
+        db.set_setting(KEY_VIEW, "sideways").unwrap();
+        assert_eq!(load(&db).unwrap().view, View::Board);
+    }
+
+    #[test]
+    fn the_token_mode_starts_raw_and_is_remembered() {
+        let (_dir, db) = fresh();
+        assert_eq!(load(&db).unwrap().token_mode, TokenMode::Raw);
+        let change = WindowChange {
+            token_mode: Some(TokenMode::Cost),
+            ..WindowChange::default()
+        };
+        assert_eq!(
+            change_window(&db, &change).unwrap().token_mode,
+            TokenMode::Cost
+        );
+        assert_eq!(load(&db).unwrap().token_mode, TokenMode::Cost);
+    }
+
+    #[test]
+    fn the_memory_badge_threshold_defaults_to_one_gigabyte_and_stays_in_range() {
+        let (_dir, db) = fresh();
+        assert_eq!(load(&db).unwrap().memory_badge_mb, 1024);
+        let saved = update(&db, |s| {
+            s.memory_badge_mb = 1536;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(saved.memory_badge_mb, 1536);
+        assert!(
+            update(&db, |s| {
+                s.memory_badge_mb = 10;
+                Ok(())
+            })
+            .is_err()
+        );
+        db.set_setting(KEY_MEMORY_BADGE_MB, "999999").unwrap();
+        assert_eq!(load(&db).unwrap().memory_badge_mb, 65536);
     }
 
     #[test]

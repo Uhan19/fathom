@@ -1,5 +1,5 @@
 import { AGENTS, type AgentKey } from "../agents";
-import type { Card, Column, Detail, MoveRequest, RowKey, ShellTab, Terminal, Waits, Worker } from "../api";
+import type { AgentSession, Card, Column, Detail, MemoryGroup, MemoryPart, MemorySample, MoveRequest, QuotaReport, RowKey, ShellTab, Terminal, TokenDay, TokenReport, Waits, Worker } from "../api";
 import type { CardUpdates } from "../updates";
 
 type Seed = [id: string, project: string, row: RowKey, title: string, extra?: Partial<Card>];
@@ -143,6 +143,136 @@ export const FIXTURE_WORKERS: Worker[] = [
   { taskId: "hrb-16", terminal: "t5", status: "working" },
   { taskId: "pil-08", terminal: "t6", status: "idle" },
 ];
+
+const MB = 1024 * 1024;
+const part = (label: string, mb: number, processes = 1): MemoryPart => ({ label, bytes: mb * MB, processes });
+const MINUTE = 60 * 1000;
+const session = (contextTokens: number, minutesAgo: number, takenAtMs: number): AgentSession => ({ contextTokens, lastReplyMs: takenAtMs - minutesAgo * MINUTE, warmMs: 60 * MINUTE });
+const memoryGroup = (kind: MemoryGroup["kind"], id: string, name: string, parts: MemoryPart[], worker?: Worker, agent: AgentSession | null = null): MemoryGroup => ({
+  kind,
+  id,
+  name,
+  taskId: worker?.taskId ?? null,
+  terminal: worker?.terminal ?? null,
+  bytes: parts.reduce((sum, p) => sum + p.bytes, 0),
+  parts,
+  session: agent,
+});
+const workerGroup = (worker: Worker, parts: MemoryPart[], agent: AgentSession | null) =>
+  memoryGroup("worker", `worker:${worker.taskId}`, FIXTURE_CARDS.find((c) => c.id === worker.taskId)?.title ?? worker.taskId, parts, worker, agent);
+
+export const fixtureMemory = (workers: Worker[], takenAtMs = Date.now()): MemorySample => {
+  const parts: Record<string, MemoryPart[]> = {
+    "atl-09": [part("Agent (Claude Code)", 352, 3), part("Local dev server", 58, 2)],
+    "hrb-18": [part("Agent (Claude Code)", 296, 3)],
+    "hrb-16": [part("Agent (Claude Code)", 300, 3), part("Headless Chrome", 529, 7), part("Browser automation helper", 354, 2), part("Local dev server", 237, 2)],
+    "pil-08": [part("Agent (Codex)", 188, 2), part("Shell", 12, 1)],
+  };
+  const sessions: Record<string, AgentSession | null> = {
+    "atl-09": session(142_000, 2, takenAtMs),
+    "hrb-18": session(118_000, 125, takenAtMs),
+    "hrb-16": session(96_000, 1, takenAtMs),
+    "pil-08": null,
+  };
+  const groups = [
+    memoryGroup("fathom", "fathom", "Fathom", [part("Fathom", 640, 4), part("Board assistant", 256, 3)], undefined, session(12_000, 30, takenAtMs)),
+    memoryGroup("orchestrator", "orchestrator", "Orchestrator", [part("Agent (Claude Code)", 780, 4)], undefined, session(180_000, 1, takenAtMs)),
+    ...workers.filter((w) => parts[w.taskId]).map((w) => workerGroup(w, parts[w.taskId], sessions[w.taskId] ?? null)),
+    memoryGroup("docker", "docker", "Docker", [part("Docker VM", 1840, 1), part("Docker Desktop", 310, 6)]),
+  ];
+  const total = 32768 * MB;
+  const used = 21504 * MB;
+  const grouped = groups.reduce((sum, g) => sum + g.bytes, 0);
+  return {
+    takenAtMs,
+    total,
+    used,
+    available: total - used,
+    pressure: "normal",
+    activityMonitor: true,
+    herdrConnected: true,
+    groups,
+    rest: {
+      bytes: used - grouped,
+      apps: [
+        { name: "macOS", bytes: 6144 * MB },
+        { name: "Chrome", bytes: 2150 * MB },
+        { name: "Chat app", bytes: 1020 * MB },
+        { name: "Editor", bytes: 860 * MB },
+      ],
+    },
+  };
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const PER_MILLION = { input: 15, output: 75, cacheWrite: 30, cacheRead: 1.5 };
+
+const fixtureDay = (startMs: number, millions: number, todayShare = 1): TokenDay => {
+  const tokens = millions * 1_000_000 * todayShare;
+  const counts = { input: tokens * 0.004, output: tokens * 0.006, cacheWrite: tokens * 0.02, cacheRead: tokens * 0.97 };
+  const cost = (kind: keyof typeof counts) => (counts[kind] / 1_000_000) * PER_MILLION[kind] * 0.05;
+  const date = new Date(startMs);
+  return {
+    date: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`,
+    startMs,
+    input: Math.round(counts.input),
+    output: Math.round(counts.output),
+    cacheWrite: Math.round(counts.cacheWrite),
+    cacheRead: Math.round(counts.cacheRead),
+    cost: { input: cost("input"), output: cost("output"), cacheWrite: cost("cacheWrite"), cacheRead: cost("cacheRead") },
+  };
+};
+
+export const fixtureTokens = (takenAtMs = Date.now()): TokenReport => {
+  const midnight = new Date(takenAtMs);
+  midnight.setHours(0, 0, 0, 0);
+  const days = Array.from({ length: 30 }, (_, i) => {
+    const millions = 190 + ((i * 37) % 90) + (i % 7 === 5 ? -80 : 0);
+    return fixtureDay(midnight.getTime() - (29 - i) * DAY_MS, millions, i === 29 ? 0.5 : 1);
+  });
+  const title = (id: string) => FIXTURE_CARDS.find((c) => c.id === id)?.title ?? id;
+  const week = days.slice(-7);
+  const weekTokens = week.reduce((t, d) => t + d.input + d.output + d.cacheWrite + d.cacheRead, 0);
+  const weekCost = week.reduce((t, d) => t + d.cost.input + d.cost.output + d.cost.cacheWrite + d.cost.cacheRead, 0);
+  const share = (name: string, part: number) => ({ name, tokens: Math.round(weekTokens * part), cost: weekCost * part });
+  return {
+    takenAtMs,
+    days,
+    models: [share("claude-opus-5-5", 0.93), share("claude-sonnet-5-5", 0.06), share("claude-haiku-5-5", 0.01)],
+    consumers: [
+      { role: "orchestrator", taskId: null, ...share("Orchestrator", 0.33) },
+      { role: "worker", taskId: "hrb-16", ...share(title("hrb-16"), 0.05) },
+      { role: "worker", taskId: "atl-09", ...share(title("atl-09"), 0.04) },
+      { role: "worker", taskId: "hrb-18", ...share(title("hrb-18"), 0.03) },
+      { role: "other", taskId: null, ...share("keel-cli", 0.02) },
+      { role: "assistant", taskId: null, ...share("Board assistant", 0.0014) },
+    ],
+    projects: [share("atlas-api", 0.18), share("harbor-web", 0.15), share("keel-cli", 0.06), share("lantern-docs", 0.03)],
+    overhead: { assistantTokens: 2_900_000, assistantQuestions: 30, moveRequests: [1_100_000, 2_400_000, 1_700_000], weekTokens, weekOverheadTokens: Math.round(weekTokens * 0.0029) },
+    unpriced: [],
+    pricesError: null,
+  };
+};
+
+export type QuotaFixture = "live" | "never" | "stale";
+
+const FIXTURE_FATHOM = "/Applications/Fathom.app/Contents/MacOS/fathom";
+
+export const fixtureQuota = (kind: QuotaFixture, takenAtMs = Date.now()): QuotaReport => {
+  const minute = 60_000;
+  const recordLine = `echo "$input" | '${FIXTURE_FATHOM}' --quota-record &`;
+  if (kind !== "live") {
+    return { takenAtMs, available: false, lastSeenMs: kind === "stale" ? takenAtMs - 134 * minute : null, fiveHour: null, sevenDay: null, recordLine };
+  }
+  return {
+    takenAtMs,
+    available: true,
+    lastSeenMs: takenAtMs - minute,
+    fiveHour: { usedPercent: 62, resetsAtMs: takenAtMs + 112 * minute, percentPerHour: 32.6, runsOutAtMs: takenAtMs + 70 * minute },
+    sevenDay: { usedPercent: 48, resetsAtMs: takenAtMs + 4 * DAY_MS + 3 * 60 * minute, percentPerHour: 0.5, runsOutAtMs: null },
+    recordLine,
+  };
+};
 
 const FIXTURE_UPDATE_MARKS: Record<string, string> = {
   "atl-09": "3 working [at=1795100000]: read and write paths split, running the invoice tests",

@@ -13,8 +13,12 @@ use crate::export;
 use crate::fonts;
 use crate::herdr::{Terminal, View};
 use crate::launch::{Agent, LaunchError};
+use crate::metrics::quota::QuotaReport;
+use crate::metrics::tokens::TokenReport;
+use crate::metrics::{Demand, Metrics};
 use crate::moves::Placement;
 use crate::pulls::{PrCache, PrStatus};
+use crate::requests::StopOutcome;
 use crate::settings::{AgentFilter, Settings, WindowChange};
 use crate::shell_tabs::LauncherFolders;
 use crate::source::Source;
@@ -488,4 +492,29 @@ pub fn duplicate_nautical(state: AppStateRef, name: String) -> Result<String, St
 pub fn reveal_themes_folder(state: AppStateRef) -> Result<(), String> {
     state.themes.write_guide()?;
     tauri_plugin_opener::open_path(&state.themes.root, None::<&str>).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_metrics_demand(metrics: State<'_, Arc<Metrics>>, demand: Demand) {
+    metrics.set_demand(demand);
+}
+
+#[tauri::command]
+pub fn token_report(metrics: State<'_, Arc<Metrics>>) -> Option<TokenReport> {
+    metrics.tokens()
+}
+
+#[tauri::command]
+pub async fn stop_worker(
+    state: AppStateRef<'_>,
+    task_id: String,
+    title: String,
+) -> Result<StopOutcome, String> {
+    let state = Arc::clone(&state);
+    blocking(move || state.stop_worker(&task_id, &title)).await
+}
+
+#[tauri::command]
+pub fn quota_report(metrics: State<'_, Arc<Metrics>>) -> QuotaReport {
+    metrics.quota()
 }

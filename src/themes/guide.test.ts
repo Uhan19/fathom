@@ -9,9 +9,15 @@ import { Board } from "../components/Board";
 import { BosunDrawer } from "../components/BosunDrawer";
 import { CardDetail } from "../components/CardDetail";
 import { ChatPanel } from "../components/ChatPanel";
+import { Dashboard } from "../components/Dashboard";
+import { Machine } from "../components/Machine";
+import { QuotaCard } from "../components/QuotaCard";
+import { Tokens } from "../components/Tokens";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { NO_LINKING } from "../links";
-import { FIXTURE_COLUMNS, FIXTURE_CARDS, FIXTURE_REQUESTS, FIXTURE_TERMINALS, FIXTURE_WAITS, FIXTURE_WORKERS, fixtureUpdates } from "../preview/fixture";
+import { FIXTURE_COLUMNS, FIXTURE_CARDS, FIXTURE_REQUESTS, FIXTURE_TERMINALS, FIXTURE_WAITS, FIXTURE_WORKERS, fixtureMemory, fixtureQuota, fixtureTokens, fixtureUpdates } from "../preview/fixture";
+import { badgesByTask } from "../memory";
+import { stopKey, withPoint } from "../machine";
 import { defaultShortcuts } from "../shortcuts";
 import { LookContext } from "./context";
 import { lookOf, NAUTICAL_LOOK } from "./look";
@@ -22,6 +28,8 @@ const ignore = () => undefined;
 const reject = () => Promise.reject(new Error("not in this test"));
 const rowNames = Object.fromEntries(ROW_ORDER.map((row) => [row, row])) as Record<RowKey, string>;
 const workers = Object.fromEntries(FIXTURE_WORKERS.map((w) => [w.taskId, w]));
+const machineSample = fixtureMemory(FIXTURE_WORKERS, 1_900_000_000_000);
+const failedStop = machineSample.groups.find((g) => g.taskId === "hrb-18")!;
 const columns = FIXTURE_COLUMNS.map((c, i) => (i === 1 ? { ...c, collapsed: true } : c));
 const lanes = lookOf({ id: "lanes", version: "1", base: "/t/", manifest: { fathomTheme: 1, name: "Lanes", layout: { board: "lanes", detail: "overlay" } } });
 
@@ -50,6 +58,9 @@ const settings: Settings = {
   shortcuts: defaultShortcuts(true),
   linearWorkspace: "reef-co",
   ticketPrefixes: ["ATL"],
+  memoryBadgeMb: 1024,
+  view: "board",
+  tokenMode: "raw",
 };
 
 const board = (collapsedRows: RowKey[]) =>
@@ -60,6 +71,7 @@ const board = (collapsedRows: RowKey[]) =>
     overlay: { places: [], requests: FIXTURE_REQUESTS },
     waits: FIXTURE_WAITS.tasks,
     workers,
+    memory: badgesByTask(fixtureMemory(FIXTURE_WORKERS), 1024),
     updates: fixtureUpdates(true),
     rowNames,
     collapsedRows,
@@ -82,6 +94,24 @@ const board = (collapsedRows: RowKey[]) =>
 
 const VIEWS: ReactElement[] = [
   createElement(App),
+  createElement(Dashboard, { mac: true }),
+  createElement(Tokens, { report: { ...fixtureTokens(1_900_000_000_000), unpriced: ["claude-test-1"], pricesError: "line 3: expected a number" }, mode: "cost", onMode: ignore }),
+  createElement(Tokens, { report: null, mode: "raw", onMode: ignore }),
+  createElement(QuotaCard, { report: fixtureQuota("live", 1_900_000_000_000) }),
+  createElement(QuotaCard, { report: fixtureQuota("never", 1_900_000_000_000) }),
+  createElement(QuotaCard, { report: fixtureQuota("stale", 1_900_000_000_000) }),
+  createElement(QuotaCard, { report: { ...fixtureQuota("live", 1_900_000_000_000), sevenDay: null } }),
+  createElement(Machine, {
+    sample: { ...machineSample, herdrConnected: false },
+    history: withPoint([], machineSample),
+    workers: FIXTURE_WORKERS,
+    source: "firstmate",
+    herdr: { connected: false, message: "no socket" },
+    thresholdMb: 1024,
+    mac: true,
+    stops: { [stopKey(failedStop)]: { kind: "failed", error: "no inbox" } },
+    onStop: ignore,
+  }),
   board(["landed"]),
   createElement(CardDetail, {
     card: FIXTURE_CARDS[2],

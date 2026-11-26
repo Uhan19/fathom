@@ -57,6 +57,7 @@ It is a board over an agent's task list, not a task manager of its own.
 | `src-tauri/src/herdr.rs` | Every herdr-core call (`ls`, `get`, `events`, `attach`, `send`, `run`) and the pty attach. |
 | `src-tauri/src/launch.rs` | Starts agents, workers, Bosun and shells in herdr-core, with labels, the login-shell wrapper and MCP config. |
 | `src-tauri/src/workers.rs` | Finds which terminal works on which task and whether it is working or idle; reads Firstmate status logs. |
+| `src-tauri/src/metrics/` | The Dashboard's data: the memory sampler and its grouping (`memory.rs`, `procs.rs`), context size and idle time from Claude Code transcripts (`session.rs`), the token reader with its store and price list (`tokens.rs`), and the plan limits recorder (`quota.rs`). |
 | `src-tauri/src/shell_tabs.rs` | Shell tabs, the launcher's folder list, and attaching terminals Fathom did not start. |
 | `src-tauri/src/context.rs` | Card detail context: status log, recorded PR, task folder, mentioned files, previews and screenshots. |
 | `src-tauri/src/pulls.rs` | Live pull request state, checks and reviews through `gh`, with a cache. |
@@ -69,7 +70,7 @@ It is a board over an agent's task list, not a task manager of its own.
 | `src-tauri/src/themes/` | Theme store, manifest and CSS validation (`mod.rs`), the Nautical token export (`nautical.rs`), and the asset scheme (`scheme.rs`). |
 | `src-tauri/src/theme_check.rs`, `theme_watch.rs` | The `fathom theme check` and `fathom theme shot` commands, and the watcher that re-checks changed themes. |
 | `src-tauri/migrations/` | Numbered SQL migrations, applied in order and tracked in SQLite's `user_version`. |
-| `src/App.tsx` | The window: board, chat, card detail, Bosun drawer, overlays, Settings, filters and panel sizing. |
+| `src/App.tsx` | The window: board, Dashboard, chat, card detail, Bosun drawer, overlays, Settings, filters and panel sizing. |
 | `src/api.ts` | Typed wrappers over every Tauri command and event; the TypeScript side of the data model. |
 | `src/components/` | UI components: `Board`, `CardDetail` and its `Detail*` tabs, `ChatPanel`, `TabStrip`, `TerminalLauncher`, `WorkerTerminal`, `BosunDrawer`, `SettingsDialog`, `ShotViewer` and others. |
 | `src/*.ts` | Pure logic with tests beside it: `board.ts`, `links.ts`, `result.ts`, `waits.ts`, `shortcuts.ts`, `ticketSearch.ts`, `windowSettings.ts`, `terminalInput.ts`, `updates.ts` and more. |
@@ -94,11 +95,12 @@ It is a board over an agent's task list, not a task manager of its own.
 | `fathom --mcp --helper [--db <file>]` | Serves the helper MCP server (task tools plus app-control and theme tools). |
 | `fathom --helper-asking yes\|no [--db <file>]` | Records whether Bosun's Claude Code is waiting on a permission prompt; called by Bosun's hooks. |
 | `fathom --export <dir>` | Writes a `fathom-export-<ms>/` folder with `fathom.json` and one CSV per table. |
+| `fathom --quota-record` | Reads Claude Code's status line input on stdin and saves only its plan limits, with the time, to `quota.json` in the app data folder; prints nothing and always exits 0, so a user's status line script can call it. |
 | `fathom theme check <folder> [--json]` | Runs the theme check; exits 0 on pass, 1 with problems, 2 on usage or setup errors. |
 | `fathom theme shot <folder> [--mode light\|dark] [--size desktop\|min] [--json]` | Renders the fixture board with the theme and writes PNGs to `<folder>/.shots/`. |
 
 For `--mcp`, `--helper-asking` and `theme check` or `theme shot`, the database path is `--db`, else the `FATHOM_DB` environment variable, else the app's own database; the flag wins.
-`--export` ignores both and always reads the app's own database.
+`--export` ignores both and always reads the app's own database, and `--quota-record` always writes beside it.
 A binary built with plain `cargo build` carries the release app id, so use `--db` when experimenting so you never touch real data.
 The dev build (`pnpm dev`) uses the app id `app.fathom.board.dev` and so a separate database.
 
@@ -175,7 +177,7 @@ Task numbers and unread marks are keyed by a source "home" string (the Firstmate
   The one exception is `0003_column_ids.sql`, which rebuilt `columns` and `card_places` to key places by column id, so builds from before it cannot read a newer database.
   Keep the add-only property when you add a migration.
 - Tables: `columns`, `row_names`, `collapsed_rows`, `settings` (key and JSON value), `snapshot`, `card_places`, `move_requests`, `backlog_tasks`, `shell_tabs`, `column_folders`, `seen_updates`, `update_baselines`, `task_numbers`.
-- Settings keys live in `src-tauri/src/settings.rs`: the connection (`home`, `terminalLabel`, `hcSession`, `hcSocket`, `agentFolder`, `chatAgent`), appearance (`themeId`, `theme` for light or dark, fonts, sizes, added fonts), window state (`chatOpen`, `chatWidth`, `detailWidth`), filters (`projectFilter`, `agentFilter`, `focus`, `focusRestore`), Bosun (`helperStarted`, `helperAsking`), `shortcuts` and ticket links (`linearWorkspace`, `ticketPrefixes`).
+- Settings keys live in `src-tauri/src/settings.rs`: the connection (`home`, `terminalLabel`, `hcSession`, `hcSocket`, `agentFolder`, `chatAgent`), appearance (`themeId`, `theme` for light or dark, fonts, sizes, added fonts), window state (`chatOpen`, `chatWidth`, `detailWidth`, `view`, `tokenMode`), filters (`projectFilter`, `agentFilter`, `focus`, `focusRestore`), Bosun (`helperStarted`, `helperAsking`), `shortcuts`, ticket links (`linearWorkspace`, `ticketPrefixes`) and the memory badge threshold (`memoryBadgeMb`).
   Adding a setting needs no migration.
 - The selected card and the crewmate view being watched are deliberately not stored: they are navigation, not preferences.
 - The design target is a database that stays small (a few MB after a year of use), and Settings shows its size and path.
@@ -193,8 +195,9 @@ Freshness comes from change signals, each feeding one debounced re-read (250 ms)
   It changes only when another connection commits, so it is cheap, and it is how the window sees writes from MCP server processes.
   It exists because macOS sends no file events for writes to an open WAL database.
   The same check re-reads settings, which is how Bosun's changes appear in the window within a moment.
+- The Dashboard's metrics are timed instead (`metrics/mod.rs`): memory every 3 seconds and new transcript lines every minute, only while the Dashboard is open or, for memory, while the board's cards show a worker's memory.
 
-Events to the UI (constants in `state.rs` and `theme_watch.rs`): `board://updated`, `herdr://status`, `herdr://terminals`, `workers://updated`, `terminal://ended`, `settings://updated`, `helper://updated`, `updates://updated`, `themes://updated`.
+Events to the UI (constants in `state.rs`, `theme_watch.rs` and `metrics/mod.rs`): `board://updated`, `herdr://status`, `herdr://terminals`, `workers://updated`, `terminal://ended`, `settings://updated`, `helper://updated`, `updates://updated`, `themes://updated`, `metrics://memory`, `metrics://tokens`, `metrics://quota`.
 
 ### Launch speed
 
@@ -333,6 +336,8 @@ Read the README's "The MCP server" and "The helper tools" sections for the full 
 - Clicking the sailor opens the terminal in an overlay attached like the chat; Escape closes the overlay rather than reaching the terminal, and closing only detaches.
 - The card's Agent tab exists only while the card has a live worker; it shows the worker's terminal and a composer whose "To" switch sends either to the worker (text as typed) or to the chat agent (prefixed with the card).
 - Wording differs by source: "crewmate" on Firstmate boards, "worker" on the backlog.
+- A card with a live worker shows the memory of the worker's process tree, from the same sample as the Dashboard, amber at the `memoryBadgeMb` threshold.
+- The Dashboard's Stop frees an idle worker's memory and never moves its card: on the backlog it ends the worker's terminal, and on a Firstmate board it only sends `bin/fm-inbox.sh note --request-id fathom-stop-<task id>-<ms>` asking Firstmate to stop it (`requests.rs`).
 
 ## 14. Card details
 
@@ -466,7 +471,7 @@ The full contract, including every part name, control id and token, is [docs/the
 
 ## 21. Settings and data
 
-The Settings dialog has sections for Firstmate (home, chat terminal label, agent folder), Ticket links, herdr-core (session and socket), Appearance (theme, fonts, sizes), Shortcuts, Row names and Your data (size, path and export), with the installed version in its footer.
+The Settings dialog has sections for Firstmate (home, chat terminal label, agent folder), Ticket links, Memory (the card badge threshold), herdr-core (session and socket), Appearance (theme, fonts, sizes), Shortcuts, Row names and Your data (size, path and export), with the installed version in its footer.
 Changes preview at once while it is open; Save keeps them and Cancel puts them back.
 
 Export writes `fathom.json` plus `backlog_tasks.csv`, `card_places.csv`, `columns.csv`, `move_requests.csv`, `row_names.csv`, `settings.csv`, `snapshot_cards.csv` and `task_numbers.csv` into a new `fathom-export-<ms>` folder.
@@ -532,7 +537,7 @@ These are the choices a reader of the code would most likely second-guess.
 - An add-task form, or any editing of tasks in the UI: agents own task content.
 - Editing Firstmate's task list, waits or files directly.
 - A restore button for deleted project columns.
-- Stopping or restarting workers from the board, workers on Firstmate boards, and workers for agents other than Claude Code.
+- Restarting workers, starting workers on Firstmate boards, and workers for agents other than Claude Code; the Dashboard only stops an idle worker to free its memory.
 - Remembering the selected card or the watched crewmate across launches.
 - Accounts, cloud sync, sharing and phone access: Fathom itself has no accounts or sync, while Bosun and connected agents talk to their own model providers.
 - Registering Fathom's MCP server with any agent globally; that is the user's choice.

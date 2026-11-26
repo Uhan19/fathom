@@ -71,6 +71,8 @@ pub struct Terminal {
     pub cols: u16,
     #[serde(default, deserialize_with = "or_default")]
     pub rows: u16,
+    #[serde(default, deserialize_with = "or_default")]
+    pub pid: u32,
 }
 
 fn or_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
@@ -765,6 +767,17 @@ pub fn apply_event(terminals: &mut BTreeMap<String, Terminal>, message: &Value) 
                 t.state = kind.to_string();
             }
             notices.push(Notice::TerminalsChanged);
+        }
+        "restarted" => {
+            let pid = data
+                .get("pid")
+                .or_else(|| data.get("terminal").and_then(|t| t.get("pid")))
+                .and_then(Value::as_u64)
+                .and_then(|pid| u32::try_from(pid).ok());
+            if let (Some(pid), Some(t)) = (pid, terminals.get_mut(&address)) {
+                t.pid = pid;
+                t.state = crate::workers::LIVE.to_string();
+            }
         }
         "status" | "turn" => {
             if let Some(t) = terminals.get_mut(&address) {

@@ -10,6 +10,10 @@ import {
   type Column,
   type HelperStatus,
   type HerdrStatus,
+  type MemoryGroup,
+  type MemorySample,
+  type QuotaReport,
+  type TokenReport,
   type MoveTo,
   type Overlay,
   type Placement,
@@ -26,6 +30,11 @@ import { emptyBoardText } from "./source";
 import { moveTo } from "./columnOrder";
 import { startDrag } from "./drag";
 import { Board } from "./components/Board";
+import { Dashboard, ViewSwitch } from "./components/Dashboard";
+import { Machine, type StopState } from "./components/Machine";
+import { QuotaCard } from "./components/QuotaCard";
+import { Tokens } from "./components/Tokens";
+import { stopKey, withPoint, type Point } from "./machine";
 import { AgentFilterToggle } from "./components/AgentFilterToggle";
 import { TicketSearch } from "./components/TicketSearch";
 import { boardTickets } from "./ticketSearch";
@@ -54,6 +63,7 @@ import { previewRequests } from "./themes/previews";
 import { RESET_EVENT } from "./themes/reset";
 import { useDetailEscape } from "./overlayDetail";
 import { states } from "./parts";
+import { badgesByTask } from "./memory";
 
 const NO_HELPER: HelperStatus = { terminal: null, status: "", asking: false };
 const NO_WAITS: Waits = { tasks: {}, people: {} };
@@ -80,6 +90,11 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   const [detailDrag, setDetailDrag] = useState<number | null>(null);
   const [chatDrag, setChatDrag] = useState<number | null>(null);
   const [workers, setWorkers] = useState<Worker[]>([]);
+  const [memory, setMemory] = useState<MemorySample | null>(null);
+  const [memoryHistory, setMemoryHistory] = useState<Point[]>([]);
+  const [tokenReport, setTokenReport] = useState<TokenReport | null>(null);
+  const [quotaReport, setQuotaReport] = useState<QuotaReport | null>(null);
+  const [stops, setStops] = useState<Record<string, StopState>>({});
   const [updates, setUpdates] = useState<CardUpdates>(NO_UPDATES);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [columnError, setColumnError] = useState<string | null>(null);
@@ -125,6 +140,13 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
       events.settings((s) => alive && setSettings(s)),
       events.helper((h) => alive && setHelper(h)),
       events.themes(() => alive && setThemesChanged((n) => n + 1)),
+      events.memory((m) => {
+        if (!alive) return;
+        setMemory(m);
+        setMemoryHistory((h) => withPoint(h, m));
+      }),
+      events.tokens((r) => alive && setTokenReport(r)),
+      events.quota((r) => alive && setQuotaReport(r)),
     ];
     api
       .cachedBoard()
@@ -143,6 +165,14 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
       .then((u) => alive && setUpdates(u))
       .catch(() => undefined);
     api.helperStatus().then((h) => alive && setHelper(h));
+    api
+      .tokenReport()
+      .then((r) => alive && r && setTokenReport(r))
+      .catch(() => undefined);
+    api
+      .quotaReport()
+      .then((r) => alive && setQuotaReport(r))
+      .catch(() => undefined);
     return () => {
       alive = false;
       unlisten.forEach((p) => void p.then((fn) => fn()));
@@ -316,8 +346,10 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
 
   const cards = view?.cards ?? [];
   const counts = rowCounts(cards);
+  const tab = settings?.view ?? "board";
+  const onDashboard = tab === "dashboard";
   const selected = cards.find((c) => c.id === selectedId) ?? null;
-  const detailShown = selected !== null && appearance !== null;
+  const detailShown = selected !== null && appearance !== null && !onDashboard;
 
   const changeColumn = (id: number, change: { width?: number; collapsed?: boolean }) => {
     setView((v) => v && { ...v, columns: v.columns.map((c) => (c.id === id ? { ...c, ...change } : c)) });
@@ -363,6 +395,24 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
   const overlay: Overlay = { places: view?.places ?? [], requests: view?.requests ?? [] };
   const waits = view?.waits ?? NO_WAITS;
   const workerByTask = useMemo(() => Object.fromEntries(workers.map((w) => [w.taskId, w])) as Record<string, Worker>, [workers]);
+  const stopWorker = (group: MemoryGroup) => {
+    const taskId = group.taskId;
+    if (!taskId) return;
+    const key = stopKey(group);
+    const settle = (stop: StopState) => setStops((s) => ({ ...s, [key]: stop }));
+    settle({ kind: "sending" });
+    api
+      .stopWorker(taskId, group.name)
+      .then((outcome) => settle({ kind: outcome.kind === "asked" ? "asked" : "sending" }))
+      .catch((e) => settle({ kind: "failed", error: errorText(e) }));
+  };
+  const settingsLoaded = settings !== null;
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    void api.setMetricsDemand({ dashboard: onDashboard, badges: !onDashboard }).catch(() => undefined);
+  }, [settingsLoaded, onDashboard]);
+  const memoryBadgeMb = settings?.memoryBadgeMb;
+  const badges = useMemo(() => (memoryBadgeMb ? badgesByTask(memory, memoryBadgeMb) : {}), [memory, memoryBadgeMb]);
   const watchedWorker = watched ? workers.find((w) => w.terminal === watched.terminal) : undefined;
   const applyOverlay = (next: Overlay) => setView((v) => v && { ...v, ...next });
   const changeOverlay = (change: Promise<Overlay>) =>
@@ -459,7 +509,14 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
     <div className="app" data-part="app" ref={appRef}>
       <header className="top" data-part="header" inert={detailAsOverlay}>
         <Brand />
-        <TicketSearch tickets={tickets} onOpen={openCard} />
+        <ViewSwitch view={tab} onChange={(view) => changeWindow({ view })} />
+        <TicketSearch
+          tickets={tickets}
+          onOpen={(id) => {
+            if (onDashboard) changeWindow({ view: "board" });
+            openCard(id);
+          }}
+        />
         <span className="count" data-part="count" data-kind="surface">
           <span className="count-label" data-part="count-label">
             <span className="count-lead" data-part="count-lead">{shownLook.text.surfaceLead}</span>surface
@@ -531,7 +588,26 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
       )}
       <main className="main" data-part="main" ref={mainRef}>
         <div className="board-column" data-part="board-column" ref={boardColumnRef} inert={detailAsOverlay}>
-          {(focus.length > 0 || projectFilter.length > 0 || agentFilter !== "all") && (
+          {onDashboard && (
+            <Dashboard
+              mac={MAC}
+              tokens={<Tokens report={tokenReport} mode={settings?.tokenMode ?? "raw"} onMode={(tokenMode) => changeWindow({ tokenMode })} quota={<QuotaCard report={quotaReport} />} />}
+              machine={
+              <Machine
+                sample={memory}
+                history={memoryHistory}
+                workers={workers}
+                source={view?.source ?? "firstmate"}
+                herdr={herdr}
+                thresholdMb={settings?.memoryBadgeMb ?? 1024}
+                mac={MAC}
+                stops={stops}
+                onStop={stopWorker}
+              />
+              }
+            />
+          )}
+          {!onDashboard && (focus.length > 0 || projectFilter.length > 0 || agentFilter !== "all") && (
             <div className="filter-strip" data-part="filter-strip" role="status">
               {focus.length > 0 && (
                 <div className="filter-part" data-part="filter-part">
@@ -559,7 +635,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
               )}
             </div>
           )}
-          {view ? (
+          {onDashboard ? null : view ? (
             view.columns.length > 0 ? (
               <Board
                 cards={cards}
@@ -568,6 +644,7 @@ export default function App({ initialLook = NAUTICAL_LOOK }: { initialLook?: Loo
                 overlay={overlay}
                 waits={waits.tasks}
                 workers={workerByTask}
+                memory={badges}
                 updates={updates}
                 rowNames={rowNames}
                 collapsedRows={collapsedRows}

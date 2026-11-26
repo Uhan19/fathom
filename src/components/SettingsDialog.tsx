@@ -13,6 +13,7 @@ import {
   type Surface,
 } from "../appearance";
 import { formatBytes } from "../board";
+import { badgeThresholds, formatMemory } from "../memory";
 import { FontPicker, useInstalledFonts } from "./FontPicker";
 import { AppVersion } from "./AppVersion";
 import { Close } from "./Icons";
@@ -196,6 +197,26 @@ export function SettingsDialog({ settings, mac, rowNames, look: theme, onPreview
               Card details turn bare ticket ids such as ENG-1234 into Linear links when both are set. The workspace is the name after
               linear.app/ in a ticket link. Linear and Slack links written out in full always work.
             </small>
+          </fieldset>
+          <fieldset data-part="settings-section" data-kind="memory">
+            <legend data-part="settings-legend">Memory</legend>
+            <label className="field" data-part="field">
+              <span>Card badge turns amber at</span>
+              <select
+                className="text-input"
+                data-part="text-input"
+                data-control="settings-memory-badge"
+                value={draft.memoryBadgeMb}
+                onChange={(e) => setDraft({ ...draft, memoryBadgeMb: Number(e.target.value) })}
+              >
+                {badgeThresholds(draft.memoryBadgeMb).map((mb) => (
+                  <option key={mb} value={mb}>
+                    {formatMemory(mb * 1024 * 1024)}
+                  </option>
+                ))}
+              </select>
+              <small>A card with a running worker shows the memory it and everything it started use.</small>
+            </label>
           </fieldset>
           <fieldset data-part="settings-section" data-kind="herdr-core">
             <legend data-part="settings-legend">herdr-core</legend>

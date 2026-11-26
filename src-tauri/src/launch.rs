@@ -371,7 +371,7 @@ fn helper_settings(server: &FathomServer) -> serde_json::Value {
     json!({ "permissions": { "ask": ask }, "hooks": hooks })
 }
 
-fn shell_quote(word: &str) -> String {
+pub(crate) fn shell_quote(word: &str) -> String {
     format!("'{}'", word.replace('\'', r"'\''"))
 }
 

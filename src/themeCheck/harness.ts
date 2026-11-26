@@ -147,6 +147,9 @@ const click = async (frame: Frame, selector: string, done?: string, gone?: strin
 const DETAIL = '[data-part="detail"]';
 const DRAWER_OPEN = '[data-part="bosun"]:not([data-state~="closed"])';
 const SETTINGS = '[data-part="settings-dialog"][open]';
+const DASHBOARD = '[data-part="dashboard"]';
+
+const openDashboard = (frame: Frame) => click(frame, '[data-control="view-dashboard"]', DASHBOARD);
 
 const openCard = (frame: Frame) => click(frame, '[data-part="row"][data-kind="surface"] [data-control="card-open"]', DETAIL);
 
@@ -188,12 +191,18 @@ async function scanAll(frame: Frame): Promise<ViewScan[]> {
   const dialog = doc.querySelector(SETTINGS);
   if (dialog) scans.push(await look(frame, "settings", dialog));
   await click(frame, '[data-control="settings-cancel"]', undefined, SETTINGS);
+  await openDashboard(frame);
+  if (doc.querySelector(DASHBOARD)) scans.push(await look(frame, "dashboard", doc.querySelector('[data-part="app"]')!));
+  await click(frame, '[data-control="view-board"]', '[data-part="board"]', DASHBOARD);
   return scans;
 }
 
-async function scanEmpty(params: Record<string, string>): Promise<ViewScan> {
+async function scanEmpty(params: Record<string, string>): Promise<ViewScan[]> {
   const frame = await loadFrame({ ...params, empty: "" });
-  return look(frame, "empty", frame.doc.querySelector('[data-part="app"]')!);
+  const scans = [await look(frame, "empty", frame.doc.querySelector('[data-part="app"]')!)];
+  await openDashboard(frame);
+  if (frame.doc.querySelector(DASHBOARD)) scans.push(await look(frame, "empty-dashboard", frame.doc.querySelector('[data-part="app"]')!));
+  return scans;
 }
 
 async function step<T>(name: string, work: Promise<T>): Promise<T> {
@@ -254,12 +263,13 @@ async function showView(frame: Frame, view: string) {
     if (tab) await click(frame, `[data-control="detail-tab"][data-key="${tab}"]`, `[data-control="detail-tab"][data-key="${tab}"][aria-selected="true"]`);
   } else if (view === "helper" || view === "chat") await click(frame, '[data-control="helper-open"]', DRAWER_OPEN);
   else if (view === "settings") await click(frame, '[data-control="open-settings"]', SETTINGS);
+  else if (view.endsWith("dashboard")) await openDashboard(frame);
 }
 
 async function proveFindings(findings: Finding[], run: Run, params: Record<string, string>) {
   const views = [...new Set(findings.map((f) => f.view ?? "board"))];
   for (const view of views) {
-    const frame = await loadFrame(view === "empty" ? { ...params, empty: "" } : params);
+    const frame = await loadFrame(view.startsWith("empty") ? { ...params, empty: "" } : params);
     await showView(frame, view.startsWith("interaction") ? "board" : view);
     const here = findings.filter((f) => (f.view ?? "board") === view);
     outline(frame, here.flatMap((f) => (f.control ? [f.control] : [])));
@@ -273,7 +283,7 @@ async function nauticalBaseline(run: Run, params: Record<string, string>): Promi
   const cached = inTauri ? await invoke<ViewScan[] | null>("check_baseline", where) : null;
   if (cached) return cached;
   log(`${run.mode} ${run.size}: scanning Nautical`);
-  const scans = [...(await scanAll(await loadFrame(params))), await scanEmpty(params)];
+  const scans = [...(await scanAll(await loadFrame(params))), ...(await scanEmpty(params))];
   if (inTauri) await invoke("check_keep_baseline", { ...where, scans });
   return scans;
 }
@@ -291,7 +301,7 @@ async function checkRun(plan: Plan, run: Run): Promise<Finding[]> {
   const nautical = { ...themed, look: NAUTICAL };
   const baseline = await nauticalBaseline(run, nautical);
   log(`${run.mode} ${run.size}: scanning ${plan.theme.id}`);
-  const scans = [...(await scanAll(await loadFrame(themed))), await scanEmpty(themed)];
+  const scans = [...(await scanAll(await loadFrame(themed))), ...(await scanEmpty(themed))];
   const findings = baseline.flatMap((base) => {
     const theirs = scans.find((s) => s.view === base.view);
     return theirs ? compareView(base, theirs, allow, where) : [{ ...where, view: base.view, problem: `the ${base.view} view did not open` }];
@@ -321,6 +331,9 @@ async function shotRun(run: Run): Promise<string[]> {
   frame = await loadFrame(params);
   await click(frame, '[data-control="helper-open"]', DRAWER_OPEN);
   await take("chat");
+  frame = await loadFrame(params);
+  await openDashboard(frame);
+  await take("dashboard");
   return shots;
 }
 

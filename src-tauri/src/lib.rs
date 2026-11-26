@@ -7,6 +7,7 @@ mod fonts;
 mod herdr;
 mod launch;
 mod mcp;
+mod metrics;
 mod moves;
 mod pulls;
 mod requests;
@@ -30,6 +31,7 @@ mod workers;
 
 use std::ffi::OsString;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
 
 use tauri::{Manager, RunEvent};
@@ -65,6 +67,7 @@ pub fn run() {
     if let Some(code) = run_helper_asking_flag(&identifier)
         .or_else(|| run_mcp_flag(&identifier))
         .or_else(|| run_export_flag(&identifier))
+        .or_else(|| run_quota_record_flag(&identifier))
     {
         std::process::exit(code);
     }
@@ -95,6 +98,11 @@ pub fn run() {
             let db = db::Db::open(&data_dir)?;
             apply_launch_flags(&db, &std::env::args().collect::<Vec<_>>())?;
             let state = state::AppState::start(app.handle(), db, log_dir, started)?;
+            app.manage(metrics::Metrics::start(
+                app.handle().clone(),
+                Arc::clone(&state),
+                data_dir.clone(),
+            ));
             app.manage(state);
             app.manage(std::sync::Arc::new(pulls::PrCache::default()));
             Ok(())
@@ -159,6 +167,10 @@ pub fn run() {
             commands::list_themes,
             commands::duplicate_nautical,
             commands::reveal_themes_folder,
+            commands::set_metrics_demand,
+            commands::token_report,
+            commands::quota_report,
+            commands::stop_worker,
         ])
         .build(context)
         .expect("error while building Fathom");
@@ -227,6 +239,12 @@ fn run_mcp_flag(identifier: &str) -> Option<i32> {
         .and_then(|dir| mcp::store_path(&args, mcp::db_env(), dir.join(db::FILE_NAME)))
         .and_then(|store| mcp::serve_stdio(&store, mcp::wants_helper(&args)));
     exit_code(result)
+}
+
+fn run_quota_record_flag(identifier: &str) -> Option<i32> {
+    std::env::args()
+        .any(|a| a == metrics::quota::RECORD_FLAG)
+        .then(|| metrics::quota::run_record(default_data_dir(identifier), state::now_ms()))
 }
 
 fn run_helper_asking_flag(identifier: &str) -> Option<i32> {

@@ -239,6 +239,112 @@ export interface Settings {
   shortcuts: Shortcuts;
   linearWorkspace: string;
   ticketPrefixes: string[];
+  memoryBadgeMb: number;
+  view: Tab;
+  tokenMode: TokenMode;
+}
+
+export type Tab = "board" | "dashboard";
+export type TokenMode = "raw" | "cost";
+
+export interface Costs {
+  input: number;
+  output: number;
+  cacheWrite: number;
+  cacheRead: number;
+}
+
+export interface TokenDay {
+  date: string;
+  startMs: number;
+  input: number;
+  output: number;
+  cacheWrite: number;
+  cacheRead: number;
+  cost: Costs;
+}
+
+export interface TokenShare {
+  name: string;
+  tokens: number;
+  cost: number;
+}
+
+export interface ConsumerShare extends TokenShare {
+  role: "orchestrator" | "worker" | "assistant" | "move" | "other";
+  taskId: string | null;
+}
+
+export interface TokenReport {
+  takenAtMs: number;
+  days: TokenDay[];
+  models: TokenShare[];
+  consumers: ConsumerShare[];
+  projects: TokenShare[];
+  overhead: { assistantTokens: number; assistantQuestions: number; moveRequests: number[]; weekTokens: number; weekOverheadTokens: number };
+  unpriced: string[];
+  pricesError: string | null;
+}
+
+export interface QuotaWindow {
+  usedPercent: number;
+  resetsAtMs: number;
+  percentPerHour: number | null;
+  runsOutAtMs: number | null;
+}
+
+export interface QuotaReport {
+  takenAtMs: number;
+  available: boolean;
+  lastSeenMs: number | null;
+  fiveHour: QuotaWindow | null;
+  sevenDay: QuotaWindow | null;
+  recordLine: string;
+}
+
+export type Pressure = "normal" | "warning" | "critical";
+export type GroupKind = "fathom" | "orchestrator" | "worker" | "docker";
+
+export interface MemoryPart {
+  label: string;
+  bytes: number;
+  processes: number;
+}
+
+export interface MemoryGroup {
+  kind: GroupKind;
+  id: string;
+  name: string;
+  taskId: string | null;
+  terminal: string | null;
+  bytes: number;
+  parts: MemoryPart[];
+  session: AgentSession | null;
+}
+
+export interface AgentSession {
+  contextTokens: number;
+  lastReplyMs: number;
+  warmMs: number;
+}
+
+export interface MemorySample {
+  takenAtMs: number;
+  total: number;
+  used: number;
+  available: number;
+  pressure: Pressure | null;
+  activityMonitor: boolean;
+  herdrConnected: boolean;
+  groups: MemoryGroup[];
+  rest: { bytes: number; apps: { name: string; bytes: number }[] };
+}
+
+export type StopOutcome = { kind: "asked"; noteId: string } | { kind: "stopped" };
+
+export interface MetricsDemand {
+  dashboard: boolean;
+  badges: boolean;
 }
 
 export interface WindowChange {
@@ -247,6 +353,8 @@ export interface WindowChange {
   chatOpen?: boolean;
   chatWidth?: number;
   detailWidth?: number;
+  view?: Tab;
+  tokenMode?: TokenMode;
 }
 
 export type SignIn = "signedIn" | "signedOut" | "unknown";
@@ -386,6 +494,10 @@ export const api = {
   closeShellTab: (terminal: string) => invoke<void>("close_shell_tab", { terminal }),
   attachableTerminals: () => invoke<Terminal[]>("attachable_terminals"),
   launcherFolders: () => invoke<LauncherFolders>("launcher_folders"),
+  setMetricsDemand: (demand: MetricsDemand) => invoke<void>("set_metrics_demand", { demand }),
+  tokenReport: () => invoke<TokenReport | null>("token_report"),
+  quotaReport: () => invoke<QuotaReport>("quota_report"),
+  stopWorker: (taskId: string, title: string) => invoke<StopOutcome>("stop_worker", { taskId, title }),
   rememberColumnFolder: (column: number, folder: string) => invoke<void>("remember_column_folder", { column, folder }),
 };
 
@@ -402,6 +514,12 @@ export const events = {
   settings: (handler: (settings: Settings) => void): Promise<UnlistenFn> =>
     listen<Settings>("settings://updated", (e) => handler(e.payload)),
   themes: (handler: () => void): Promise<UnlistenFn> => listen("themes://updated", () => handler()),
+  memory: (handler: (sample: MemorySample) => void): Promise<UnlistenFn> =>
+    listen<MemorySample>("metrics://memory", (e) => handler(e.payload)),
+  tokens: (handler: (report: TokenReport) => void): Promise<UnlistenFn> =>
+    listen<TokenReport>("metrics://tokens", (e) => handler(e.payload)),
+  quota: (handler: (report: QuotaReport) => void): Promise<UnlistenFn> =>
+    listen<QuotaReport>("metrics://quota", (e) => handler(e.payload)),
   helper: (handler: (helper: HelperStatus) => void): Promise<UnlistenFn> =>
     listen<HelperStatus>("helper://updated", (e) => handler(e.payload)),
   terminalEnded: (handler: (ended: EndedView) => void): Promise<UnlistenFn> =>
